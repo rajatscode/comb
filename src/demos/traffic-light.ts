@@ -223,16 +223,6 @@ export function mount(container: HTMLElement) {
     walkSignal.style.display = canWalk() ? 'block' : 'none';
   }, 'updateWalk', MODULE_ID);
 
-  createEffect(() => {
-    const em = emergency();
-    emergencyBadge.style.display = em ? 'block' : 'none';
-    emergencyBtn.textContent = em ? 'clear emergency' : 'emergency';
-  }, 'updateEmergency', MODULE_ID);
-
-  createEffect(() => {
-    tickLabel.textContent = `tick #${clock.tickCount()}`;
-  }, 'updateTick', MODULE_ID);
-
   // ── Build the app UI ──
   const wrapper = document.createElement('div');
   wrapper.className = 'traffic-light';
@@ -285,6 +275,17 @@ export function mount(container: HTMLElement) {
   controls.appendChild(walkBtn);
 
   const emergencyBtn = document.createElement('button');
+
+  // ── Effects for reactive DOM updates (after all DOM refs are created) ──
+  createEffect(() => {
+    const em = emergency();
+    emergencyBadge.style.display = em ? 'block' : 'none';
+    emergencyBtn.textContent = em ? 'clear emergency' : 'emergency';
+  }, 'updateEmergency', MODULE_ID);
+
+  createEffect(() => {
+    tickLabel.textContent = `tick #${clock.tickCount()}`;
+  }, 'updateTick', MODULE_ID);
   emergencyBtn.textContent = 'emergency';
   emergencyBtn.style.borderColor = '#ef4444';
   emergencyBtn.style.color = '#ef4444';
