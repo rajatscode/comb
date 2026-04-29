@@ -103,5 +103,12 @@ export function createClock(
     get running() { return running; },
   };
   activeClocks.add(instance);
+
+  // Register for cleanup on circuit.reset()
+  circuit.onReset(() => {
+    stop();
+    activeClocks.delete(instance);
+  });
+
   return instance;
 }

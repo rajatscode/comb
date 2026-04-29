@@ -214,10 +214,23 @@ export class CircuitGraph {
       for (const listener of this.listeners) listener(event);
     }
   }
+  private cleanupCallbacks = new Set<() => void>();
+
+  onReset(fn: () => void): () => void {
+    this.cleanupCallbacks.add(fn);
+    return () => { this.cleanupCallbacks.delete(fn); };
+  }
+
   reset(): void {
+    // Run registered cleanup callbacks (e.g. stop clocks)
+    for (const fn of this.cleanupCallbacks) {
+      fn();
+    }
+    this.cleanupCallbacks.clear();
     this.nodes.clear();
     this.wires.clear();
     this.events = [];
+    this.listeners.clear();
     this.idCounter = 0;
   }
 }
