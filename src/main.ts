@@ -1,5 +1,6 @@
 import './styles.css';
 import { highlightComb } from './highlight';
+import { circuit } from './runtime/index';
 
 const app = document.getElementById('app')!;
 
@@ -115,6 +116,7 @@ async function loadDemo(name: string) {
   if (header) header.style.display = 'none';
 
   container.innerHTML = '<p style="text-align: center; color: var(--text-muted); padding: 2rem;">Loading...</p>';
+  circuit.reset(); // Clear stale circuit graph data from previous demo
 
   try {
     const module = await import(`./demos/${name}.ts`);
