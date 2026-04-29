@@ -77,15 +77,10 @@ async function compileAndRun() {
 }
 
 async function injectPreview(code: string) {
-  // Strip import statements from generated code — we'll provide the runtime globally
-  const strippedCode = code.replace(/^import\s+\{[^}]+\}\s+from\s+['"][^'"]+['"];?\s*$/gm, '');
-
-  // Load runtime source to inline in the iframe
-  const runtimeModules = await Promise.all([
-    fetch('/src/runtime/circuit.ts').then(r => r.text()),
-    fetch('/src/runtime/signals.ts').then(r => r.text()),
-    fetch('/src/runtime/dom.ts').then(r => r.text()),
-  ]);
+  // Strip import statements and export keywords from generated code
+  const strippedCode = code
+    .replace(/^import\s+\{[^}]+\}\s+from\s+['"][^'"]+['"];?\s*$/gm, '')
+    .replace(/^export\s+/gm, '');
 
   const html = `<!DOCTYPE html>
 <html>
@@ -188,10 +183,11 @@ async function injectPreview(code: string) {
     const root = document.getElementById('app');
     ${strippedCode}
 
-    // Try to find and call the module's mount function
-    const moduleMatch = \`${strippedCode}\`.match(/function (\\w+)\\(root\\)/);
-    if (moduleMatch) {
-      window[moduleMatch[1]]?.(root) || eval(moduleMatch[1] + '(root)');
+    // Auto-detect and call the module function
+    // Generated code defines: function ModuleName(root) { ... }
+    const _fnMatch = \`${code}\`.match(/function\\s+(\\w+)\\s*\\(root\\)/);
+    if (_fnMatch && typeof eval(_fnMatch[1]) === 'function') {
+      eval(_fnMatch[1] + '(root)');
     }
   </script>
 </body>
