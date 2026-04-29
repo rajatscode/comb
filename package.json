@@ -1,0 +1,21 @@
+{
+  "name": "comb",
+  "version": "0.1.0",
+  "description": "Write circuits. Ship apps. A SystemVerilog-inspired reactive web framework.",
+  "type": "module",
+  "scripts": {
+    "compile": "tsx src/cli/cli.ts",
+    "compile:all": "tsx src/cli/cli.ts examples/counter.comb && tsx src/cli/cli.ts examples/traffic-light.comb && tsx src/cli/cli.ts examples/minesweeper.comb && tsx src/cli/cli.ts examples/chat.comb",
+    "dev": "vite",
+    "build": "vite build",
+    "playground": "vite --config vite.playground.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0"
+  },
+  "license": "SEE LICENSE IN LICENSE"
+}

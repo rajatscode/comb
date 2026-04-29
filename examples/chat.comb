@@ -1,0 +1,86 @@
+module Message(text: string, sender: string, timestamp: int) {
+  comb time_display = format_time(timestamp);
+
+  view {
+    <div class={"message " + (sender == "me" ? "sent" : "received")}>
+      <span class="sender">{sender}</span>
+      <p class="text">{text}</p>
+      <span class="time">{time_display}</span>
+    </div>
+  }
+}
+
+module Chat {
+  signal messages: {text: string, sender: string, ts: int}[] = [];
+  signal input_text: string = "";
+  signal username: string = "user";
+  signal is_typing: bool = false;
+  signal connected: bool = true;
+
+  comb message_count = messages.len();
+  comb has_messages = message_count > 0;
+  comb can_send = input_text.len() > 0 && connected;
+
+  always @(send) {
+    @if can_send {
+      messages <= [...messages, {
+        text: input_text,
+        sender: username,
+        ts: now()
+      }];
+      input_text <= "";
+    }
+  }
+
+  always @(receive(msg)) {
+    messages <= [...messages, msg];
+  }
+
+  always @(clear) {
+    messages <= [];
+  }
+
+  always @(typing) {
+    is_typing <= input_text.len() > 0;
+  }
+
+  view {
+    <div class="chat">
+      <h1>Comb Chat</h1>
+      <div class="status-bar">
+        <span class={"status " + (connected ? "online" : "offline")}>
+          {connected ? "connected" : "disconnected"}
+        </span>
+        <span class="count">{message_count} messages</span>
+      </div>
+      <div class="message-list">
+        @if !has_messages {
+          <p class="empty">No messages yet. Say something!</p>
+        }
+        @for msg in messages {
+          <Message
+            text={msg.text}
+            sender={msg.sender}
+            timestamp={msg.ts}
+          />
+        }
+        @if is_typing {
+          <div class="typing-indicator">
+            <span class="dot"></span>
+            <span class="dot"></span>
+            <span class="dot"></span>
+          </div>
+        }
+      </div>
+      <div class="input-area">
+        <input
+          @bind=input_text
+          @input=typing
+          @keydown.enter=send
+          placeholder="Type a message..."
+        />
+        <button @click=send disabled={!can_send}>Send</button>
+      </div>
+    </div>
+  }
+}

@@ -1,0 +1,131 @@
+module Cell(value: int, revealed: bool, flagged: bool) {
+  comb display = revealed ? (value == -1 ? "💣" :
+                             value == 0 ? "" :
+                             str(value)) :
+                 flagged ? "🚩" : "";
+
+  comb cell_class = "cell" +
+    (revealed ? " revealed" : "") +
+    (flagged ? " flagged" : "") +
+    (revealed && value == -1 ? " mine" : "") +
+    (revealed && value > 0 ? " n" + str(value) : "");
+
+  view {
+    <div class={cell_class}>
+      {display}
+    </div>
+  }
+}
+
+module Minesweeper {
+  signal rows: int = 9;
+  signal cols: int = 9;
+  signal mine_count: int = 10;
+  signal grid: int[][] = [];
+  signal revealed: bool[][] = [];
+  signal flagged: bool[][] = [];
+  signal game_over: bool = false;
+  signal won: bool = false;
+  signal started: bool = false;
+  signal time: int = 0;
+
+  comb flags_placed = flagged.flat().filter(|f| f).len();
+  comb remaining = mine_count - flags_placed;
+  comb total_cells = rows * cols;
+  comb revealed_count = revealed.flat().filter(|r| r).len();
+  comb safe_cells = total_cells - mine_count;
+
+  always @(init) {
+    grid <= generate_grid(rows, cols, mine_count);
+    revealed <= make_2d(rows, cols, false);
+    flagged <= make_2d(rows, cols, false);
+    game_over <= false;
+    won <= false;
+    started <= false;
+    time <= 0;
+  }
+
+  always @(reveal(r, c)) {
+    @if !game_over && !flagged[r][c] && !revealed[r][c] {
+      @if !started {
+        started <= true;
+      }
+      @if grid[r][c] == -1 {
+        revealed <= reveal_all(revealed);
+        game_over <= true;
+      } @else {
+        revealed <= flood_reveal(grid, revealed, r, c);
+        @if revealed_count + 1 >= safe_cells {
+          won <= true;
+          game_over <= true;
+        }
+      }
+    }
+  }
+
+  always @(flag(r, c)) {
+    @if !game_over && !revealed[r][c] {
+      flagged[r][c] <= !flagged[r][c];
+    }
+  }
+
+  always @(tick) {
+    @if started && !game_over {
+      time <= time + 1;
+    }
+  }
+
+  always @(new_game) {
+    init();
+  }
+
+  always @(set_difficulty(d)) {
+    @if d == "easy" {
+      rows <= 9; cols <= 9; mine_count <= 10;
+    } @else @if d == "medium" {
+      rows <= 16; cols <= 16; mine_count <= 40;
+    } @else {
+      rows <= 16; cols <= 30; mine_count <= 99;
+    }
+    init();
+  }
+
+  view {
+    <div class="minesweeper">
+      <h1>Comb Minesweeper</h1>
+      <div class="toolbar">
+        <span class="mines-remaining">🚩 {remaining}</span>
+        <button @click=new_game>
+          {game_over ? (won ? "😎" : "💀") : "🙂"}
+        </button>
+        <span class="timer">⏱ {time}</span>
+      </div>
+      <div class="difficulty">
+        <button @click=set_difficulty("easy")>Easy</button>
+        <button @click=set_difficulty("medium")>Medium</button>
+        <button @click=set_difficulty("hard")>Hard</button>
+      </div>
+      <div class="grid">
+        @for r in 0..rows {
+          <div class="row">
+            @for c in 0..cols {
+              <Cell
+                value={grid[r][c]}
+                revealed={revealed[r][c]}
+                flagged={flagged[r][c]}
+                @click=reveal(r, c)
+                @contextmenu=flag(r, c)
+              />
+            }
+          </div>
+        }
+      </div>
+      @if game_over {
+        <div class="game-over">
+          <h2>{won ? "You Win!" : "Game Over"}</h2>
+          <button @click=new_game>Play Again</button>
+        </div>
+      }
+    </div>
+  }
+}

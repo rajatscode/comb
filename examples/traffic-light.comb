@@ -1,0 +1,59 @@
+module TrafficLight {
+  enum Phase { Red, Green, Yellow }
+
+  signal phase: Phase = Phase.Red;
+  signal walk_requested: bool = false;
+  signal emergency: bool = false;
+
+  comb color = phase == Phase.Red ? "red" :
+               phase == Phase.Green ? "green" :
+               "yellow";
+
+  comb can_walk = phase == Phase.Red && walk_requested;
+
+  always @(next_phase) {
+    @if emergency {
+      phase <= Phase.Red;
+    } @else {
+      phase <= phase == Phase.Red ? Phase.Green :
+              phase == Phase.Green ? Phase.Yellow :
+              Phase.Red;
+    }
+    walk_requested <= false;
+  }
+
+  always @(request_walk) {
+    walk_requested <= true;
+  }
+
+  always @(toggle_emergency) {
+    emergency <= !emergency;
+  }
+
+  view {
+    <div class="traffic-light">
+      <h1>Comb Traffic Light</h1>
+      <div class="light-housing">
+        <div class={"lamp red " + (color == "red" ? "active" : "")}></div>
+        <div class={"lamp yellow " + (color == "yellow" ? "active" : "")}></div>
+        <div class={"lamp green " + (color == "green" ? "active" : "")}></div>
+      </div>
+      <div class="status">
+        <p>Phase: {color}</p>
+        @if can_walk {
+          <p class="walk-signal">WALK</p>
+        }
+        @if emergency {
+          <p class="emergency">EMERGENCY MODE</p>
+        }
+      </div>
+      <div class="controls">
+        <button @click=next_phase>next clock</button>
+        <button @click=request_walk>request walk</button>
+        <button @click=toggle_emergency>
+          {emergency ? "clear emergency" : "emergency"}
+        </button>
+      </div>
+    </div>
+  }
+}

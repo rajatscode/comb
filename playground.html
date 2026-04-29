@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Comb Playground</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <div class="playground">
+    <div class="toolbar">
+      <strong style="color: var(--accent); font-family: var(--font-mono);">Comb</strong>
+      <span style="color: var(--text-muted); font-size: 0.8rem;">Playground</span>
+      <select id="example-select" style="margin-left: 1rem; padding: 0.3rem 0.6rem; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); font-size: 0.8rem;">
+        <option value="counter">Counter</option>
+        <option value="traffic-light">Traffic Light</option>
+        <option value="minesweeper">Minesweeper</option>
+        <option value="chat">Chat</option>
+      </select>
+      <button id="run-btn" class="primary" style="margin-left: auto;">Run</button>
+    </div>
+    <div class="editor-pane">
+      <div style="padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted);">
+        counter.comb
+      </div>
+      <textarea id="editor" spellcheck="false"></textarea>
+    </div>
+    <div class="preview-pane">
+      <div style="padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted);">
+        Live Preview
+      </div>
+      <iframe id="preview" sandbox="allow-scripts"></iframe>
+    </div>
+    <div class="circuit-pane">
+      <div style="padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted);">
+        Circuit
+      </div>
+      <div id="circuit-viz" style="padding: 1rem; height: calc(100% - 30px);"></div>
+    </div>
+    <div class="output-panel">
+      <div style="padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted); display: flex; gap: 1rem;">
+        <span style="cursor: pointer;" class="tab active">Compiled JS</span>
+        <span style="cursor: pointer;" class="tab">Errors</span>
+        <span style="cursor: pointer;" class="tab">Signals</span>
+      </div>
+      <pre id="output"></pre>
+    </div>
+  </div>
+  <script type="module" src="/src/playground/playground.ts"></script>
+</body>
+</html>
