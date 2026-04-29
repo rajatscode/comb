@@ -8,7 +8,7 @@ export { createSignal, createComb, createEffect, batch, untrack } from './signal
 export { createFSM } from './fsm.js';
 export type { FSMStateConfig, FSMTransition, FSMInstance } from './fsm.js';
 
-export { createClock } from './clocks.js';
+export { createClock, stopAllClocks } from './clocks.js';
 export type { ClockConfig, ClockInstance } from './clocks.js';
 
 export { createElement, bindText, bindAttr, renderList, renderConditional, bindInput } from './dom.js';

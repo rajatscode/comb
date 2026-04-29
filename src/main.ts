@@ -1,6 +1,6 @@
 import './styles.css';
 import { highlightComb } from './highlight';
-import { circuit } from './runtime/index';
+import { circuit, stopAllClocks } from './runtime/index';
 
 const app = document.getElementById('app')!;
 
@@ -116,6 +116,7 @@ async function loadDemo(name: string) {
   if (header) header.style.display = 'none';
 
   container.innerHTML = '<p style="text-align: center; color: var(--text-muted); padding: 2rem;">Loading...</p>';
+  stopAllClocks(); // Stop any running timers from previous demo
   circuit.reset(); // Clear stale circuit graph data from previous demo
 
   try {

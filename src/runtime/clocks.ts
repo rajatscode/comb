@@ -16,6 +16,16 @@ export interface ClockInstance {
   readonly running: boolean;
 }
 
+// Global registry for cleanup on circuit.reset()
+const activeClocks = new Set<ClockInstance>();
+
+export function stopAllClocks(): void {
+  for (const clock of activeClocks) {
+    clock.stop();
+  }
+  activeClocks.clear();
+}
+
 export function createClock(
   name: string,
   moduleId: string,
@@ -85,11 +95,13 @@ export function createClock(
     return () => { subscribers.delete(fn); };
   };
 
-  return {
+  const instance: ClockInstance = {
     start,
     stop,
     onTick,
     tickCount,
     get running() { return running; },
   };
+  activeClocks.add(instance);
+  return instance;
 }
