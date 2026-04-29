@@ -99,13 +99,13 @@ export function renderList<T>(
       node.remove();
     }
 
-    // Render new nodes
+    // Render new nodes after the marker
     const newNodes: HTMLElement[] = [];
+    const insertionPoint = marker.nextSibling;
     for (let i = 0; i < list.length; i++) {
       const el = renderItem(list[i], i);
       newNodes.push(el);
-      parent.insertBefore(el, marker.nextSibling ? marker : null);
-      parent.appendChild(el);
+      parent.insertBefore(el, insertionPoint);
     }
     prevNodes = newNodes;
   }, 'list-render', '');
