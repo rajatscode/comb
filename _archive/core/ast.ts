@@ -1,11 +1,8 @@
 // ast.ts — AST type definitions for the Comb language
 
-export interface SourceLoc {
-  line: number;
-  column: number;
-}
-
+// ============================================================
 // Top-level
+// ============================================================
 
 export interface Module {
   kind: 'module';
@@ -20,7 +17,14 @@ export interface Param {
   type: TypeExpr;
 }
 
+export interface SourceLoc {
+  line: number;
+  column: number;
+}
+
+// ============================================================
 // Declarations
+// ============================================================
 
 export type Declaration =
   | SignalDecl
@@ -41,7 +45,6 @@ export interface CombDecl {
   kind: 'comb';
   name: string;
   expr: Expr;
-  deps: string[]; // filled by verification pass
   loc: SourceLoc;
 }
 
@@ -49,8 +52,6 @@ export interface AlwaysBlock {
   kind: 'always';
   trigger: EventTrigger;
   body: Statement[];
-  reads: string[];  // filled by verification pass
-  writes: string[]; // filled by verification pass
   loc: SourceLoc;
 }
 
@@ -67,12 +68,18 @@ export interface EnumDecl {
   loc: SourceLoc;
 }
 
+// ============================================================
+// Event triggers
+// ============================================================
+
 export interface EventTrigger {
   name: string;
   params: string[];
 }
 
-// Statements
+// ============================================================
+// Statements (inside always blocks)
+// ============================================================
 
 export type Statement =
   | SignalAssign
@@ -100,7 +107,9 @@ export interface ExprStatement {
   loc: SourceLoc;
 }
 
+// ============================================================
 // View nodes
+// ============================================================
 
 export type VNode =
   | VElement
@@ -158,14 +167,16 @@ export interface VComponent {
 
 export interface VAttr {
   name: string;
-  value: Expr | null;
+  value: Expr | null; // null for boolean attrs like "disabled"
   isEvent: boolean;
   isBind: boolean;
-  modifier?: string;
-  eventArgs?: Expr[];
+  modifier?: string; // e.g. "enter" in @keydown.enter
+  eventArgs?: Expr[]; // e.g. reveal(r, c) → args = [r, c]
 }
 
+// ============================================================
 // Expressions
+// ============================================================
 
 export type Expr =
   | Literal
@@ -278,7 +289,9 @@ export interface TemplateExpr {
   loc: SourceLoc;
 }
 
+// ============================================================
 // Types
+// ============================================================
 
 export type TypeExpr =
   | SimpleType

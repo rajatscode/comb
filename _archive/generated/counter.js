@@ -50,7 +50,7 @@ export function Counter(root) {
     el1.appendChild(el4);
     const el6 = document.createElement('p');
     el6.setAttribute('class', 'detail');
-    const txt7 = document.createTextNode('doubled = ');
+    const txt7 = document.createTextNode('doubled =');
     el6.appendChild(txt7);
     const txt8 = document.createTextNode('');
     createEffect(() => { txt8.textContent = String(doubled()); }, 'text_txt8', moduleId);
