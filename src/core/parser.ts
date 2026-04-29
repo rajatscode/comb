@@ -225,7 +225,7 @@ class Parser {
   // Statements
 
   private parseStatement(): Statement {
-    if (this.check(TokenType.AtIf)) return this.parseIfStatement();
+    if (this.check(TokenType.AtIf) || this.check(TokenType.If)) return this.parseIfStatement();
 
     const loc = this.loc();
     this.inStatementContext = true;
@@ -247,23 +247,25 @@ class Parser {
 
   private parseIfStatement(): IfStatement {
     const loc = this.loc();
-    this.expect(TokenType.AtIf);
+    // Accept both @if and bare if
+    if (this.check(TokenType.AtIf)) this.advance();
+    else this.expect(TokenType.If, 'if statement');
     const condition = this.parseExpr();
-    this.expect(TokenType.LBrace, '@if body');
+    this.expect(TokenType.LBrace, 'if body');
     const then: Statement[] = [];
     while (!this.check(TokenType.RBrace) && !this.check(TokenType.EOF)) then.push(this.parseStatement());
-    this.expect(TokenType.RBrace, '@if body end');
+    this.expect(TokenType.RBrace, 'if body end');
 
     let else_: Statement[] | undefined;
-    if (this.check(TokenType.AtElse)) {
+    if (this.check(TokenType.AtElse) || this.check(TokenType.Else)) {
       this.advance();
-      if (this.check(TokenType.AtIf)) {
+      if (this.check(TokenType.AtIf) || this.check(TokenType.If)) {
         else_ = [this.parseIfStatement()];
       } else {
-        this.expect(TokenType.LBrace, '@else body');
+        this.expect(TokenType.LBrace, 'else body');
         else_ = [];
         while (!this.check(TokenType.RBrace) && !this.check(TokenType.EOF)) else_.push(this.parseStatement());
-        this.expect(TokenType.RBrace, '@else body end');
+        this.expect(TokenType.RBrace, 'else body end');
       }
     }
     return { kind: 'if', condition, then, else_, loc };

@@ -1,14 +1,16 @@
-// compiler.ts — Pipeline: source → tokens → AST → verify → static graph OR errors
+// compiler.ts — Pipeline: source → tokens → AST → verify → codegen → JS + static graph OR errors
 
 import { tokenize } from './lexer.js';
 import { parse, ParseError } from './parser.js';
 import { verify, type CompileError, type CompileWarning } from './verify.js';
+import { generate } from './codegen.js';
 import type { Module } from './ast.js';
 import type { StaticGraph } from './graph.js';
 
 export type { CompileError, CompileWarning };
 
 export interface CompileResult {
+  js?: string;
   ast?: Module;
   graph?: StaticGraph;
   errors: CompileError[];
@@ -39,7 +41,7 @@ export function compile(source: string): CompileResult {
     return { errors: [{ message: 'No module found', line: 1, column: 1 }], warnings: [] };
   }
 
-  // Verify each module (typically one per file)
+  // Verify
   const mod = modules[0];
   const result = verify(mod);
 
@@ -47,5 +49,13 @@ export function compile(source: string): CompileResult {
     return { errors: result.errors, warnings: result.warnings };
   }
 
-  return { ast: mod, graph: result.graph, errors: [], warnings: result.warnings };
+  // Generate
+  let js: string;
+  try {
+    js = generate(mod, result.graph);
+  } catch (e: any) {
+    return { ast: mod, graph: result.graph, errors: [{ message: `Codegen error: ${e.message}`, line: 1, column: 1 }], warnings: result.warnings };
+  }
+
+  return { js, ast: mod, graph: result.graph, errors: [], warnings: result.warnings };
 }

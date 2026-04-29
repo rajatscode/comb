@@ -174,5 +174,30 @@ module ObjTest {
   assert(infoComb.deps.includes('y'), 'info should depend on y');
 });
 
+// Test 9: <= inside bare if blocks within always blocks
+test('signal assign inside bare if/else in always block', () => {
+  const source = `
+module IfTest {
+  enum Phase { Red, Green, Yellow }
+  signal phase: Phase = Phase.Red;
+  always @(next_phase) {
+    if (phase == Phase.Red) {
+      phase <= Phase.Green;
+    } else if (phase == Phase.Green) {
+      phase <= Phase.Yellow;
+    } else {
+      phase <= Phase.Red;
+    }
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const ast = result.ast!;
+  const always = ast.body.find(d => d.kind === 'always') as any;
+  assert(always.writes.includes('phase'), 'Should write to phase');
+  assert(always.reads.includes('phase'), 'Should read phase');
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);
