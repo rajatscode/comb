@@ -6,6 +6,12 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     target: 'es2022',
+    rollupOptions: {
+      input: {
+        main: 'index.html',
+        playground: 'playground.html',
+      },
+    },
   },
   server: {
     port: 3000,

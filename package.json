@@ -8,7 +8,7 @@
     "compile:all": "tsx src/cli/cli.ts examples/counter.comb && tsx src/cli/cli.ts examples/traffic-light.comb && tsx src/cli/cli.ts examples/minesweeper.comb && tsx src/cli/cli.ts examples/chat.comb",
     "dev": "vite",
     "build": "vite build",
-    "playground": "vite --config vite.playground.config.ts",
+    "playground": "vite --open /playground.html",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
