@@ -120,6 +120,35 @@
       position: relative;
     }
 
+    /* Syntax reference */
+    .syntax-ref {
+      border-top: 1px solid #2a2a4a;
+      background: #16162a;
+      font-size: 0.75rem;
+    }
+    .syntax-ref summary {
+      padding: 0.35rem 0.75rem;
+      cursor: pointer;
+      color: #666;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.7rem;
+      user-select: none;
+    }
+    .syntax-ref summary:hover { color: #aaa; }
+    .syntax-ref table {
+      width: 100%;
+      border-collapse: collapse;
+      padding: 0 0.5rem;
+    }
+    .syntax-ref td {
+      padding: 0.2rem 0.5rem;
+      border-bottom: 1px solid #1e1e35;
+      vertical-align: top;
+    }
+    .syntax-ref td:first-child { color: #c084fc; white-space: nowrap; }
+    .syntax-ref td:last-child { color: #888; }
+    .syntax-ref code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.72rem; }
+
     /* Output panel */
     .output-panel {
       grid-column: 1 / 3;
@@ -156,6 +185,26 @@
     <div class="editor-pane">
       <div class="file-label">counter.comb</div>
       <textarea id="editor" spellcheck="false"></textarea>
+      <details class="syntax-ref">
+        <summary>Syntax Reference</summary>
+        <table>
+          <tr><td><code>signal name: type = init;</code></td><td>Mutable reactive value</td></tr>
+          <tr><td><code>comb name = expr;</code></td><td>Derived (auto-recomputed)</td></tr>
+          <tr><td><code>always @(event) { sig &lt;= val; }</code></td><td>Event handler block</td></tr>
+          <tr><td><code>always @(sig1, sig2) { ... }</code></td><td>Sensitivity list (effect)</td></tr>
+          <tr><td><code>cell name: type = init;</code></td><td>Merge-semantic reactive value</td></tr>
+          <tr><td><code>constraint(in) { out &lt;= f(in); }</code></td><td>Propagator network clause</td></tr>
+          <tr><td><code>view { &lt;div&gt;{expr}&lt;/div&gt; }</code></td><td>DOM view block</td></tr>
+          <tr><td><code>@if (cond) { ... } @else { ... }</code></td><td>Conditional rendering</td></tr>
+          <tr><td><code>@for (item of list) { ... }</code></td><td>List rendering</td></tr>
+          <tr><td><code>&lt;input @bind="sig" /&gt;</code></td><td>Two-way input binding</td></tr>
+          <tr><td><code>token name = value;</code></td><td>CSS design token</td></tr>
+          <tr><td><code>input name: type;</code></td><td>Module input port</td></tr>
+          <tr><td><code>output name: type;</code></td><td>Module output port</td></tr>
+          <tr><td><code>assert name: cond;</code></td><td>Runtime invariant check</td></tr>
+          <tr><td><code>enum Name { A, B, C }</code></td><td>Enumeration type</td></tr>
+        </table>
+      </details>
     </div>
     <div class="preview-pane">
       <div class="pane-header"><span>Live Preview</span></div>

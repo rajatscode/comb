@@ -130,6 +130,16 @@ function createLanding(): HTMLElement {
       </div>
     </section>
 
+    <section class="demos-section">
+      <h2 class="section-title">Documentation</h2>
+      <div class="demo-cards">
+        <a href="/docs/language.md" class="demo-card demo-card-highlight">
+          <h3>Language Reference</h3>
+          <p>Complete syntax guide: signals, combs, always blocks, view bindings, cells, constraints, and more.</p>
+        </a>
+      </div>
+    </section>
+
     <footer class="landing-footer">
       Built with the Comb compiler. 52 tests. Open source.
     </footer>
