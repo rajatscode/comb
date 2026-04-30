@@ -1033,7 +1033,7 @@ a:hover { text-decoration: underline; }
 .showcase-panels { background: #1a1a2e; border-radius: 0 0 8px 8px; }
 .panel { display: none; padding: 1rem; }
 .panel.active { display: block; }
-.panel pre { margin: 0; overflow: auto; white-space: pre; max-height: 600px; }
+.panel pre { margin: 0; overflow-x: auto; white-space: pre; }
 .panel code { font-size: 0.82rem; line-height: 1.5; font-family: 'SF Mono', 'Fira Code', monospace; }
 
 .panel-footer {
@@ -1097,8 +1097,7 @@ a:hover { text-decoration: underline; }
 .editor-overlay-wrapper {
   position: relative;
   background: #12121e;
-  overflow: auto;
-  max-height: 600px;
+  overflow-x: auto;
 }
 
 .comb-highlight {
