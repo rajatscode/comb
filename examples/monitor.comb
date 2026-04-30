@@ -3,11 +3,11 @@ module Monitor {
   signal mem: float = 40.0;
   signal disk: float = 5.0;
   signal net: float = 10.0;
+  signal cpuAvg: float = 25.0;
+  signal memAvg: float = 40.0;
   signal cpuThreshold: float = 80.0;
   signal memThreshold: float = 85.0;
   signal diskThreshold: float = 90.0;
-  signal cpuAvg: float = 25.0;
-  signal memAvg: float = 40.0;
   signal alertCount: int = 0;
   signal lastAlert: string = "";
 
@@ -15,47 +15,31 @@ module Monitor {
   comb memHigh = memAvg > memThreshold;
   comb diskHigh = disk > diskThreshold;
   comb anyAlert = cpuHigh || memHigh || diskHigh;
-
-  comb cpuDisplay = str(round(cpu)) + "%";
-  comb memDisplay = str(round(mem)) + "%";
-  comb diskDisplay = str(round(disk)) + "%";
-  comb netDisplay = str(round(net)) + " MB/s";
-  comb avgDisplay = str(round(cpuAvg)) + "%";
-  comb memAvgDisplay = str(round(memAvg)) + "%";
-  comb cpuThreshDisplay = str(round(cpuThreshold)) + "%";
-  comb memThreshDisplay = str(round(memThreshold)) + "%";
-  comb diskThreshDisplay = str(round(diskThreshold)) + "%";
-
   comb statusText = anyAlert
-    ? "ALERT: " + (cpuHigh ? "CPU " : "") + (memHigh ? "MEM " : "") + (diskHigh ? "DISK " : "") + "threshold exceeded"
+    ? (cpuHigh ? "CPU " : "") + (memHigh ? "MEM " : "") + (diskHigh ? "DISK " : "") + "alert"
     : "All systems normal";
   comb statusClass = anyAlert ? "status-alert" : "status-ok";
 
   always @(posedge cpuHigh) {
     alertCount <= alertCount + 1;
-    lastAlert <= "CPU crossed " + cpuThreshDisplay;
+    lastAlert <= "CPU crossed threshold";
   }
-
   always @(negedge cpuHigh) {
-    lastAlert <= "CPU recovered below " + cpuThreshDisplay;
+    lastAlert <= "CPU recovered";
   }
-
   always @(posedge memHigh) {
     alertCount <= alertCount + 1;
-    lastAlert <= "Memory exceeded " + memThreshDisplay;
+    lastAlert <= "Memory exceeded threshold";
   }
-
   always @(negedge memHigh) {
-    lastAlert <= "Memory recovered below " + memThreshDisplay;
+    lastAlert <= "Memory recovered";
   }
-
   always @(posedge diskHigh) {
     alertCount <= alertCount + 1;
-    lastAlert <= "Disk exceeded " + diskThreshDisplay;
+    lastAlert <= "Disk exceeded threshold";
   }
-
   always @(negedge diskHigh) {
-    lastAlert <= "Disk recovered below " + diskThreshDisplay;
+    lastAlert <= "Disk recovered";
   }
 
   view {
@@ -63,35 +47,29 @@ module Monitor {
       <div class="monitor-metrics">
         <div class="metric">
           <span class="metric-label">CPU</span>
-          <span class="metric-value">{cpuDisplay}</span>
-          <span class="metric-detail">avg {avgDisplay}</span>
+          <span class="metric-value">{str(round(cpu)) + "%"}</span>
+          <span class="metric-detail">avg {str(round(cpuAvg)) + "%"}</span>
         </div>
         <div class="metric">
           <span class="metric-label">Memory</span>
-          <span class="metric-value">{memDisplay}</span>
-          <span class="metric-detail">avg {memAvgDisplay}</span>
+          <span class="metric-value">{str(round(mem)) + "%"}</span>
+          <span class="metric-detail">avg {str(round(memAvg)) + "%"}</span>
         </div>
         <div class="metric">
-          <span class="metric-label">Disk I/O</span>
-          <span class="metric-value">{diskDisplay}</span>
+          <span class="metric-label">Disk</span>
+          <span class="metric-value">{str(round(disk)) + "%"}</span>
         </div>
         <div class="metric">
           <span class="metric-label">Network</span>
-          <span class="metric-value">{netDisplay}</span>
+          <span class="metric-value">{str(round(net)) + " MB/s"}</span>
         </div>
       </div>
       <p class={statusClass}>{statusText}</p>
-      <p class="alert-info">Alerts fired: {str(alertCount)} — {lastAlert}</p>
+      <p class="alert-info">{"Alerts: " + str(alertCount) + " — " + lastAlert}</p>
       <div class="threshold-controls">
-        <label>CPU: {cpuThreshDisplay}
-          <input type="range" min="0" max="100" @bind=cpuThreshold />
-        </label>
-        <label>MEM: {memThreshDisplay}
-          <input type="range" min="0" max="100" @bind=memThreshold />
-        </label>
-        <label>DISK: {diskThreshDisplay}
-          <input type="range" min="0" max="100" @bind=diskThreshold />
-        </label>
+        <label>CPU: {str(round(cpuThreshold)) + "%"} <input type="range" min="0" max="100" @bind=cpuThreshold /></label>
+        <label>MEM: {str(round(memThreshold)) + "%"} <input type="range" min="0" max="100" @bind=memThreshold /></label>
+        <label>DISK: {str(round(diskThreshold)) + "%"} <input type="range" min="0" max="100" @bind=diskThreshold /></label>
       </div>
     </div>
   }

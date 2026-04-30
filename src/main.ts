@@ -6,147 +6,327 @@ import monitorSrc from '../examples/monitor.comb?raw';
 
 const app = document.getElementById('app')!;
 
-// --- Framework code snippets (edge-detection only, no comments) ---
-const COMB_SNIPPET = `comb cpuHigh = cpuAvg > cpuThreshold;
-comb memHigh = memAvg > memThreshold;
-comb diskHigh = disk > diskThreshold;
+// --- Full equivalent components for fair comparison ---
+// COMB_SNIPPET is not used — the editor loads monitorSrc (the raw .comb file)
 
-always @(posedge cpuHigh) {
-  alertCount <= alertCount + 1;
-  lastAlert <= "CPU crossed " + cpuThreshDisplay;
-}
-always @(negedge cpuHigh) {
-  lastAlert <= "CPU recovered";
-}
-always @(posedge memHigh) {
-  alertCount <= alertCount + 1;
-  lastAlert <= "Memory exceeded " + memThreshDisplay;
-}
-always @(negedge memHigh) {
-  lastAlert <= "Memory recovered";
-}
-always @(posedge diskHigh) {
-  alertCount <= alertCount + 1;
-  lastAlert <= "Disk exceeded " + diskThreshDisplay;
-}
-always @(negedge diskHigh) {
-  lastAlert <= "Disk recovered";
+const REACT_SNIPPET = `function Monitor({ cpu, mem, disk, net, cpuAvg, memAvg }) {
+  const [cpuThresh, setCpuThresh] = useState(80);
+  const [memThresh, setMemThresh] = useState(85);
+  const [diskThresh, setDiskThresh] = useState(90);
+  const [alertCount, setAlertCount] = useState(0);
+  const [lastAlert, setLastAlert] = useState("");
+
+  const cpuHigh = cpuAvg > cpuThresh;
+  const memHigh = memAvg > memThresh;
+  const diskHigh = disk > diskThresh;
+  const anyAlert = cpuHigh || memHigh || diskHigh;
+  const statusText = anyAlert
+    ? (cpuHigh ? "CPU " : "") + (memHigh ? "MEM " : "")
+      + (diskHigh ? "DISK " : "") + "alert"
+    : "All systems normal";
+
+  const prevCpu = useRef(false);
+  const prevMem = useRef(false);
+  const prevDisk = useRef(false);
+
+  useEffect(() => {
+    if (cpuHigh && !prevCpu.current) {
+      setAlertCount(c => c + 1);
+      setLastAlert("CPU crossed threshold");
+    }
+    if (!cpuHigh && prevCpu.current)
+      setLastAlert("CPU recovered");
+    prevCpu.current = cpuHigh;
+  }, [cpuHigh]);
+
+  useEffect(() => {
+    if (memHigh && !prevMem.current) {
+      setAlertCount(c => c + 1);
+      setLastAlert("Memory exceeded threshold");
+    }
+    if (!memHigh && prevMem.current)
+      setLastAlert("Memory recovered");
+    prevMem.current = memHigh;
+  }, [memHigh]);
+
+  useEffect(() => {
+    if (diskHigh && !prevDisk.current) {
+      setAlertCount(c => c + 1);
+      setLastAlert("Disk exceeded threshold");
+    }
+    if (!diskHigh && prevDisk.current)
+      setLastAlert("Disk recovered");
+    prevDisk.current = diskHigh;
+  }, [diskHigh]);
+
+  return (
+    <div className="monitor">
+      <div className="monitor-metrics">
+        <div className="metric">
+          <span className="metric-label">CPU</span>
+          <span className="metric-value">
+            {Math.round(cpu)}%
+          </span>
+          <span className="metric-detail">
+            avg {Math.round(cpuAvg)}%
+          </span>
+        </div>
+        <div className="metric">
+          <span className="metric-label">Memory</span>
+          <span className="metric-value">
+            {Math.round(mem)}%
+          </span>
+          <span className="metric-detail">
+            avg {Math.round(memAvg)}%
+          </span>
+        </div>
+        <div className="metric">
+          <span className="metric-label">Disk</span>
+          <span className="metric-value">
+            {Math.round(disk)}%
+          </span>
+        </div>
+        <div className="metric">
+          <span className="metric-label">Network</span>
+          <span className="metric-value">
+            {Math.round(net)} MB/s
+          </span>
+        </div>
+      </div>
+      <p className={anyAlert ? "status-alert" : "status-ok"}>
+        {statusText}
+      </p>
+      <p className="alert-info">
+        Alerts: {alertCount} — {lastAlert}
+      </p>
+      <div className="threshold-controls">
+        <label>
+          CPU: {cpuThresh}%
+          <input type="range" min={0} max={100}
+            value={cpuThresh}
+            onChange={e => setCpuThresh(+e.target.value)}
+          />
+        </label>
+        <label>
+          MEM: {memThresh}%
+          <input type="range" min={0} max={100}
+            value={memThresh}
+            onChange={e => setMemThresh(+e.target.value)}
+          />
+        </label>
+        <label>
+          DISK: {diskThresh}%
+          <input type="range" min={0} max={100}
+            value={diskThresh}
+            onChange={e => setDiskThresh(+e.target.value)}
+          />
+        </label>
+      </div>
+    </div>
+  );
 }`;
 
-const REACT_SNIPPET = `const [cpuThresh, setCpuThresh] = useState(80);
-const [memThresh, setMemThresh] = useState(85);
-const [diskThresh, setDiskThresh] = useState(90);
+const SVELTE_SNIPPET = `<script>
+  let { cpu, mem, disk, net, cpuAvg, memAvg } = $props();
+  let cpuThresh = $state(80);
+  let memThresh = $state(85);
+  let diskThresh = $state(90);
+  let alertCount = $state(0);
+  let lastAlert = $state("");
 
-const cpuHigh = cpuAvg > cpuThresh;
-const memHigh = memAvg > memThresh;
-const diskHigh = disk > diskThresh;
+  let cpuHigh = $derived(cpuAvg > cpuThresh);
+  let memHigh = $derived(memAvg > memThresh);
+  let diskHigh = $derived(disk > diskThresh);
+  let anyAlert = $derived(cpuHigh || memHigh || diskHigh);
+  let statusText = $derived(anyAlert
+    ? (cpuHigh ? "CPU " : "") + (memHigh ? "MEM " : "")
+      + (diskHigh ? "DISK " : "") + "alert"
+    : "All systems normal");
 
-const prevCpu = useRef(false);
-const prevMem = useRef(false);
-const prevDisk = useRef(false);
+  let prevCpu = false, prevMem = false, prevDisk = false;
 
-useEffect(() => {
-  if (cpuHigh && !prevCpu.current) {
-    setAlertCount(c => c + 1);
-    setLastAlert(\`CPU crossed \${cpuThresh}%\`);
-  }
-  if (!cpuHigh && prevCpu.current)
-    setLastAlert("CPU recovered");
-  prevCpu.current = cpuHigh;
-}, [cpuHigh, cpuThresh]);
+  $effect(() => {
+    if (cpuHigh && !prevCpu) {
+      alertCount++;
+      lastAlert = "CPU crossed threshold";
+    }
+    if (!cpuHigh && prevCpu)
+      lastAlert = "CPU recovered";
+    prevCpu = cpuHigh;
+  });
+  $effect(() => {
+    if (memHigh && !prevMem) {
+      alertCount++;
+      lastAlert = "Memory exceeded threshold";
+    }
+    if (!memHigh && prevMem)
+      lastAlert = "Memory recovered";
+    prevMem = memHigh;
+  });
+  $effect(() => {
+    if (diskHigh && !prevDisk) {
+      alertCount++;
+      lastAlert = "Disk exceeded threshold";
+    }
+    if (!diskHigh && prevDisk)
+      lastAlert = "Disk recovered";
+    prevDisk = diskHigh;
+  });
+</script>
 
-useEffect(() => {
-  if (memHigh && !prevMem.current) {
-    setAlertCount(c => c + 1);
-    setLastAlert(\`Memory exceeded \${memThresh}%\`);
-  }
-  if (!memHigh && prevMem.current)
-    setLastAlert("Memory recovered");
-  prevMem.current = memHigh;
-}, [memHigh, memThresh]);
+<div class="monitor">
+  <div class="monitor-metrics">
+    <div class="metric">
+      <span class="metric-label">CPU</span>
+      <span class="metric-value">{Math.round(cpu)}%</span>
+      <span class="metric-detail">avg {Math.round(cpuAvg)}%</span>
+    </div>
+    <div class="metric">
+      <span class="metric-label">Memory</span>
+      <span class="metric-value">{Math.round(mem)}%</span>
+      <span class="metric-detail">avg {Math.round(memAvg)}%</span>
+    </div>
+    <div class="metric">
+      <span class="metric-label">Disk</span>
+      <span class="metric-value">{Math.round(disk)}%</span>
+    </div>
+    <div class="metric">
+      <span class="metric-label">Network</span>
+      <span class="metric-value">{Math.round(net)} MB/s</span>
+    </div>
+  </div>
+  <p class={anyAlert ? "status-alert" : "status-ok"}>
+    {statusText}
+  </p>
+  <p class="alert-info">Alerts: {alertCount} — {lastAlert}</p>
+  <div class="threshold-controls">
+    <label>CPU: {cpuThresh}%
+      <input type="range" min={0} max={100}
+        bind:value={cpuThresh} />
+    </label>
+    <label>MEM: {memThresh}%
+      <input type="range" min={0} max={100}
+        bind:value={memThresh} />
+    </label>
+    <label>DISK: {diskThresh}%
+      <input type="range" min={0} max={100}
+        bind:value={diskThresh} />
+    </label>
+  </div>
+</div>`;
 
-useEffect(() => {
-  if (diskHigh && !prevDisk.current) {
-    setAlertCount(c => c + 1);
-    setLastAlert(\`Disk exceeded \${diskThresh}%\`);
-  }
-  if (!diskHigh && prevDisk.current)
-    setLastAlert("Disk recovered");
-  prevDisk.current = diskHigh;
-}, [diskHigh, diskThresh]);`;
+const SOLID_SNIPPET = `function Monitor(props) {
+  const [cpuThresh, setCpuThresh] = createSignal(80);
+  const [memThresh, setMemThresh] = createSignal(85);
+  const [diskThresh, setDiskThresh] = createSignal(90);
+  const [alertCount, setAlertCount] = createSignal(0);
+  const [lastAlert, setLastAlert] = createSignal("");
 
-const SVELTE_SNIPPET = `let cpuThresh = $state(80);
-let memThresh = $state(85);
-let diskThresh = $state(90);
+  const cpuHigh = () => props.cpuAvg() > cpuThresh();
+  const memHigh = () => props.memAvg() > memThresh();
+  const diskHigh = () => props.disk() > diskThresh();
+  const anyAlert = () => cpuHigh() || memHigh() || diskHigh();
+  const statusText = () => anyAlert()
+    ? (cpuHigh() ? "CPU " : "") + (memHigh() ? "MEM " : "")
+      + (diskHigh() ? "DISK " : "") + "alert"
+    : "All systems normal";
 
-let cpuHigh = $derived(cpuAvg > cpuThresh);
-let memHigh = $derived(memAvg > memThresh);
-let diskHigh = $derived(disk > diskThresh);
+  let prevCpu = false, prevMem = false, prevDisk = false;
 
-let prevCpu = false, prevMem = false, prevDisk = false;
+  createEffect(() => {
+    const h = cpuHigh();
+    if (h && !prevCpu) {
+      setAlertCount(c => c + 1);
+      setLastAlert("CPU crossed threshold");
+    }
+    if (!h && prevCpu) setLastAlert("CPU recovered");
+    prevCpu = h;
+  });
+  createEffect(() => {
+    const h = memHigh();
+    if (h && !prevMem) {
+      setAlertCount(c => c + 1);
+      setLastAlert("Memory exceeded threshold");
+    }
+    if (!h && prevMem) setLastAlert("Memory recovered");
+    prevMem = h;
+  });
+  createEffect(() => {
+    const h = diskHigh();
+    if (h && !prevDisk) {
+      setAlertCount(c => c + 1);
+      setLastAlert("Disk exceeded threshold");
+    }
+    if (!h && prevDisk) setLastAlert("Disk recovered");
+    prevDisk = h;
+  });
 
-$effect(() => {
-  if (cpuHigh && !prevCpu) {
-    alertCount++;
-    lastAlert = \`CPU crossed \${cpuThresh}%\`;
-  }
-  if (!cpuHigh && prevCpu) lastAlert = "CPU recovered";
-  prevCpu = cpuHigh;
-});
-$effect(() => {
-  if (memHigh && !prevMem) {
-    alertCount++;
-    lastAlert = \`Memory exceeded \${memThresh}%\`;
-  }
-  if (!memHigh && prevMem) lastAlert = "Memory recovered";
-  prevMem = memHigh;
-});
-$effect(() => {
-  if (diskHigh && !prevDisk) {
-    alertCount++;
-    lastAlert = \`Disk exceeded \${diskThresh}%\`;
-  }
-  if (!diskHigh && prevDisk) lastAlert = "Disk recovered";
-  prevDisk = diskHigh;
-});`;
-
-const SOLID_SNIPPET = `const [cpuThresh, setCpuThresh] = createSignal(80);
-const [memThresh, setMemThresh] = createSignal(85);
-const [diskThresh, setDiskThresh] = createSignal(90);
-
-const cpuHigh = () => cpuAvg() > cpuThresh();
-const memHigh = () => memAvg() > memThresh();
-const diskHigh = () => disk() > diskThresh();
-
-let prevCpu = false, prevMem = false, prevDisk = false;
-
-createEffect(() => {
-  const h = cpuHigh();
-  if (h && !prevCpu) {
-    setAlertCount(c => c + 1);
-    setLastAlert(\`CPU crossed \${cpuThresh()}%\`);
-  }
-  if (!h && prevCpu) setLastAlert("CPU recovered");
-  prevCpu = h;
-});
-createEffect(() => {
-  const h = memHigh();
-  if (h && !prevMem) {
-    setAlertCount(c => c + 1);
-    setLastAlert(\`Memory exceeded \${memThresh()}%\`);
-  }
-  if (!h && prevMem) setLastAlert("Memory recovered");
-  prevMem = h;
-});
-createEffect(() => {
-  const h = diskHigh();
-  if (h && !prevDisk) {
-    setAlertCount(c => c + 1);
-    setLastAlert(\`Disk exceeded \${diskThresh()}%\`);
-  }
-  if (!h && prevDisk) setLastAlert("Disk recovered");
-  prevDisk = h;
-});`;
+  return (
+    <div class="monitor">
+      <div class="monitor-metrics">
+        <div class="metric">
+          <span class="metric-label">CPU</span>
+          <span class="metric-value">
+            {Math.round(props.cpu())}%
+          </span>
+          <span class="metric-detail">
+            avg {Math.round(props.cpuAvg())}%
+          </span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Memory</span>
+          <span class="metric-value">
+            {Math.round(props.mem())}%
+          </span>
+          <span class="metric-detail">
+            avg {Math.round(props.memAvg())}%
+          </span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Disk</span>
+          <span class="metric-value">
+            {Math.round(props.disk())}%
+          </span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Network</span>
+          <span class="metric-value">
+            {Math.round(props.net())} MB/s
+          </span>
+        </div>
+      </div>
+      <p class={anyAlert() ? "status-alert" : "status-ok"}>
+        {statusText()}
+      </p>
+      <p class="alert-info">
+        Alerts: {alertCount()} — {lastAlert()}
+      </p>
+      <div class="threshold-controls">
+        <label>
+          CPU: {cpuThresh()}%
+          <input type="range" min={0} max={100}
+            value={cpuThresh()}
+            onInput={e => setCpuThresh(+e.target.value)}
+          />
+        </label>
+        <label>
+          MEM: {memThresh()}%
+          <input type="range" min={0} max={100}
+            value={memThresh()}
+            onInput={e => setMemThresh(+e.target.value)}
+          />
+        </label>
+        <label>
+          DISK: {diskThresh()}%
+          <input type="range" min={0} max={100}
+            value={diskThresh()}
+            onInput={e => setDiskThresh(+e.target.value)}
+          />
+        </label>
+      </div>
+    </div>
+  );
+}`;
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -170,7 +350,7 @@ function createLanding(): HTMLElement {
       <div class="code-comparison-row">
         <div class="code-pane">
           <div class="code-pane-header">Comb</div>
-          <textarea id="comb-editor" class="comb-editor" spellcheck="false">${escapeHtml(COMB_SNIPPET)}</textarea>
+          <textarea id="comb-editor" class="comb-editor" spellcheck="false">${escapeHtml(monitorSrc)}</textarea>
           <div id="comb-errors" class="comb-errors"></div>
         </div>
         <div class="code-pane">
