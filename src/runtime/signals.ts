@@ -45,7 +45,13 @@ function notify(signal: SignalNode<any>): void {
 
 function flushPending(): void {
   // Iterate until stable — a comp may dirty another comp
+  let depth = 0;
   while (pendingComputations.size > 0) {
+    if (++depth > 100) {
+      console.error('[Comb] Propagation depth limit exceeded (100 iterations). Breaking potential infinite loop.');
+      pendingComputations.clear();
+      break;
+    }
     const batch = [...pendingComputations];
     pendingComputations.clear();
     for (const comp of batch) {
@@ -248,6 +254,75 @@ export function createScope(): { dispose: () => void } {
       currentScope = prevScope;
     },
   };
+}
+
+export function createCell<T>(
+  initial: T,
+  meta: { name: string; module: string; type?: string; merge?: (current: T, incoming: T) => T },
+): [get: () => T, set: (v: T) => void] {
+  const merge = meta.merge ?? ((_: T, incoming: T) => incoming);
+  const nodeId = circuit.registerNode({ name: meta.name, module: meta.module, type: 'cell', valueType: meta.type });
+
+  const signal: SignalNode<T> = { value: initial, subscribers: new Set() };
+  circuit.setNodeValue(nodeId, () => signal.value);
+
+  const get = (): T => {
+    track(signal);
+    return signal.value;
+  };
+
+  const set = (incoming: T): void => {
+    const merged = merge(signal.value, incoming);
+    if (Object.is(merged, signal.value)) return;
+    const old = signal.value;
+    signal.value = merged;
+    circuit.notifyChange(nodeId, old, merged);
+    notify(signal);
+  };
+
+  return [get, set];
+}
+
+export function createPropagator(
+  fn: () => void,
+  meta: { name: string; module: string; deps?: string[]; writes?: string[] },
+): void {
+  // Register as propagator node with explicit edges
+  const nodeId = circuit.registerNode({ name: meta.name, module: meta.module, type: 'propagator', deps: meta.deps });
+  if (meta.writes) {
+    for (const w of meta.writes) {
+      const targetId = `${meta.module}.${w}`;
+      const exists = circuit.getEdges().some(e => e.from === nodeId && e.to === targetId);
+      if (!exists) circuit['edges'].push({ from: nodeId, to: targetId });
+    }
+  }
+
+  // Use raw effect machinery (not createEffect, which would register a second node)
+  const comp: Computation = {
+    execute: runPropagator,
+    dependencies: new Set(),
+    cleanups: [],
+    disposed: false,
+  };
+
+  if (currentScope) currentScope.track(comp);
+
+  function runPropagator(): void {
+    if (comp.disposed) return;
+    for (const cleanup of comp.cleanups) cleanup();
+    comp.cleanups = [];
+    for (const dep of comp.dependencies) dep.subscribers.delete(comp);
+    comp.dependencies.clear();
+
+    const prev = currentComputation;
+    currentComputation = comp;
+    batch(() => { fn(); });
+    currentComputation = prev;
+
+    circuit.notifyEffect(nodeId);
+  }
+
+  runPropagator();
 }
 
 // For test use — lets tests end the scope after synchronous factory code

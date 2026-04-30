@@ -11,6 +11,7 @@ nav.innerHTML = `
   <a href="#registration" class="nav-link active" data-demo="registration">Registration Form</a>
   <a href="#ticker" class="nav-link" data-demo="ticker">Stock Ticker</a>
   <a href="#diff" class="nav-link" data-demo="diff">Circuit Diff</a>
+  <a href="#color" class="nav-link" data-demo="color">Color Picker</a>
 `;
 app.appendChild(nav);
 
@@ -38,6 +39,8 @@ function loadDemo(name: string) {
     loadTicker();
   } else if (name === 'diff') {
     loadDiff();
+  } else if (name === 'color') {
+    loadColor();
   }
 }
 
@@ -196,6 +199,12 @@ async function loadTicker() {
 async function loadDiff() {
   const { mountCircuitDiff } = await import('./demos/circuit-diff.js');
   const result = mountCircuitDiff(content);
+  currentDispose = result.dispose;
+}
+
+async function loadColor() {
+  const { mountColorPicker } = await import('./demos/color-picker.js');
+  const result = mountColorPicker(content);
   currentDispose = result.dispose;
 }
 

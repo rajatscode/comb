@@ -3,7 +3,7 @@
 
 import type { StaticGraph, GraphNode as StaticGraphNode, GraphEdge as StaticGraphEdge } from '../core/graph.js';
 
-export type NodeType = 'signal' | 'comb' | 'effect';
+export type NodeType = 'signal' | 'comb' | 'effect' | 'cell' | 'propagator';
 
 export interface GraphNode {
   id: string;
@@ -160,7 +160,7 @@ export class CircuitGraph {
     const node = this.nodes.get(nodeId);
     if (!node) return;
     const eventType: GraphEvent['type'] =
-      node.type === 'signal' ? 'signal-change' :
+      node.type === 'signal' || node.type === 'cell' ? 'signal-change' :
       node.type === 'comb' ? 'comb-recompute' : 'effect-run';
     const event: GraphEvent = { type: eventType, nodeId, timestamp: Date.now(), oldValue, newValue };
     if (this.events.length >= EVENT_BUFFER_SIZE) this.events.shift();
