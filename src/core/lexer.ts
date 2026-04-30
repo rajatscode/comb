@@ -21,6 +21,10 @@ export enum TokenType {
   In = 'in',
   True = 'true',
   False = 'false',
+  Async = 'async',
+  Await = 'await',
+  Catch = 'catch',
+  Const = 'const',
 
   // Directives
   AtIf = '@if',
@@ -102,6 +106,10 @@ const KEYWORDS: Record<string, TokenType> = {
   in: TokenType.In,
   true: TokenType.True,
   false: TokenType.False,
+  async: TokenType.Async,
+  await: TokenType.Await,
+  catch: TokenType.Catch,
+  const: TokenType.Const,
 };
 
 export function tokenize(source: string): Token[] {

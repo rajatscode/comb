@@ -144,7 +144,9 @@ export interface EventTrigger {
 export type Statement =
   | SignalAssign
   | IfStatement
-  | ExprStatement;
+  | ExprStatement
+  | AsyncStmt
+  | ConstDeclStmt;
 
 export interface SignalAssign {
   kind: 'assign';
@@ -164,6 +166,20 @@ export interface IfStatement {
 export interface ExprStatement {
   kind: 'expr_stmt';
   expr: Expr;
+  loc: SourceLoc;
+}
+
+export interface AsyncStmt {
+  kind: 'async';
+  body: Statement[];
+  catchBody?: Statement[];
+  loc: SourceLoc;
+}
+
+export interface ConstDeclStmt {
+  kind: 'const_decl';
+  name: string;
+  init: Expr;
   loc: SourceLoc;
 }
 
@@ -249,7 +265,8 @@ export type Expr =
   | SpreadExpr
   | LambdaExpr
   | RangeExpr
-  | TemplateExpr;
+  | TemplateExpr
+  | AwaitExpr;
 
 export interface Literal {
   kind: 'literal';
@@ -343,6 +360,12 @@ export interface RangeExpr {
 export interface TemplateExpr {
   kind: 'template';
   parts: (string | Expr)[];
+  loc: SourceLoc;
+}
+
+export interface AwaitExpr {
+  kind: 'await';
+  expr: Expr;
   loc: SourceLoc;
 }
 
