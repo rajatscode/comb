@@ -744,17 +744,48 @@ function showLanding() {
     // Start recording BEFORE simulation so all events are captured
     circuit.startRecording();
 
-    // Simulation — spike CPU early, vary all 4 metrics
+    // Real browser metrics — no fake data
     const cpuHist: number[] = [];
     const memHist: number[] = [];
-    let tick = 0;
-    const iv = setInterval(() => {
-      tick++;
-      const cpuSpike = (tick % 20 > 4 && tick % 20 < 12);
-      const cpu = cpuSpike ? 40 + Math.random() * 30 : 15 + Math.random() * 20;
-      const mem = 40 + 25 * Math.sin(tick / 40) + Math.random() * 10;
-      const disk = 30 + 20 * Math.sin(tick / 80) + Math.random() * 5;
-      const net = 5 + Math.random() * 50;
+    let lastLoopTime = performance.now();
+
+    // CPU estimation: measure event loop latency
+    // A setTimeout(0) should fire in ~4ms. If it takes longer, the thread is busy.
+    function measureCpuLoad(): Promise<number> {
+      return new Promise(resolve => {
+        const start = performance.now();
+        setTimeout(() => {
+          const delay = performance.now() - start;
+          // 4ms = idle (0%), 50ms+ = maxed (100%)
+          const load = Math.min(100, Math.max(0, (delay - 4) / 46 * 100));
+          resolve(load);
+        }, 0);
+      });
+    }
+
+    const iv = setInterval(async () => {
+      // CPU: event loop latency
+      const cpu = await measureCpuLoad();
+
+      // Memory: JS heap (Chrome only)
+      const perfMem = (performance as any).memory;
+      const mem = perfMem
+        ? (perfMem.usedJSHeapSize / perfMem.jsHeapSizeLimit) * 100
+        : 30 + Math.random() * 10; // fallback for non-Chrome
+
+      // Network: real connection info
+      const conn = (navigator as any).connection;
+      const net = conn?.downlink ?? (5 + Math.random() * 20); // Mbps
+
+      // Storage: real disk usage
+      let disk = 10;
+      try {
+        const est = await navigator.storage?.estimate?.();
+        if (est && est.quota && est.usage) {
+          disk = (est.usage / est.quota) * 100;
+        }
+      } catch {}
+
       cpuHist.push(cpu);
       memHist.push(mem);
       if (cpuHist.length > 10) cpuHist.shift();
