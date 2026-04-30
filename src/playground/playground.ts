@@ -135,7 +135,7 @@ function runCompile() {
   .normal { color: #4ae04a; }
 </style>
 <script type="importmap">
-{ "imports": { "../runtime/index.js": "/src/runtime/index.ts", "../runtime/color.js": "/src/runtime/color.ts" } }
+{ "imports": { "../runtime/index.js": "/src/runtime/index.ts", "../runtime/circuit.js": "/src/runtime/circuit.ts", "../runtime/color.js": "/src/runtime/color.ts" } }
 </script>
 </head>
 <body>
@@ -143,9 +143,8 @@ function runCompile() {
 <script type="module">
 ${previewJs}
 
-// Expose circuit for parent page animation
-import { circuit } from '../runtime/index.js';
-window.__comb_circuit = circuit;
+// Expose circuit for parent page animation (circuit already imported by compiled code)
+if (typeof circuit !== 'undefined') window.__comb_circuit = circuit;
 
 // Boot: find the module factory and call it
 if (typeof ${moduleName} === 'function') {
