@@ -119,6 +119,10 @@ function createLanding(): HTMLElement {
           <h3>Color Picker</h3>
           <p>Bidirectional constraints via propagator networks. Try doing this in React.</p>
         </a>
+        <a href="/playground.html" class="demo-card demo-card-highlight">
+          <h3>Playground</h3>
+          <p>Write .comb code in the browser. Live compile, preview, and circuit visualization.</p>
+        </a>
       </div>
     </section>
 

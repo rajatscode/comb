@@ -5,44 +5,170 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <title>Comb Playground</title>
-  <link rel="stylesheet" href="/src/styles.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #e0e0e0; height: 100vh; overflow: hidden; }
+
+    .playground {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-rows: auto 1fr 200px;
+      height: 100vh;
+    }
+
+    /* Toolbar */
+    .toolbar {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.5rem 1rem;
+      background: #16162a;
+      border-bottom: 1px solid #2a2a4a;
+    }
+    .toolbar .brand { color: #4a9eff; font-family: 'SF Mono', 'Fira Code', monospace; font-weight: 700; font-size: 1rem; text-decoration: none; }
+    .toolbar .brand:hover { color: #6bb3ff; }
+    .toolbar .label { color: #888; font-size: 0.8rem; }
+    .toolbar select {
+      padding: 0.3rem 0.6rem;
+      background: #2a2a3e;
+      border: 1px solid #3a3a5a;
+      border-radius: 4px;
+      color: #e0e0e0;
+      font-size: 0.8rem;
+    }
+    .toolbar button {
+      margin-left: auto;
+      padding: 0.35rem 1rem;
+      background: #2a4a6e;
+      color: #4a9eff;
+      border: 1px solid #3a5a8a;
+      border-radius: 4px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .toolbar button:hover { background: #3a5a7e; }
+
+    /* Pane headers */
+    .pane-header {
+      padding: 0.35rem 0.75rem;
+      border-bottom: 1px solid #2a2a4a;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.7rem;
+      color: #666;
+      background: #16162a;
+      display: flex;
+      gap: 1rem;
+    }
+    .pane-header .tab {
+      cursor: pointer;
+      padding: 0.1rem 0;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .pane-header .tab:hover { color: #aaa; }
+    .pane-header .tab.active { color: #4a9eff; border-bottom-color: #4a9eff; }
+
+    /* Editor */
+    .editor-pane {
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid #2a2a4a;
+      min-width: 0;
+    }
+    .file-label { padding: 0.35rem 0.75rem; border-bottom: 1px solid #2a2a4a; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.7rem; color: #666; background: #16162a; }
+    #editor {
+      flex: 1;
+      resize: none;
+      background: #12121e;
+      color: #ddd;
+      border: none;
+      padding: 0.75rem;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.82rem;
+      line-height: 1.55;
+      outline: none;
+      tab-size: 2;
+    }
+
+    /* Preview */
+    .preview-pane {
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid #2a2a4a;
+      min-width: 0;
+    }
+    #preview {
+      flex: 1;
+      border: none;
+      background: #1a1a2e;
+    }
+
+    /* Circuit */
+    .circuit-pane {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      overflow: hidden;
+      grid-row: 2 / 4;
+    }
+    #circuit-viz {
+      flex: 1;
+      overflow: auto;
+      padding: 0.5rem;
+      position: relative;
+    }
+
+    /* Output panel */
+    .output-panel {
+      grid-column: 1 / 3;
+      display: flex;
+      flex-direction: column;
+      border-top: 1px solid #2a2a4a;
+      min-width: 0;
+    }
+    #output {
+      flex: 1;
+      margin: 0;
+      padding: 0.6rem 0.75rem;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.75rem;
+      line-height: 1.5;
+      overflow: auto;
+      background: #12121e;
+      color: #ccc;
+    }
+  </style>
 </head>
 <body>
   <div class="playground">
     <div class="toolbar">
-      <strong style="color: var(--accent); font-family: var(--font-mono);">Comb</strong>
-      <span style="color: var(--text-muted); font-size: 0.8rem;">Playground</span>
-      <select id="example-select" style="margin-left: 1rem; padding: 0.3rem 0.6rem; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); font-size: 0.8rem;">
+      <a href="/" class="brand">Comb</a>
+      <span class="label">Playground</span>
+      <select id="example-select">
         <option value="counter">Counter</option>
-        <option value="traffic-light">Traffic Light</option>
-        <option value="minesweeper">Minesweeper</option>
-        <option value="chat">Chat</option>
+        <option value="registration">Registration Form</option>
+        <option value="blank">Blank Template</option>
       </select>
-      <button id="run-btn" class="primary" style="margin-left: auto;">Run</button>
+      <button id="run-btn">Run</button>
     </div>
     <div class="editor-pane">
-      <div style="padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted);">
-        counter.comb
-      </div>
+      <div class="file-label">counter.comb</div>
       <textarea id="editor" spellcheck="false"></textarea>
     </div>
     <div class="preview-pane">
-      <div style="padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted);">
-        Live Preview
-      </div>
-      <iframe id="preview" sandbox="allow-scripts"></iframe>
+      <div class="pane-header"><span>Live Preview</span></div>
+      <iframe id="preview" sandbox="allow-scripts allow-same-origin"></iframe>
     </div>
     <div class="circuit-pane">
-      <div style="padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted);">
-        Circuit
-      </div>
-      <div id="circuit-viz" style="padding: 1rem; height: calc(100% - 30px);"></div>
+      <div class="pane-header"><span class="tab active">Circuit</span></div>
+      <div id="circuit-viz"></div>
     </div>
     <div class="output-panel">
-      <div style="padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted); display: flex; gap: 1rem;">
-        <span style="cursor: pointer;" class="tab active">Compiled JS</span>
-        <span style="cursor: pointer;" class="tab">Errors</span>
-        <span style="cursor: pointer;" class="tab">Signals</span>
+      <div class="pane-header">
+        <span class="tab active">Compiled JS</span>
+        <span class="tab">Errors</span>
       </div>
       <pre id="output"></pre>
     </div>
