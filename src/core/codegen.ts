@@ -3,20 +3,10 @@
 
 import type {
   Module, Declaration, InputDecl, OutputDecl, SignalDecl, TokenDecl, CombDecl, CellDecl,
-<<<<<<< HEAD
   ConstraintDecl, AlwaysBlock, ViewBlock, StyleBlock, EnumDecl, AssertDecl, TemporalAssertDecl, FnDecl,
   Statement, SignalAssign, IfStatement, ExprStatement, ReturnStmt, DestructureStmt, TryStmt,
   AsyncStmt, ConstDeclStmt, VNode, VElement, VText, VExpr, VIf, VFor,
-  VComponent, VSlot, VAttr, Expr,
-||||||| b68c2e9
-  ConstraintDecl, AlwaysBlock, ViewBlock, StyleBlock, EnumDecl, AssertDecl, Statement,
-  SignalAssign, IfStatement, ExprStatement, VNode, VElement, VText, VExpr, VIf, VFor,
-  VComponent, VAttr, Expr,
-=======
-  ConstraintDecl, AlwaysBlock, ViewBlock, StyleBlock, EnumDecl, AssertDecl, Statement,
-  SignalAssign, IfStatement, ExprStatement, VNode, VElement, VText, VExpr, VIf, VFor,
-  VComponent, VAttr, Expr, SourceLoc,
->>>>>>> worktree-agent-a270f5ad
+  VComponent, VSlot, VAttr, Expr, SourceLoc,
 } from './ast.js';
 import type { StaticGraph } from './graph.js';
 
@@ -188,7 +178,6 @@ function nextTxt(ctx: GenContext): string { return `txt${ctx.txtCount++}`; }
 function capitalize(s: string): string { return s[0].toUpperCase() + s.slice(1); }
 function escapeStr(s: string): string { return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n'); }
 
-<<<<<<< HEAD
 function viewHasSlot(vnodes: VNode[]): boolean {
   for (const vn of vnodes) {
     if (vn.kind === 'vslot') return true;
@@ -203,14 +192,11 @@ function viewHasSlot(vnodes: VNode[]): boolean {
   return false;
 }
 
-||||||| b68c2e9
-=======
 export interface GenerateResult {
   code: string;
   sourceMap: SourceMapBuilder;
 }
 
->>>>>>> worktree-agent-a270f5ad
 export function generate(mod: Module, graph: StaticGraph): string {
   return generateWithSourceMap(mod, graph).code;
 }
@@ -230,36 +216,16 @@ export function generateWithSourceMap(mod: Module, graph: StaticGraph): Generate
   // Imports
   const hasCells = mod.body.some(d => d.kind === 'cell');
   const hasConstraints = mod.body.some(d => d.kind === 'constraint');
-<<<<<<< HEAD
-<<<<<<< HEAD
   const hasEdgeTriggers = mod.body.some(d => d.kind === 'always' && (d.triggerKind === 'posedge' || d.triggerKind === 'negedge'));
   const hasTemporalAsserts = mod.body.some(d => d.kind === 'temporal_assert');
-||||||| b68c2e9
-=======
   const hasKeyedFor = hasKeyedForDirective(mod);
->>>>>>> worktree-agent-ae75abc4
-  const importParts = ['createSignal', 'createComb', 'createEffect', 'batch', 'createScope', 'circuit'];
-||||||| b68c2e9
-  const importParts = ['createSignal', 'createComb', 'createEffect', 'batch', 'createScope', 'circuit'];
-=======
   const importParts = ['createSignal', 'createComb', 'createEffect', 'batch', 'createScope', 'circuit', 'X'];
->>>>>>> worktree-agent-ae5d93b0
   if (hasCells) importParts.push('createCell');
   if (hasConstraints) importParts.push('createPropagator');
-<<<<<<< HEAD
-<<<<<<< HEAD
   if (hasEdgeTriggers) importParts.push('createEdgeEffect');
   if (hasTemporalAsserts) importParts.push('createTemporalAssert');
-||||||| b68c2e9
-=======
   if (hasKeyedFor) importParts.push('reconcileKeyed');
->>>>>>> worktree-agent-ae75abc4
-  lines.push(`import { ${importParts.join(', ')} } from '../runtime/index.js';`);
-||||||| b68c2e9
-  lines.push(`import { ${importParts.join(', ')} } from '../runtime/index.js';`);
-=======
   pushLine(`import { ${importParts.join(', ')} } from '../runtime/index.js';`);
->>>>>>> worktree-agent-a270f5ad
 
   // Conditional color utility import
   const colorBuiltins = ['rgbToHsv', 'hsvToRgb', 'rgbToHex'];
@@ -290,29 +256,13 @@ export function generateWithSourceMap(mod: Module, graph: StaticGraph): Generate
   if (paramNames.length > 0) sigParts.push(`{ ${paramNames.join(', ')} }`);
   if (hasPorts) sigParts.push('__props');
   sigParts.push('root');
-<<<<<<< HEAD
   if (hasSlot) sigParts.push('__children');
-  lines.push(`export function ${mod.name}(${sigParts.join(', ')}) {`);
-  if (hasPorts) lines.push(`  if (!__props) __props = {};`);
-  lines.push(`  const $m = '${mod.name}';`);
-  lines.push(`  circuit.loadStaticGraph(__graph);`);
-  lines.push(`  const __scope = createScope();`);
-  lines.push('');
-||||||| b68c2e9
-  lines.push(`export function ${mod.name}(${sigParts.join(', ')}) {`);
-  if (hasPorts) lines.push(`  if (!__props) __props = {};`);
-  lines.push(`  const $m = '${mod.name}';`);
-  lines.push(`  circuit.loadStaticGraph(__graph);`);
-  lines.push(`  const __scope = createScope();`);
-  lines.push('');
-=======
   pushLine(`export function ${mod.name}(${sigParts.join(', ')}) {`, mod.loc);
   if (hasPorts) pushLine(`  if (!__props) __props = {};`);
   pushLine(`  const $m = '${mod.name}';`);
   pushLine(`  circuit.loadStaticGraph(__graph);`);
   pushLine(`  const __scope = createScope();`);
   pushLine('');
->>>>>>> worktree-agent-a270f5ad
 
   for (const decl of mod.body) {
     const declLines = emitDecl(decl, ctx);
@@ -348,20 +298,10 @@ export function generateWithSourceMap(mod: Module, graph: StaticGraph): Generate
   const testCtx = { ...ctx, indent: 1, elCount: 0, txtCount: 0, assertCount: 0 };
 
   for (const decl of mod.body) {
-<<<<<<< HEAD
     if (decl.kind === 'input' || decl.kind === 'output' || decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'comb' || decl.kind === 'cell' || decl.kind === 'constraint' || decl.kind === 'enum' || decl.kind === 'assert' || decl.kind === 'temporal_assert' || decl.kind === 'fn') {
-      lines.push(...emitDecl(decl, testCtx));
-      lines.push('');
-||||||| b68c2e9
-    if (decl.kind === 'input' || decl.kind === 'output' || decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'comb' || decl.kind === 'cell' || decl.kind === 'constraint' || decl.kind === 'enum' || decl.kind === 'assert') {
-      lines.push(...emitDecl(decl, testCtx));
-      lines.push('');
-=======
-    if (decl.kind === 'input' || decl.kind === 'output' || decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'comb' || decl.kind === 'cell' || decl.kind === 'constraint' || decl.kind === 'enum' || decl.kind === 'assert') {
       const declLines = emitDecl(decl, testCtx);
       for (const l of declLines) pushLine(l, decl.loc);
       pushLine('');
->>>>>>> worktree-agent-a270f5ad
       if (decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'input' || decl.kind === 'output' || decl.kind === 'cell') signalNames.push(decl.name);
       if (decl.kind === 'comb') combNames.push(decl.name);
     }
@@ -1079,7 +1019,6 @@ function emitVForUnkeyed(node: VFor, parent: string, ctx: GenContext, parentDesc
   return lines;
 }
 
-<<<<<<< HEAD
 function emitVSlot(_node: VSlot, parent: string, ctx: GenContext): string[] {
   const i = ind(ctx);
   return [
@@ -1087,8 +1026,6 @@ function emitVSlot(_node: VSlot, parent: string, ctx: GenContext): string[] {
   ];
 }
 
-||||||| b68c2e9
-=======
 function emitVForKeyed(node: VFor, parent: string, ctx: GenContext, parentDesc: string): string[] {
   const i = ind(ctx);
   const anchor = nextEl(ctx);
@@ -1214,7 +1151,6 @@ function emitVNodeWithReplacement(node: VNode, parent: string, ctx: GenContext, 
   return lines.map(line => line.replace(regex, newName));
 }
 
->>>>>>> worktree-agent-ae75abc4
 function emitEventAttr(attr: VAttr, elVar: string, ctx: GenContext): string[] {
   const i = ind(ctx);
   const event = attr.name;
@@ -1301,15 +1237,11 @@ function emitExpr(expr: Expr, ctx: GenContext): string {
       if (expr.type === 'string') return JSON.stringify(expr.value);
       return String(expr.value);
     case 'identifier':
-<<<<<<< HEAD
       // Check constraint locals first — use pre-read local variable
       if (ctx.constraintLocals && ctx.constraintLocals.has(expr.name)) {
         return ctx.constraintLocals.get(expr.name)!;
       }
-||||||| b68c2e9
-=======
       if (expr.name === 'X') return 'X';
->>>>>>> worktree-agent-ae5d93b0
       if (ctx.signals.has(expr.name) || ctx.combs.has(expr.name)) return `${expr.name}()`;
       return expr.name;
     case 'binary': {

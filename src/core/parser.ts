@@ -120,35 +120,18 @@ class Parser {
       this.advance();
       type = { kind: 'simple', name: 'X' };
     } else {
-<<<<<<< HEAD
-      const baseType: TypeExpr = { kind: 'simple', name: this.expect(TokenType.Identifier, 'type name').value };
-      // Check for range type: int(0..255)
-      if (this.check(TokenType.LParen)) {
-        this.advance();
-        const minVal = this.parseConstantNumber();
-        this.expect(TokenType.DotDot, 'range separator');
-        const maxVal = this.parseConstantNumber();
-        this.expect(TokenType.RParen, 'range type end');
-        type = { kind: 'range', base: baseType as any, min: minVal, max: maxVal };
-      } else {
-        type = baseType;
-      }
-||||||| b68c2e9
-      type = { kind: 'simple', name: this.expect(TokenType.Identifier, 'type name').value };
-=======
       const name = this.expect(TokenType.Identifier, 'type name').value;
       // Check for range type: int(0..255) or float(0.0..1.0)
       if ((name === 'int' || name === 'float') && this.check(TokenType.LParen)) {
         this.advance(); // consume '('
-        const minStr = this.expect(TokenType.Number, 'range min').value;
+        const minVal = this.parseConstantNumber();
         this.expect(TokenType.DotDot, 'range separator (..)');
-        const maxStr = this.expect(TokenType.Number, 'range max').value;
+        const maxVal = this.parseConstantNumber();
         this.expect(TokenType.RParen, 'range end');
-        type = { kind: 'range', base: name as 'int' | 'float', min: Number(minStr), max: Number(maxStr) };
+        type = { kind: 'range', base: { kind: 'simple', name } as any, min: minVal, max: maxVal };
       } else {
         type = { kind: 'simple', name };
       }
->>>>>>> worktree-agent-ae5d93b0
     }
     // Array suffix: type[]
     while (this.check(TokenType.LBracket) && this.peekAt(1).type === TokenType.RBracket) {

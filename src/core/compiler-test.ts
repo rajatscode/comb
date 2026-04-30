@@ -678,8 +678,6 @@ module Simple {
   assert(!js.includes('createPropagator'), 'Should not import createPropagator when no constraints');
 });
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 // --- Test 32: Parsing @(posedge x) always block ---
 test('posedge always block — clean compile', () => {
   const source = `
@@ -1416,8 +1414,6 @@ module AsyncRW {
   assert(always.writes.includes('data'), 'Should write to data');
 });
 
-||||||| b68c2e9
-=======
 // --- Test 32: @for with key=expr parses keyExpr ---
 test('@for with key=expr — keyExpr is present in AST', () => {
   const source = `
@@ -1514,9 +1510,6 @@ module ListApp {
   assert(importLine !== undefined && importLine.includes('reconcileKeyed'), 'Import line should include reconcileKeyed');
 });
 
->>>>>>> worktree-agent-ae75abc4
-||||||| b68c2e9
-=======
 // --- Test 32: Source map — not produced without sourceFile ---
 test('source map — not produced without sourceFile option', () => {
   const source = `
@@ -1602,6 +1595,5 @@ test('counter.comb — source map from file compilation', () => {
   assert(map.mappings.length > 0, 'Non-empty mappings');
 });
 
->>>>>>> worktree-agent-a270f5ad
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);
