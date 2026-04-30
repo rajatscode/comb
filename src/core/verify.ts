@@ -50,7 +50,7 @@ function resolveType(typeExpr: TypeExpr, enumDefs: Map<string, string[]>): CombT
     case 'array':
       return { kind: 'array', element: resolveType(typeExpr.element, enumDefs) };
     case 'range':
-      return { kind: 'range', base: typeExpr.base.name === 'float' ? 'float' : 'int', min: typeExpr.min, max: typeExpr.max };
+      return { kind: 'range', base: typeExpr.base === 'float' ? 'float' : 'int', min: typeExpr.min, max: typeExpr.max };
     case 'union': {
       const members = typeExpr.members.map(m => resolveType(m, enumDefs));
       const hasX = typeExpr.hasX || members.some(m => m.kind === 'X');

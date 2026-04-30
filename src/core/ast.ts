@@ -432,7 +432,6 @@ export type TypeExpr =
   | RangeType
   | ArrayType
   | ObjectType
-  | RangeType
   | UnionType;
 
 export interface SimpleType {
@@ -455,13 +454,6 @@ export interface ArrayType {
 export interface ObjectType {
   kind: 'object';
   fields: { name: string; type: TypeExpr }[];
-}
-
-export interface RangeType {
-  kind: 'range';
-  base: SimpleType;
-  min: number;
-  max: number;
 }
 
 export interface UnionType {
