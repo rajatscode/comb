@@ -318,6 +318,7 @@ function buildLayout(
 function createNodeEl(node: StaticNode, color: string, nodeW: number, nodeH: number = 50): { el: HTMLDivElement; valueEl: HTMLSpanElement } {
   const el = document.createElement('div');
   el.className = `circuit-node circuit-node-${node.type}`;
+  el.dataset.nodeId = node.id;
   el.style.position = 'absolute';
   el.style.width = `${nodeW}px`;
   el.style.height = `${nodeH}px`;

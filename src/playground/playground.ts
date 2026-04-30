@@ -143,6 +143,10 @@ function runCompile() {
 <script type="module">
 ${previewJs}
 
+// Expose circuit for parent page animation
+import { circuit } from '../runtime/index.js';
+window.__comb_circuit = circuit;
+
 // Boot: find the module factory and call it
 if (typeof ${moduleName} === 'function') {
   ${moduleName}(document.getElementById('root'));
@@ -183,6 +187,37 @@ exampleSelect.addEventListener('change', () => {
     if (fileLabel) fileLabel.textContent = `${name}.comb`;
     runCompile();
   }
+});
+
+// --- Live circuit animation from iframe ---
+let circuitUnsub: (() => void) | null = null;
+
+preview.addEventListener('load', () => {
+  if (circuitUnsub) { circuitUnsub(); circuitUnsub = null; }
+  // Wait for module script to execute
+  setTimeout(() => {
+    try {
+      const iframeCircuit = (preview.contentWindow as any)?.__comb_circuit;
+      if (!iframeCircuit || !iframeCircuit.subscribe) return;
+
+      const unsub = iframeCircuit.subscribe((event: any) => {
+        const name = event.nodeId?.split('.').pop() ?? '';
+        const nodeEl = circuitViz.querySelector(`[data-node-id="${name}"]`) as HTMLElement | null;
+        if (nodeEl) {
+          // Update value display
+          const valueEl = nodeEl.querySelector('.circuit-node-value') as HTMLElement | null;
+          if (valueEl && event.newValue !== undefined) {
+            const v = event.newValue;
+            valueEl.textContent = typeof v === 'string' ? (v.length > 15 ? v.slice(0, 12) + '...' : v) : String(v);
+          }
+          // Flash animation
+          nodeEl.classList.add('active');
+          setTimeout(() => nodeEl.classList.remove('active'), 300);
+        }
+      });
+      circuitUnsub = unsub;
+    } catch {}
+  }, 300);
 });
 
 // --- Init: load counter example ---
