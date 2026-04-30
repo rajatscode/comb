@@ -1264,3 +1264,15 @@ a:hover { text-decoration: underline; }
 .hl-op { color: #89ddff; }
 .hl-dir { color: #82aaff; font-weight: 600; }
 
+
+.invariants-panel { margin-top: 1.5rem; }
+.inv-title { font-size: 0.9rem; color: #7b8cff; margin: 0 0 0.75rem; text-align: center; }
+.inv-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 1rem; margin-bottom: 0.25rem; border-radius: 6px; font-size: 0.85rem; }
+.inv-pass { background: rgba(74, 224, 74, 0.06); border: 1px solid rgba(74, 224, 74, 0.15); }
+.inv-fail { background: rgba(255, 68, 68, 0.06); border: 1px solid rgba(255, 68, 68, 0.15); }
+.inv-icon { font-size: 1.1rem; }
+.inv-pass .inv-icon { color: #4ae04a; }
+.inv-fail .inv-icon { color: #ff4444; }
+.inv-code { flex: 1; font-family: "SF Mono", "Fira Code", monospace; font-size: 0.8rem; color: #ccc; }
+.inv-count { font-family: monospace; font-size: 0.8rem; color: #888; }
+

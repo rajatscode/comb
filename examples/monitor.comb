@@ -16,6 +16,9 @@ module Monitor {
   comb diskHigh = disk > diskThreshold;
   comb anyAlert = cpuHigh || memHigh || diskHigh;
 
+  assert anyAlert == (cpuHigh || memHigh || diskHigh);
+  assert cpuHigh == (cpuAvg > cpuThreshold);
+
   always @(posedge cpuHigh) {
     alertCount++;
     lastAlert <= "CPU crossed threshold";

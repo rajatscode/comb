@@ -78,6 +78,16 @@ export const __graph = {
       "type": "comb"
     },
     {
+      "id": "assert:0",
+      "name": "assert:0",
+      "type": "assert"
+    },
+    {
+      "id": "assert:1",
+      "name": "assert:1",
+      "type": "assert"
+    },
+    {
       "id": "posedge:cpuHigh",
       "name": "posedge(cpuHigh)",
       "type": "sensitivity"
@@ -290,6 +300,41 @@ export const __graph = {
       "type": "data"
     },
     {
+      "from": "anyAlert",
+      "to": "assert:0",
+      "type": "data"
+    },
+    {
+      "from": "cpuHigh",
+      "to": "assert:0",
+      "type": "data"
+    },
+    {
+      "from": "memHigh",
+      "to": "assert:0",
+      "type": "data"
+    },
+    {
+      "from": "diskHigh",
+      "to": "assert:0",
+      "type": "data"
+    },
+    {
+      "from": "cpuHigh",
+      "to": "assert:1",
+      "type": "data"
+    },
+    {
+      "from": "cpuAvg",
+      "to": "assert:1",
+      "type": "data"
+    },
+    {
+      "from": "cpuThreshold",
+      "to": "assert:1",
+      "type": "data"
+    },
+    {
       "from": "cpuHigh",
       "to": "posedge:cpuHigh",
       "type": "data"
@@ -497,6 +542,28 @@ export function Monitor(root) {
 
   const anyAlert = createComb(() => ((cpuHigh() || memHigh()) || diskHigh()), { name: 'anyAlert', module: $m, deps: ["cpuHigh","memHigh","diskHigh"] });
 
+  createEffect(() => {
+    const __ok = (anyAlert() == ((cpuHigh() || memHigh()) || diskHigh()));
+    if (!__ok) {
+      circuit.assertionFailed('assert:0', {
+        expr: '(anyAlert == ((cpuHigh || memHigh) || diskHigh))',
+        module: $m,
+        values: { anyAlert: anyAlert(), cpuHigh: cpuHigh(), memHigh: memHigh(), diskHigh: diskHigh() },
+      });
+    }
+  }, { name: 'assert:0', module: $m });
+
+  createEffect(() => {
+    const __ok = (cpuHigh() == (cpuAvg() > cpuThreshold()));
+    if (!__ok) {
+      circuit.assertionFailed('assert:1', {
+        expr: '(cpuHigh == (cpuAvg > cpuThreshold))',
+        module: $m,
+        values: { cpuHigh: cpuHigh(), cpuAvg: cpuAvg(), cpuThreshold: cpuThreshold() },
+      });
+    }
+  }, { name: 'assert:1', module: $m });
+
   createEdgeEffect(() => cpuHigh(), 'posedge', () => {
     batch(() => {
       setAlertCount((alertCount() + 1));
@@ -702,6 +769,28 @@ export function __test() {
   const diskHigh = createComb(() => (disk() > diskThreshold()), { name: 'diskHigh', module: $m, deps: ["disk","diskThreshold"] });
 
   const anyAlert = createComb(() => ((cpuHigh() || memHigh()) || diskHigh()), { name: 'anyAlert', module: $m, deps: ["cpuHigh","memHigh","diskHigh"] });
+
+  createEffect(() => {
+    const __ok = (anyAlert() == ((cpuHigh() || memHigh()) || diskHigh()));
+    if (!__ok) {
+      circuit.assertionFailed('assert:0', {
+        expr: '(anyAlert == ((cpuHigh || memHigh) || diskHigh))',
+        module: $m,
+        values: { anyAlert: anyAlert(), cpuHigh: cpuHigh(), memHigh: memHigh(), diskHigh: diskHigh() },
+      });
+    }
+  }, { name: 'assert:0', module: $m });
+
+  createEffect(() => {
+    const __ok = (cpuHigh() == (cpuAvg() > cpuThreshold()));
+    if (!__ok) {
+      circuit.assertionFailed('assert:1', {
+        expr: '(cpuHigh == (cpuAvg > cpuThreshold))',
+        module: $m,
+        values: { cpuHigh: cpuHigh(), cpuAvg: cpuAvg(), cpuThreshold: cpuThreshold() },
+      });
+    }
+  }, { name: 'assert:1', module: $m });
 
   return {
     signals: { cpu: { get: cpu, set: setCpu }, mem: { get: mem, set: setMem }, disk: { get: disk, set: setDisk }, net: { get: net, set: setNet }, cpuAvg: { get: cpuAvg, set: setCpuAvg }, memAvg: { get: memAvg, set: setMemAvg }, cpuThreshold: { get: cpuThreshold, set: setCpuThreshold }, memThreshold: { get: memThreshold, set: setMemThreshold }, diskThreshold: { get: diskThreshold, set: setDiskThreshold }, alertCount: { get: alertCount, set: setAlertCount }, lastAlert: { get: lastAlert, set: setLastAlert } },

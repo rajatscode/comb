@@ -434,13 +434,14 @@ function createLanding(): HTMLElement {
     <section class="autotest-section">
       <h2 class="section-title">Auto-Test Coverage Matrix</h2>
       <p style="text-align:center; color:#888; font-size:0.85rem; margin-bottom:1rem;">
-        3 boolean combs = 8 possible state combinations. The compiler knows your dependency graph — it auto-derives what to test. Fuzz 1000 random inputs and verify all combinations are reachable.
+        3 boolean combs = 8 state combinations. Fuzz 1000 random inputs, verify all combs and assertions.
       </p>
       <div class="coverage-matrix-wrapper">
         <div class="heatmap-labels" id="matrix-labels"></div>
         <div class="heatmap-grid" id="matrix-heatmap"></div>
         <div id="matrix-count" class="heatmap-count">0 / 8 combinations hit</div>
       </div>
+      <div id="invariants-panel" class="invariants-panel"></div>
       <div style="text-align:center; margin-top:1rem;">
         <button id="run-autotest" class="auto-test-btn">Auto-Test (1000 random inputs)</button>
         <span id="autotest-result" style="margin-left:1rem; font-family:monospace; font-size:0.85rem;"></span>
@@ -658,7 +659,16 @@ function showLanding() {
 
     setTimeout(() => {
       const t = __test();
-      let verified = 0;
+      let combsVerified = 0;
+
+      // Track assertion verification counts
+      const invariants = [
+        { name: 'cpuHigh = (cpuAvg > cpuThreshold)', pass: 0, fail: 0 },
+        { name: 'memHigh = (memAvg > memThreshold)', pass: 0, fail: 0 },
+        { name: 'diskHigh = (disk > diskThreshold)', pass: 0, fail: 0 },
+        { name: 'anyAlert = (cpuHigh || memHigh || diskHigh)', pass: 0, fail: 0 },
+      ];
+
       for (let i = 0; i < 1000; i++) {
         const r = () => Math.round(Math.random() * 100 * 10) / 10;
         const cpuAvg = r(), cpuThr = r(), memAvg = r(), memThr = r(), disk = r(), diskThr = r();
@@ -679,16 +689,36 @@ function showLanding() {
         if (t.combs.diskHigh()) combo |= 1;
         hitSet.add(combo);
 
-        // Verify correctness
-        const ok = t.combs.cpuHigh() === (cpuAvg > cpuThr)
-               && t.combs.memHigh() === (memAvg > memThr)
-               && t.combs.diskHigh() === (disk > diskThr);
-        if (ok) verified++;
+        // Verify each invariant
+        const cpuOk = t.combs.cpuHigh() === (cpuAvg > cpuThr);
+        const memOk = t.combs.memHigh() === (memAvg > memThr);
+        const diskOk = t.combs.diskHigh() === (disk > diskThr);
+        const anyOk = t.combs.anyAlert() === (t.combs.cpuHigh() || t.combs.memHigh() || t.combs.diskHigh());
+
+        cpuOk ? invariants[0].pass++ : invariants[0].fail++;
+        memOk ? invariants[1].pass++ : invariants[1].fail++;
+        diskOk ? invariants[2].pass++ : invariants[2].fail++;
+        anyOk ? invariants[3].pass++ : invariants[3].fail++;
+
+        if (cpuOk && memOk && diskOk && anyOk) combsVerified++;
       }
       t.dispose();
       updateHeatmap();
+
+      // Show invariant verification results
+      const invPanel = document.getElementById('invariants-panel')!;
+      invPanel.innerHTML = '<h3 class="inv-title">Verified Invariants</h3>' +
+        invariants.map(inv => {
+          const allPass = inv.fail === 0;
+          return `<div class="inv-row ${allPass ? 'inv-pass' : 'inv-fail'}">
+            <span class="inv-icon">${allPass ? '\u2713' : '\u2717'}</span>
+            <code class="inv-code">${escapeHtml(inv.name)}</code>
+            <span class="inv-count">${inv.pass}/1000</span>
+          </div>`;
+        }).join('');
+
       resultEl.style.color = '#44ff44';
-      resultEl.textContent = `${verified}/1000 verified, ${hitSet.size}/8 combinations covered`;
+      resultEl.textContent = `${combsVerified}/1000 verified, ${hitSet.size}/8 combinations covered`;
       btn.textContent = 'Run Again';
       btn.disabled = false;
     }, 10);
