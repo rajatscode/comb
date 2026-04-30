@@ -9,13 +9,21 @@ Comb is a UI framework built on a discrete event simulation execution model. `.c
 ### signal — mutable state
 
 ```sv
-signal count: int = 0;
-signal name: string = "";
-signal active: bool = true;
+signal count = 0;
+signal name = "";
 signal price: float = 9.99;
 ```
 
-Types: `int`, `string`, `bool`, `float`. Signals are the only mutable primitive. They can only be written inside `always` blocks using the `<=` operator.
+Type annotations are optional — the type is inferred from the initial value. Explicit types (`signal x: int = 0;`) are still supported and enable compile-time type checking (warnings).
+
+Signals can only be written inside `always` blocks using `<=`, `++`, `--`, `+=`, or `-=`:
+
+```sv
+always @(increment) {
+  count++;           // sugar for count <= count + 1
+  score += 10;       // sugar for score <= score + 10
+}
+```
 
 ### comb — derived value
 
@@ -77,7 +85,15 @@ always @(posedge len(errors) > 0) {
 
 Edge-triggered sensitivity fires on *transitions*, not values. `@(posedge x)` fires when `x` becomes true (rising edge). `@(negedge x)` fires when `x` becomes false (falling edge). This is a common UI need ("do something when X *becomes* true") that's awkward with standard reactivity — React's `useEffect` is level-triggered, requiring manual `usePrevious` patterns.
 
-Edge-triggered blocks compile end-to-end through the lexer, parser, codegen, and runtime. The mechanism exists in other frameworks (MobX `when()`, RxJS `pairwise()`), but not as a compiled, compiler-verified language construct.
+Edge-triggered blocks compile end-to-end. The mechanism exists in other frameworks (MobX `when()`, RxJS `pairwise()`), but not as a compiled, compiler-verified language construct.
+
+### edgeCount / negedgeCount — reactive event counting
+
+```sv
+comb alertCount = edgeCount(cpuHigh) + edgeCount(memHigh);
+```
+
+`edgeCount(expr)` returns a reactive value that automatically increments each time `expr` transitions false→true. No manual counter signal needed — the count is derived from event history. `negedgeCount(expr)` counts true→false transitions.
 
 ### view — reactive DOM
 
@@ -95,6 +111,13 @@ view {
 ```
 
 `{expr}` — reactive text interpolation. `@click=event` — event binding. `@bind=signal` — two-way input binding. `@if`/`@for` — conditional and list rendering. `class={expr}` — dynamic attributes. No virtual DOM — effects directly patch DOM nodes.
+
+Keyed list rendering with efficient reconciliation:
+```sv
+@for item in items key=item.id {
+  <div>{item.name}</div>
+}
+```
 
 ---
 
@@ -277,6 +300,10 @@ Prior art for unknown state: Solid's `createResource` handles async `T | undefin
 | `min(a, b)` | Minimum of two values |
 | `max(a, b)` | Maximum of two values |
 | `abs(x)` | Absolute value |
+| `reduce(arr, fn, init)` | Array reduce |
+| `slice(arr, start)` | Array slice |
+| `edgeCount(expr)` | Reactive count of posedge firings (no manual counter needed) |
+| `negedgeCount(expr)` | Reactive count of negedge firings |
 
 Browser globals are also available: `fetch`, `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, `console.log`, `JSON.parse`, `JSON.stringify`, `Object.keys`, `Object.values`, `Math.random`.
 

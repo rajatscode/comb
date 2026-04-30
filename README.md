@@ -150,6 +150,20 @@ The practical difference from topological sorting (what Solid/Preact do): topolo
 - **Scoped styles** — per-module CSS with auto-generated scope hashes
 - **Browser-portable compiler** — runs entirely in the browser for the playground
 - **Readable generated code** — inspect exactly what your `.comb` compiles to
+- **Reactive edge counting** — `edgeCount(expr)` derives alert counts from event history, no manual counters
+- **Optional type annotations** — `signal x = 0;` works, types inferred from initial values
+- **Syntax sugar** — `++`, `--`, `+=`, `-=` for concise signal updates
+- **Custom functions** — `fn clamp(x, min, max) -> int { ... }`
+- **Async blocks** — `async { await fetch(url); } catch { ... }`
+- **String templates** — `` `Hello ${name}!` ``
+- **Destructuring** — `const { a, b } = obj;`
+- **Component slots** — `<slot />` for child content composition
+- **Form elements** — select, textarea, checkbox, radio with `@bind`
+- **Keyed lists** — `@for item in items key=item.id { ... }` with efficient reconciliation
+- **SSR** — `renderToString(ModuleFactory)` for server-side rendering
+- **Source maps** — `.js.map` emitted alongside compiled output
+- **Router** — `createRouter(routes)` with hash-based reactive routing
+- **CLI** — `comb compile`, `comb init <name>`, `comb dev`
 
 ## Roadmap
 
@@ -221,9 +235,9 @@ The `__graph` is the single data structure that every tool shares. The visualize
 
 ## Known Limitations
 
-- No source maps
-- List rendering in `@for` uses full re-render (no keyed reconciliation)
-- No SSR
+- Type system emits warnings, not errors
+- No npm package published yet
+- No production build optimization
 
 ## Project Structure
 

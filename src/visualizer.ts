@@ -330,6 +330,9 @@ function createNodeEl(node: StaticNode, color: string, nodeW: number, nodeH: num
   if (node.viewTarget) {
     nameEl.textContent = `${node.viewTarget.element}`;
     nameEl.title = `${node.id} → ${node.viewTarget.element} [${node.viewTarget.binding}]`;
+  } else if (node.type === 'assert' && (node as any).expr) {
+    nameEl.textContent = `assert ${(node as any).expr}`;
+    nameEl.style.fontSize = '0.55rem';
   } else {
     nameEl.textContent = node.name;
   }
