@@ -56,9 +56,7 @@ always @(width, height) {
 
 Auto-fires when any declared signal changes. The compiler **verifies** the sensitivity list: every signal read inside the block must be declared in the `@(...)` list. An undeclared read is a compile error. Self-triggering writes (writing to a signal you're sensitive to) are also caught.
 
-### always @(posedge/negedge) — edge-triggered block *(planned)*
-
-> **Not yet implemented.** This is the target syntax for edge-triggered sensitivity.
+### always @(posedge/negedge) — edge-triggered block
 
 ```sv
 // Fires ONCE when loading transitions false → true
@@ -79,7 +77,7 @@ always @(posedge len(errors) > 0) {
 
 Edge-triggered sensitivity fires on *transitions*, not values. `@(posedge x)` fires when `x` becomes true (rising edge). `@(negedge x)` fires when `x` becomes false (falling edge). This is a common UI need ("do something when X *becomes* true") that's awkward with standard reactivity — React's `useEffect` is level-triggered, requiring manual `usePrevious` patterns.
 
-The mechanism exists in other frameworks (MobX `when()`, RxJS `pairwise()`), but not as a compiled, compiler-verified language construct.
+Edge-triggered blocks compile end-to-end through the lexer, parser, codegen, and runtime. The mechanism exists in other frameworks (MobX `when()`, RxJS `pairwise()`), but not as a compiled, compiler-verified language construct.
 
 ### view — reactive DOM
 
@@ -109,9 +107,9 @@ assert canSubmit == (usernameValid && emailValid);
 
 Runtime invariants registered as nodes in the `__graph`. The test harness auto-evaluates assertions across generated input combinations.
 
-### Temporal assertions *(planned)*
+### Temporal assertions
 
-> **Not yet implemented.** Inspired by SystemVerilog Assertions (SVA). Prior art: Quickstrom (PLDI 2022) applies LTL to web app testing externally; Comb's temporal assertions would be embedded in the component model.
+Inspired by SystemVerilog Assertions (SVA). Prior art: Quickstrom (PLDI 2022) applies LTL to web app testing externally; Comb's temporal assertions are embedded in the component model as graph nodes, with three operators: `eventually`, `always`, and `next`.
 
 ```sv
 // "whenever submit fires, loading must eventually become false"
@@ -226,9 +224,21 @@ Used for FSM states. Enum values are available as `Phase.Red`, `Phase.Green`, et
 
 ---
 
-## Type System *(planned)*
+## Type System
 
-> **Not yet implemented.** Type annotations are currently parsed but not checked. The planned type system is domain-specific, not TypeScript-lite.
+Type annotations are parsed and checked by `verify.ts`. Type mismatches produce **warnings** (not errors), allowing incremental adoption. The checker infers expression types (`inferExprType`) and validates compatibility (`typeCompatible`).
+
+```sv
+// Basic type annotations — checked at compile time (warnings on mismatch)
+signal count: int = 0;
+signal name: string = "";
+signal active: bool = true;
+signal price: float = 9.99;
+```
+
+### Planned type system extensions
+
+The following extensions are domain-specific and not yet implemented:
 
 ```sv
 // Range types
@@ -278,9 +288,9 @@ This single data structure powers:
 
 ---
 
-## The DES Execution Model *(planned)*
+## The DES Execution Model
 
-> **Not yet implemented.** The current runtime uses microtask-based signal propagation (similar to SolidJS). The target architecture is a discrete event simulation kernel.
+The runtime uses a `SimulationEngine` with delta cycles (implemented in `src/runtime/signals.ts`).
 
 ```
 Event enters → Delta 0: combinational logic (combs) settles

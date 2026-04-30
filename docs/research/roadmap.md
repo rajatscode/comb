@@ -32,31 +32,31 @@
 28. ~~UI cleanup pass~~ ✅
 29. ~~Practical value prop~~ ✅
 
-## Phase 2: Fix Foundation (In Progress)
+## Phase 2: Fix Foundation (Complete)
 
-30. All demos compile from `.comb` — no hand-written runtime bypasses
-31. `constraint` blocks compile end-to-end through the compiler
-32. Type-check parsed annotations (signal types, port compatibility)
+30. ~~All demos compile from `.comb`~~ ✅ (stock ticker, color picker, resizable layout)
+31. ~~`constraint` blocks compile end-to-end through the compiler~~ ✅ (with constraint hardening)
+32. ~~Type-check parsed annotations~~ ✅ (warnings via `verify.ts`)
 
-## Phase 3: DES Execution Model (Planned)
+## Phase 3: DES Execution Model (Complete)
 
-33. Edge-triggered sensitivity: `@(posedge x)` / `@(negedge x)` in lexer/parser/codegen/runtime
-34. Delta cycle execution model: refactor runtime from microtask to simulation loop
-35. Non-blocking assignment gets real scheduling semantics (end of delta, not immediate)
+33. ~~Edge-triggered sensitivity: `@(posedge x)` / `@(negedge x)` in lexer/parser/codegen/runtime~~ ✅
+34. ~~Delta cycle execution model: `SimulationEngine` with real delta cycles~~ ✅
+35. ~~Non-blocking assignment gets real scheduling semantics (end of delta)~~ ✅
 
-## Phase 4: Type System (Planned)
+## Phase 4: Type System (Partial)
 
-36. Enforce parsed type annotations (signal type mismatches = compile error)
+36. ~~Type checking with warnings on mismatches~~ ✅ (warnings, not errors)
 37. Port compatibility checking across modules
 38. Range types: `signal x: int(0..255)`
 39. X-value / unknown signal state with propagation semantics
 40. Exhaustive enum matching
 
-## Phase 5: Temporal Assertions (Planned)
+## Phase 5: Temporal Assertions (Complete)
 
-41. SVA-lite syntax: `assert temporal @(event) eventually(condition) within duration`
-42. Runtime temporal logic evaluator over event stream
-43. Temporal assertion nodes in `__graph`
+41. ~~SVA-lite syntax: `assert temporal @(event) eventually/always/next(condition) within duration`~~ ✅
+42. ~~Runtime temporal logic evaluator over event stream~~ ✅
+43. ~~Temporal assertion nodes in `__graph`~~ ✅
 
 ## Phase 1 Stats
 - 45 commits since clean rewrite

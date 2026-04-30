@@ -6,7 +6,7 @@ Comb is an experimental UI framework whose runtime is a discrete event simulatio
 
 The question Comb asks is not "what should the UI look like?" but **"what are the signals, what are the dependencies between them, and what events drive state transitions?"** — the same question a chip designer asks about a circuit.
 
-> **Status:** Research prototype. The compiler and runtime work. The DES execution model, edge-triggered sensitivity, type system, and temporal assertions are in active development. See [Roadmap](#roadmap) for what's implemented vs planned.
+> **Status:** Research prototype. The compiler, runtime, DES execution model (delta cycles), edge-triggered sensitivity, type system (warnings), and temporal assertions are all implemented and working. See [Roadmap](#roadmap) for details.
 
 ## Quick Start
 
@@ -63,17 +63,25 @@ The syntax borrows from SystemVerilog intentionally — not as decoration, but b
 | `view { }` | Module ports | DOM output with fine-grained reactive bindings |
 | `input` / `output` | Port | Directional module composition |
 
+### Edge-triggered sensitivity
+
+```sv
+// Fires on transition, not on value
+always @(posedge loading) { showSpinner(); }
+always @(negedge loading) { fadeInContent(); }
+```
+
+### Temporal assertions
+
+```sv
+// SVA-inspired invariants over time
+assert temporal @(posedge submitted)
+  eventually(showSuccess || showError) within 5s;
+```
+
 ### Planned syntax (not yet implemented)
 
 ```sv
-// Edge-triggered sensitivity — fires on transition, not on value
-always @(posedge loading) { showSpinner(); }
-always @(negedge loading) { fadeInContent(); }
-
-// Temporal assertions — SVA-inspired invariants over time
-assert temporal @(posedge submitted)
-  eventually(showSuccess || showError) within 5s;
-
 // Unknown state — signal starts unresolved, compiler forces handling
 signal data: X | User;
 ```
@@ -90,11 +98,11 @@ We did the research. Here's what holds up, what doesn't, and what we're building
 
 ### Novel in formulation (prior art for mechanism, not for DSL integration)
 
-**Edge-triggered sensitivity as language syntax.** The mechanism exists — MobX's `when()` fires once when a predicate becomes true, RxJS's `pairwise()` detects transitions, Vue's `watch()` gives `(newValue, oldValue)`. But no framework offers `@(posedge x)` / `@(negedge x)` as a first-class compiled language construct. The value is in making edge detection declarative and compiler-verified, not in inventing edge detection.
+**Edge-triggered sensitivity as language syntax.** The mechanism exists — MobX's `when()` fires once when a predicate becomes true, RxJS's `pairwise()` detects transitions, Vue's `watch()` gives `(newValue, oldValue)`. But no framework offers `@(posedge x)` / `@(negedge x)` as a first-class compiled language construct. Comb compiles and runs edge-triggered blocks end-to-end. The value is in making edge detection declarative and compiler-verified, not in inventing edge detection.
 
 **Propagator networks compiled from DSL.** David Thompson (Spritely project) built a working propagator-based FRP for web UI, presented at FOSDEM 2026. Sussman and Radul's 2009 work is the theoretical foundation. Cassowary.js handles layout constraints. What doesn't exist: a framework that compiles `constraint { }` blocks from a DSL into propagator networks with static analysis and graph artifact integration.
 
-**Temporal assertions embedded in component model.** Quickstrom (Wickstrom, PLDI 2022) applies LTL to web application testing — it's real, published, peer-reviewed. The difference: Quickstrom is an external testing tool that observes the DOM from outside. Comb's temporal assertions would live inside the component as graph nodes, running as development-time invariants — closer to SystemVerilog Assertions (SVA) than to property-based testing.
+**Temporal assertions embedded in component model.** Quickstrom (Wickstrom, PLDI 2022) applies LTL to web application testing — it's real, published, peer-reviewed. The difference: Quickstrom is an external testing tool that observes the DOM from outside. Comb's temporal assertions live inside the component as graph nodes, running as development-time invariants with three operators (`eventually`, `always`, `next`) — closer to SystemVerilog Assertions (SVA) than to property-based testing.
 
 **Universal unknown state with propagation.** Solid's `createResource` returns `T | undefined` until resolved. Leptos uses `Option<T>`. React Suspense makes loading implicit. What's different: applying X-state to *all* signals (not just async resources) with HDL-style propagation semantics — if any input is unknown, the output is unknown, and the compiler forces you to handle it.
 
@@ -108,8 +116,6 @@ We did the research. Here's what holds up, what doesn't, and what we're building
 
 ## The DES Execution Model
 
-> **Status: Planned.** The current runtime uses standard microtask-based signal propagation. The DES model described here is the target architecture.
-
 When an event fires (user click, fetch response, timer), the simulator runs a deterministic loop:
 
 ```
@@ -120,15 +126,19 @@ Event enters → Delta 0: combinational logic (combs) settles
              → DOM commit: only after full stabilization
 ```
 
-This gives formal guarantees that microtask-based frameworks can't:
+The runtime implements this via the `SimulationEngine` in `src/runtime/signals.ts`, using real delta cycles. This gives formal guarantees that microtask-based frameworks can't:
 - **Combs always see consistent state** — no reading a half-updated signal graph
 - **Concurrent always blocks execute deterministically** — no surprises from effect ordering
 - **DOM updates only after stabilization** — no partial renders, no glitch frames
 
-The practical difference from topological sorting (what Solid/Preact do): topological sort is a single pass. Delta cycles allow multi-pass stabilization where sequential logic (`<=`) creates new combinational dependencies that need another settle pass. Whether real-world UI needs multi-pass is an open research question we intend to answer.
+The practical difference from topological sorting (what Solid/Preact do): topological sort is a single pass. Delta cycles allow multi-pass stabilization where sequential logic (`<=`) creates new combinational dependencies that need another settle pass.
 
 ## Features (Implemented)
 
+- **DES execution model** — `SimulationEngine` with delta cycles for deterministic multi-pass stabilization
+- **Edge-triggered sensitivity** — `@(posedge x)` / `@(negedge x)` compiles and runs end-to-end
+- **Type system** — type checking with warnings (not errors) via `verify.ts`
+- **Temporal assertions** — `assert temporal @(trigger) eventually/always/next(prop) within duration`
 - **Static `__graph` artifact** — circuit topology extracted at compile time
 - **Circuit topology diffing** — diff two `__graph`s to see what changed between versions
 - **Auto-derived testing** — `__test()` export gives headless signal/comb access
@@ -153,18 +163,16 @@ The practical difference from topological sorting (what Solid/Preact do): topolo
 - [x] Design tokens as reactive CSS custom properties
 - [x] Live playground with in-browser compilation
 - [x] `__test()` auto-derived testing export
-
-### In Progress
-- [ ] All demos must compile from `.comb` (some currently hand-written against runtime API)
-- [ ] `constraint` blocks compile end-to-end through the compiler
-- [ ] Type checking (annotations are parsed but currently ignored)
+- [x] All demos compile from `.comb` (stock ticker, color picker, resizable layout)
+- [x] `constraint` blocks compile end-to-end through the compiler
+- [x] Type checking (warnings on type mismatches via `verify.ts`)
+- [x] Edge-triggered sensitivity: `@(posedge x)`, `@(negedge x)`
+- [x] DES execution model with delta cycles (`SimulationEngine`)
+- [x] Temporal assertions (SVA-lite): `assert temporal @(event) eventually/always/next(condition) within duration`
 
 ### Planned
-- [ ] Edge-triggered sensitivity: `@(posedge x)`, `@(negedge x)`
-- [ ] DES execution model with delta cycles (replace microtask-based runtime)
 - [ ] Type system: range types, port compatibility, exhaustive enum matching
 - [ ] X-value / unknown signal state with propagation semantics
-- [ ] Temporal assertions (SVA-lite): `assert temporal @(event) eventually(condition) within duration`
 - [ ] Source maps
 
 ## Architecture
@@ -213,13 +221,9 @@ The `__graph` is the single data structure that every tool shares. The visualize
 
 ## Known Limitations
 
-- Type annotations are parsed but not checked (type system is planned)
-- Some demos bypass the compiler and use the runtime API directly (being fixed)
 - No source maps
 - List rendering in `@for` uses full re-render (no keyed reconciliation)
 - No SSR
-- DES execution model not yet implemented (runtime uses standard microtask propagation)
-- Temporal assertions not yet implemented
 
 ## Project Structure
 

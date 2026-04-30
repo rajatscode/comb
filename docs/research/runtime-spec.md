@@ -2,8 +2,7 @@
 
 ## Architecture
 - Compiler deps = verification + visualization layer (CircuitGraph topology)
-- Runtime auto-tracking = execution engine (currently SolidJS-style microtask propagation)
-- Target: refactor to DES execution model with delta cycles (see architecture-plan.md)
+- Runtime auto-tracking = execution engine (DES with delta cycles via `SimulationEngine`)
 - CircuitGraph: separate class, singleton, full event subscription
 - Effect disposal via createScope() / dispose()
 
