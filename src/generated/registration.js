@@ -68,6 +68,16 @@ export const __graph = {
       "type": "comb"
     },
     {
+      "id": "assert:0",
+      "name": "assert:0",
+      "type": "assert"
+    },
+    {
+      "id": "assert:1",
+      "name": "assert:1",
+      "type": "assert"
+    },
+    {
       "id": "event:submit",
       "name": "submit",
       "type": "event"
@@ -147,6 +157,36 @@ export const __graph = {
     {
       "from": "canSubmit",
       "to": "submitLabel",
+      "type": "data"
+    },
+    {
+      "from": "username",
+      "to": "assert:0",
+      "type": "data"
+    },
+    {
+      "from": "canSubmit",
+      "to": "assert:1",
+      "type": "data"
+    },
+    {
+      "from": "usernameValid",
+      "to": "assert:1",
+      "type": "data"
+    },
+    {
+      "from": "emailValid",
+      "to": "assert:1",
+      "type": "data"
+    },
+    {
+      "from": "passwordStrong",
+      "to": "assert:1",
+      "type": "data"
+    },
+    {
+      "from": "passwordsMatch",
+      "to": "assert:1",
       "type": "data"
     },
     {
@@ -237,6 +277,28 @@ export function RegistrationForm(root) {
   const strengthLabel = createComb(() => ((passwordLength() < 4) ? "weak" : ((passwordLength() < 7) ? "medium" : "strong")), { name: 'strengthLabel', module: $m, deps: ["passwordLength"] });
 
   const submitLabel = createComb(() => (canSubmit() ? "Create Account" : "Fill all fields"), { name: 'submitLabel', module: $m, deps: ["canSubmit"] });
+
+  createEffect(() => {
+    const __ok = (username().length >= 0);
+    if (!__ok) {
+      circuit.assertionFailed('assert:0', {
+        expr: '(username.length >= 0)',
+        module: $m,
+        values: { username: username() },
+      });
+    }
+  }, { name: 'assert:0', module: $m });
+
+  createEffect(() => {
+    const __ok = (canSubmit() == (((usernameValid() && emailValid()) && passwordStrong()) && passwordsMatch()));
+    if (!__ok) {
+      circuit.assertionFailed('assert:1', {
+        expr: '(canSubmit == (((usernameValid && emailValid) && passwordStrong) && passwordsMatch))',
+        module: $m,
+        values: { canSubmit: canSubmit(), usernameValid: usernameValid(), emailValid: emailValid(), passwordStrong: passwordStrong(), passwordsMatch: passwordsMatch() },
+      });
+    }
+  }, { name: 'assert:1', module: $m });
 
   function submit() {
     batch(() => {
@@ -341,4 +403,64 @@ export function RegistrationForm(root) {
   root.appendChild(el0);
 
   return { dispose: __scope.dispose };
+}
+
+export function __test() {
+  const $m = 'RegistrationForm';
+  circuit.loadStaticGraph(__graph);
+  const __scope = createScope();
+
+  const [username, setUsername] = createSignal("", { name: 'username', module: $m, type: 'string' });
+
+  const [email, setEmail] = createSignal("", { name: 'email', module: $m, type: 'string' });
+
+  const [password, setPassword] = createSignal("", { name: 'password', module: $m, type: 'string' });
+
+  const [confirm, setConfirm] = createSignal("", { name: 'confirm', module: $m, type: 'string' });
+
+  const usernameValid = createComb(() => (username().length >= 3), { name: 'usernameValid', module: $m, deps: ["username"] });
+
+  const emailValid = createComb(() => (email().includes("@") && email().includes(".")), { name: 'emailValid', module: $m, deps: ["email"] });
+
+  const passwordLength = createComb(() => password().length, { name: 'passwordLength', module: $m, deps: ["password"] });
+
+  const requiredStrength = createComb(() => ((username().length < 5) ? 8 : 6), { name: 'requiredStrength', module: $m, deps: ["username"] });
+
+  const passwordStrong = createComb(() => (passwordLength() >= requiredStrength()), { name: 'passwordStrong', module: $m, deps: ["passwordLength","requiredStrength"] });
+
+  const passwordsMatch = createComb(() => ((password() == confirm()) && (confirm().length > 0)), { name: 'passwordsMatch', module: $m, deps: ["password","confirm"] });
+
+  const canSubmit = createComb(() => (((usernameValid() && emailValid()) && passwordStrong()) && passwordsMatch()), { name: 'canSubmit', module: $m, deps: ["usernameValid","emailValid","passwordStrong","passwordsMatch"] });
+
+  const strengthLabel = createComb(() => ((passwordLength() < 4) ? "weak" : ((passwordLength() < 7) ? "medium" : "strong")), { name: 'strengthLabel', module: $m, deps: ["passwordLength"] });
+
+  const submitLabel = createComb(() => (canSubmit() ? "Create Account" : "Fill all fields"), { name: 'submitLabel', module: $m, deps: ["canSubmit"] });
+
+  createEffect(() => {
+    const __ok = (username().length >= 0);
+    if (!__ok) {
+      circuit.assertionFailed('assert:0', {
+        expr: '(username.length >= 0)',
+        module: $m,
+        values: { username: username() },
+      });
+    }
+  }, { name: 'assert:0', module: $m });
+
+  createEffect(() => {
+    const __ok = (canSubmit() == (((usernameValid() && emailValid()) && passwordStrong()) && passwordsMatch()));
+    if (!__ok) {
+      circuit.assertionFailed('assert:1', {
+        expr: '(canSubmit == (((usernameValid && emailValid) && passwordStrong) && passwordsMatch))',
+        module: $m,
+        values: { canSubmit: canSubmit(), usernameValid: usernameValid(), emailValid: emailValid(), passwordStrong: passwordStrong(), passwordsMatch: passwordsMatch() },
+      });
+    }
+  }, { name: 'assert:1', module: $m });
+
+  return {
+    signals: { username: { get: username, set: setUsername }, email: { get: email, set: setEmail }, password: { get: password, set: setPassword }, confirm: { get: confirm, set: setConfirm } },
+    combs: { usernameValid, emailValid, passwordLength, requiredStrength, passwordStrong, passwordsMatch, canSubmit, strengthLabel, submitLabel },
+    dispose: __scope.dispose,
+  };
 }

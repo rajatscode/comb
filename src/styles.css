@@ -122,6 +122,61 @@ body {
 .error-example code { display: block; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.65rem; color: #bbb; margin-bottom: 0.2rem; word-break: break-all; }
 .error-msg { font-size: 0.65rem; color: #ff6b6b; }
 
+/* Coverage heatmap */
+.coverage-panel { margin-top: 1.5rem; border-top: 1px solid #2a2a4a; padding-top: 0.8rem; }
+.coverage-panel h3 { font-size: 0.75rem; color: #666; margin: 0 0 0.6rem; text-transform: uppercase; letter-spacing: 1px; }
+
+.heatmap-container { display: flex; flex-direction: column; gap: 0.4rem; }
+
+.heatmap-labels {
+  display: flex;
+  gap: 0;
+  margin-left: 0;
+}
+.heatmap-labels span {
+  flex: 1;
+  text-align: center;
+  font-size: 0.55rem;
+  color: #888;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.heatmap-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+}
+
+.heatmap-cell {
+  aspect-ratio: 1;
+  background: #2a2a40;
+  border-radius: 3px;
+  transition: background 0.2s;
+  min-height: 18px;
+}
+.heatmap-cell.hit { background: #2e6e2e; }
+
+.heatmap-count {
+  font-size: 0.7rem;
+  color: #888;
+  text-align: center;
+}
+
+.auto-test-btn {
+  width: 100%;
+  padding: 0.45rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  background: #1e3a1e;
+  color: #4ae04a;
+  border: 1px solid #3a5a3a;
+  border-radius: 4px;
+  transition: background 0.15s;
+  margin-top: 0.5rem;
+}
+.auto-test-btn:hover { background: #2a4a2a; }
+.auto-test-btn:disabled { opacity: 0.5; cursor: default; }
+
 /* ============================================
    Stock Ticker Demo (vertical stack)
    ============================================ */

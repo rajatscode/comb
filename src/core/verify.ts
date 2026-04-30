@@ -1,6 +1,6 @@
 // verify.ts — Verification pass: dependency extraction, resolution, cycle detection
 
-import type { Module, Declaration, CombDecl, AlwaysBlock, Expr, Statement, VNode } from './ast.js';
+import type { Module, Declaration, CombDecl, AlwaysBlock, AssertDecl, Expr, Statement, VNode } from './ast.js';
 import type { StaticGraph, GraphNode, GraphEdge } from './graph.js';
 
 export interface CompileError {
@@ -66,6 +66,23 @@ export function verify(mod: Module): VerifyResult {
       for (const ref of allRefs) {
         if (!isKnownIdentifier(ref)) {
           errors.push({ message: `Undefined reference '${ref}' in comb '${decl.name}'`, line: decl.loc.line, column: decl.loc.column });
+        }
+      }
+    }
+  }
+
+  // 2b. Extract assert dependencies
+  for (const decl of mod.body) {
+    if (decl.kind === 'assert') {
+      const deps = new Set<string>();
+      collectDeps(decl.expr, deps, symbols, builtins, enumValues);
+      decl.deps = [...deps];
+
+      const allRefs = new Set<string>();
+      collectAllIdentifiers(decl.expr, allRefs);
+      for (const ref of allRefs) {
+        if (!isKnownIdentifier(ref)) {
+          errors.push({ message: `Undefined reference '${ref}' in assert`, line: decl.loc.line, column: decl.loc.column });
         }
       }
     }
@@ -230,6 +247,7 @@ function detectCycles(deps: Map<string, string[]>): string | null {
 function buildGraph(mod: Module, symbols: Map<string, SymbolKind>): StaticGraph {
   const nodes: GraphNode[] = [];
   const edges: GraphEdge[] = [];
+  let assertIdx = 0;
 
   for (const decl of mod.body) {
     if (decl.kind === 'signal') {
@@ -251,6 +269,13 @@ function buildGraph(mod: Module, symbols: Map<string, SymbolKind>): StaticGraph 
       // Don't create data edges from signals/combs TO events — events are
       // user-triggered, not signal-triggered. The reads inside an always
       // block are implementation details, not dataflow.
+    }
+    if (decl.kind === 'assert') {
+      const assertId = `assert:${assertIdx++}`;
+      nodes.push({ id: assertId, name: assertId, type: 'assert' });
+      for (const dep of decl.deps) {
+        edges.push({ from: dep, to: assertId, type: 'data' });
+      }
     }
     if (decl.kind === 'view') {
       const viewBindings = new Set<string>();

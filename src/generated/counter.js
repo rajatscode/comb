@@ -148,3 +148,21 @@ export function Counter(root) {
 
   return { dispose: __scope.dispose };
 }
+
+export function __test() {
+  const $m = 'Counter';
+  circuit.loadStaticGraph(__graph);
+  const __scope = createScope();
+
+  const [count, setCount] = createSignal(0, { name: 'count', module: $m, type: 'int' });
+
+  const label = createComb(() => ("Count: " + String(count())), { name: 'label', module: $m, deps: ["count"] });
+
+  const doubled = createComb(() => (count() * 2), { name: 'doubled', module: $m, deps: ["count"] });
+
+  return {
+    signals: { count: { get: count, set: setCount } },
+    combs: { label, doubled },
+    dispose: __scope.dispose,
+  };
+}

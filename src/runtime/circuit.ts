@@ -24,11 +24,12 @@ export interface GraphEdge {
 }
 
 export interface GraphEvent {
-  type: 'signal-change' | 'comb-recompute' | 'effect-run';
+  type: 'signal-change' | 'comb-recompute' | 'effect-run' | 'assertion-failed';
   nodeId: string;
   timestamp: number;
   oldValue?: any;
   newValue?: any;
+  assertInfo?: { expr: string; module: string; values: Record<string, any> };
 }
 
 export interface VerifyIssue {
@@ -173,6 +174,19 @@ export class CircuitGraph {
     if (this.events.length >= EVENT_BUFFER_SIZE) this.events.shift();
     this.events.push(event);
     for (const listener of this.listeners) listener(event);
+  }
+
+  assertionFailed(assertId: string, info: { expr: string; module: string; values: Record<string, any> }): void {
+    const event: GraphEvent = {
+      type: 'assertion-failed',
+      nodeId: assertId,
+      timestamp: Date.now(),
+      assertInfo: info,
+    };
+    if (this.events.length >= EVENT_BUFFER_SIZE) this.events.shift();
+    this.events.push(event);
+    for (const listener of this.listeners) listener(event);
+    console.warn(`[Comb] Assertion failed: ${info.expr}`, info.values);
   }
 
   subscribe(listener: (event: GraphEvent) => void): () => void {

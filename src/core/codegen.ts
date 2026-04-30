@@ -3,7 +3,7 @@
 
 import type {
   Module, Declaration, SignalDecl, CombDecl, AlwaysBlock,
-  ViewBlock, EnumDecl, Statement, SignalAssign, IfStatement,
+  ViewBlock, EnumDecl, AssertDecl, Statement, SignalAssign, IfStatement,
   ExprStatement, VNode, VElement, VText, VExpr, VIf, VFor,
   VComponent, VAttr, Expr,
 } from './ast.js';
@@ -18,6 +18,7 @@ interface GenContext {
   indent: number;
   elCount: number;
   txtCount: number;
+  assertCount: number;
 }
 
 function createContext(mod: Module): GenContext {
@@ -30,6 +31,7 @@ function createContext(mod: Module): GenContext {
     indent: 1,
     elCount: 0,
     txtCount: 0,
+    assertCount: 0,
   };
   for (const decl of mod.body) {
     if (decl.kind === 'signal') ctx.signals.add(decl.name);
@@ -74,6 +76,38 @@ export function generate(mod: Module, graph: StaticGraph): string {
 
   lines.push('  return { dispose: __scope.dispose };');
   lines.push('}');
+  lines.push('');
+
+  // __test export — headless factory with signal/comb access, no view
+  lines.push(`export function __test() {`);
+  lines.push(`  const $m = '${mod.name}';`);
+  lines.push(`  circuit.loadStaticGraph(__graph);`);
+  lines.push(`  const __scope = createScope();`);
+  lines.push('');
+
+  const signalNames: string[] = [];
+  const combNames: string[] = [];
+  const testCtx = { ...ctx, indent: 1, elCount: 0, txtCount: 0, assertCount: 0 };
+
+  for (const decl of mod.body) {
+    if (decl.kind === 'signal' || decl.kind === 'comb' || decl.kind === 'enum' || decl.kind === 'assert') {
+      lines.push(...emitDecl(decl, testCtx));
+      lines.push('');
+      if (decl.kind === 'signal') signalNames.push(decl.name);
+      if (decl.kind === 'comb') combNames.push(decl.name);
+    }
+  }
+
+  // Build return object
+  const signalEntries = signalNames.map(n => `${n}: { get: ${n}, set: set${capitalize(n)} }`).join(', ');
+  const combEntries = combNames.map(n => `${n}`).join(', ');
+  lines.push(`  return {`);
+  lines.push(`    signals: { ${signalEntries} },`);
+  lines.push(`    combs: { ${combEntries} },`);
+  lines.push(`    dispose: __scope.dispose,`);
+  lines.push(`  };`);
+  lines.push('}');
+
   return lines.join('\n');
 }
 
@@ -86,6 +120,7 @@ function emitDecl(decl: Declaration, ctx: GenContext): string[] {
     case 'always': return emitAlways(decl, ctx);
     case 'view': return emitView(decl, ctx);
     case 'enum': return emitEnum(decl, ctx);
+    case 'assert': return emitAssert(decl, ctx);
   }
 }
 
@@ -132,6 +167,27 @@ function emitAlways(decl: AlwaysBlock, ctx: GenContext): string[] {
   lines.push(`${i}  });`);
   lines.push(`${i}}`);
   return lines;
+}
+
+function emitAssert(decl: AssertDecl, ctx: GenContext): string[] {
+  const i = ind(ctx);
+  const idx = ctx.assertCount++;
+  const assertId = `assert:${idx}`;
+  const exprStr = emitExpr(decl.expr, ctx);
+  const exprSource = exprStr.replace(/\(\)/g, '');
+  const valuesEntries = decl.deps.map(d => `${d}: ${d}()`).join(', ');
+  return [
+    `${i}createEffect(() => {`,
+    `${i}  const __ok = ${exprStr};`,
+    `${i}  if (!__ok) {`,
+    `${i}    circuit.assertionFailed('${assertId}', {`,
+    `${i}      expr: '${escapeStr(exprSource)}',`,
+    `${i}      module: $m,`,
+    `${i}      values: { ${valuesEntries} },`,
+    `${i}    });`,
+    `${i}  }`,
+    `${i}}, { name: '${assertId}', module: $m });`,
+  ];
 }
 
 // Statements

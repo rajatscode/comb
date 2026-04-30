@@ -8,7 +8,7 @@ export interface StaticGraph {
 export interface GraphNode {
   id: string;
   name: string;
-  type: 'signal' | 'comb' | 'event' | 'view-binding';
+  type: 'signal' | 'comb' | 'event' | 'view-binding' | 'assert';
 }
 
 export interface GraphEdge {

@@ -3,7 +3,7 @@
 import { Token, TokenType } from './lexer.js';
 import type {
   Module, Param, Declaration, SignalDecl, CombDecl, AlwaysBlock,
-  ViewBlock, EnumDecl, EventTrigger, Statement, SignalAssign,
+  ViewBlock, EnumDecl, AssertDecl, EventTrigger, Statement, SignalAssign,
   IfStatement, ExprStatement, VNode, VElement, VText, VExpr, VIf, VFor,
   VComponent, VAttr, Expr, Literal, Identifier, BinaryExpr, UnaryExpr,
   TernaryExpr, CallExpr, MemberExpr, IndexExpr, ArrayExpr, ObjectExpr,
@@ -145,6 +145,7 @@ class Parser {
       case TokenType.Always: return this.parseAlwaysBlock();
       case TokenType.View: return this.parseViewBlock();
       case TokenType.Enum: return this.parseEnumDecl();
+      case TokenType.Assert: return this.parseAssertDecl();
       default: this.error(`Unexpected token '${t.value}' in module body, expected declaration`);
     }
   }
@@ -220,6 +221,19 @@ class Parser {
     }
     this.expect(TokenType.RBrace, 'enum body end');
     return { kind: 'enum', name, variants, loc };
+  }
+
+  private parseAssertDecl(): AssertDecl {
+    const loc = this.loc();
+    this.expect(TokenType.Assert);
+    let mode: 'always' | 'once' = 'once';
+    if (this.check(TokenType.Always)) {
+      this.advance();
+      mode = 'always';
+    }
+    const expr = this.parseExpr();
+    this.expect(TokenType.Semicolon, 'assert declaration');
+    return { kind: 'assert', mode, expr, deps: [], loc };
   }
 
   // Statements

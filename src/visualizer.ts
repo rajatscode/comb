@@ -30,6 +30,7 @@ const COLORS: Record<string, string> = {
   event: '#ff9f43',
   'view-binding': '#c084fc',
   effect: '#c084fc',
+  assert: '#ff6b6b',
 };
 
 export function renderCircuitGraph(
@@ -71,6 +72,7 @@ function buildLayout(
   const columns: Record<string, StaticNode[]> = {
     signal: [],
     comb: [],
+    assert: [],
     event: [],
     'view-binding': [],
   };
@@ -78,7 +80,7 @@ function buildLayout(
     (columns[node.type] ?? columns['event']).push(node);
   }
 
-  const colOrder = ['signal', 'comb', 'event', 'view-binding'];
+  const colOrder = ['signal', 'comb', 'assert', 'event', 'view-binding'];
   const activeCols = colOrder.filter(c => columns[c].length > 0);
 
   // Compute layout — fit all columns within container
@@ -253,7 +255,7 @@ function buildLayout(
     const x = PAD_X + ci * (NODE_W + COL_GAP);
     const header = document.createElement('div');
     header.className = 'circuit-col-header';
-    header.textContent = colType === 'view-binding' ? 'VIEW' : colType.toUpperCase() + 'S';
+    header.textContent = colType === 'view-binding' ? 'VIEW' : colType === 'assert' ? 'ASSERTS' : colType.toUpperCase() + 'S';
     header.style.position = 'absolute';
     header.style.left = `${x}px`;
     header.style.top = '4px';

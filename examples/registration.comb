@@ -14,6 +14,9 @@ module RegistrationForm {
   comb strengthLabel = passwordLength < 4 ? "weak" : passwordLength < 7 ? "medium" : "strong";
   comb submitLabel = canSubmit ? "Create Account" : "Fill all fields";
 
+  assert always (len(username) >= 0);
+  assert canSubmit == (usernameValid && emailValid && passwordStrong && passwordsMatch);
+
   always @(submit) {
   }
 

@@ -27,7 +27,8 @@ export type Declaration =
   | CombDecl
   | AlwaysBlock
   | ViewBlock
-  | EnumDecl;
+  | EnumDecl
+  | AssertDecl;
 
 export interface SignalDecl {
   kind: 'signal';
@@ -64,6 +65,14 @@ export interface EnumDecl {
   kind: 'enum';
   name: string;
   variants: string[];
+  loc: SourceLoc;
+}
+
+export interface AssertDecl {
+  kind: 'assert';
+  mode: 'always' | 'once';
+  expr: Expr;
+  deps: string[]; // filled by verification pass
   loc: SourceLoc;
 }
 

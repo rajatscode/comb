@@ -1,4 +1,5 @@
 import { circuit } from './runtime/index.js';
+import { batch } from './runtime/index.js';
 import { renderCircuitGraph } from './visualizer.js';
 
 const app = document.getElementById('app')!;
@@ -38,7 +39,7 @@ function loadDemo(name: string) {
 }
 
 async function loadRegistration() {
-  const { RegistrationForm, __graph } = await import('./generated/registration.js');
+  const { RegistrationForm, __graph, __test } = await import('./generated/registration.js');
 
   // Split layout
   const paneApp = document.createElement('div');
@@ -73,9 +74,114 @@ async function loadRegistration() {
   `;
   formWrapper.appendChild(errorPanel);
 
+  // Coverage heatmap
+  const coveragePanel = document.createElement('div');
+  coveragePanel.className = 'coverage-panel';
+  const coverageTitle = document.createElement('h3');
+  coverageTitle.textContent = 'Validation Coverage Heatmap';
+  coveragePanel.appendChild(coverageTitle);
+
+  const boolCombs = ['usernameValid', 'emailValid', 'passwordStrong', 'passwordsMatch'];
+  const hitSet = new Set<number>();
+
+  // Heatmap grid
+  const heatmapContainer = document.createElement('div');
+  heatmapContainer.className = 'heatmap-container';
+
+  // Labels
+  const labelRow = document.createElement('div');
+  labelRow.className = 'heatmap-labels';
+  labelRow.innerHTML = boolCombs.map(n => `<span>${n.replace('Valid', 'V').replace('Strong', 'S').replace('Match', 'M').replace('password', 'pw').replace('username', 'user').replace('email', 'em')}</span>`).join('');
+  heatmapContainer.appendChild(labelRow);
+
+  const grid = document.createElement('div');
+  grid.className = 'heatmap-grid';
+  const cells: HTMLDivElement[] = [];
+  for (let i = 0; i < 16; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'heatmap-cell';
+    cell.title = boolCombs.map((n, bit) => `${n}: ${(i >> (3 - bit)) & 1 ? 'T' : 'F'}`).join('\n');
+    cells.push(cell);
+    grid.appendChild(cell);
+  }
+  heatmapContainer.appendChild(grid);
+
+  const countLabel = document.createElement('div');
+  countLabel.className = 'heatmap-count';
+  countLabel.textContent = '0 / 16 combinations hit';
+  heatmapContainer.appendChild(countLabel);
+
+  coveragePanel.appendChild(heatmapContainer);
+
+  function updateHeatmap() {
+    for (let i = 0; i < 16; i++) {
+      cells[i].className = `heatmap-cell ${hitSet.has(i) ? 'hit' : ''}`;
+    }
+    countLabel.textContent = `${hitSet.size} / 16 combinations hit`;
+  }
+
+  function recordCombination() {
+    const moduleNodes = circuit.getNodes().filter(n => n.module === 'RegistrationForm');
+    let combo = 0;
+    for (let bit = 0; bit < boolCombs.length; bit++) {
+      const node = moduleNodes.find(n => n.name === boolCombs[bit]);
+      if (node?.getValue && node.getValue()) combo |= (1 << (3 - bit));
+    }
+    hitSet.add(combo);
+    updateHeatmap();
+  }
+
+  // Subscribe to circuit events to record combinations
+  const unsub = circuit.subscribe(() => { recordCombination(); });
+  // Record initial state
+  setTimeout(recordCombination, 100);
+
+  // Auto-test button
+  const autoBtn = document.createElement('button');
+  autoBtn.className = 'auto-test-btn';
+  autoBtn.textContent = 'Auto-Test (1000 random inputs)';
+  autoBtn.addEventListener('click', () => {
+    autoBtn.disabled = true;
+    autoBtn.textContent = 'Running...';
+    setTimeout(() => {
+      const t = __test();
+      const chars = 'abcdefghijklmnopqrstuvwxyz0123456789@.!#';
+      function randomString(len: number): string {
+        let s = '';
+        for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)];
+        return s;
+      }
+      for (let i = 0; i < 1000; i++) {
+        batch(() => {
+          t.signals.username.set(randomString(Math.floor(Math.random() * 10)));
+          t.signals.email.set(randomString(Math.floor(Math.random() * 20)));
+          const pw = randomString(Math.floor(Math.random() * 12));
+          t.signals.password.set(pw);
+          t.signals.confirm.set(Math.random() > 0.5 ? pw : randomString(8));
+        });
+        // Record from test circuit
+        let combo = 0;
+        if (t.combs.usernameValid()) combo |= 8;
+        if (t.combs.emailValid()) combo |= 4;
+        if (t.combs.passwordStrong()) combo |= 2;
+        if (t.combs.passwordsMatch()) combo |= 1;
+        hitSet.add(combo);
+      }
+      t.dispose();
+      updateHeatmap();
+      autoBtn.textContent = `Done — ${hitSet.size}/16 hit`;
+      autoBtn.disabled = false;
+    }, 10);
+  });
+  coveragePanel.appendChild(autoBtn);
+  formWrapper.appendChild(coveragePanel);
+
   renderCircuitGraph(paneCircuit, __graph as any, circuit);
 
-  currentDispose = () => { result.dispose(); };
+  currentDispose = () => {
+    unsub();
+    result.dispose();
+  };
 }
 
 async function loadTicker() {
