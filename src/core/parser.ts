@@ -2,8 +2,8 @@
 
 import { Token, TokenType } from './lexer.js';
 import type {
-  Module, Param, Declaration, SignalDecl, CombDecl, AlwaysBlock,
-  ViewBlock, EnumDecl, AssertDecl, EventTrigger, Statement, SignalAssign,
+  Module, Param, Declaration, SignalDecl, TokenDecl, CombDecl, AlwaysBlock,
+  ViewBlock, StyleBlock, EnumDecl, AssertDecl, EventTrigger, Statement, SignalAssign,
   IfStatement, ExprStatement, VNode, VElement, VText, VExpr, VIf, VFor,
   VComponent, VAttr, Expr, Literal, Identifier, BinaryExpr, UnaryExpr,
   TernaryExpr, CallExpr, MemberExpr, IndexExpr, ArrayExpr, ObjectExpr,
@@ -141,9 +141,11 @@ class Parser {
     const t = this.peek();
     switch (t.type) {
       case TokenType.Signal: return this.parseSignalDecl();
+      case TokenType.Token: return this.parseTokenDecl();
       case TokenType.Comb: return this.parseCombDecl();
       case TokenType.Always: return this.parseAlwaysBlock();
       case TokenType.View: return this.parseViewBlock();
+      case TokenType.Style: return this.parseStyleBlock();
       case TokenType.Enum: return this.parseEnumDecl();
       case TokenType.Assert: return this.parseAssertDecl();
       default: this.error(`Unexpected token '${t.value}' in module body, expected declaration`);
@@ -160,6 +162,18 @@ class Parser {
     const initial = this.parseExpr();
     this.expect(TokenType.Semicolon, 'signal declaration');
     return { kind: 'signal', name, type, initial, loc };
+  }
+
+  private parseTokenDecl(): TokenDecl {
+    const loc = this.loc();
+    this.expect(TokenType.Token);
+    const name = this.expect(TokenType.Identifier, 'token name').value;
+    this.expect(TokenType.Colon, 'token type');
+    const type = this.parseType();
+    this.expect(TokenType.Assign, 'token initializer');
+    const initial = this.parseExpr();
+    this.expect(TokenType.Semicolon, 'token declaration');
+    return { kind: 'token', name, type, initial, loc };
   }
 
   private parseCombDecl(): CombDecl {
@@ -226,6 +240,15 @@ class Parser {
     }
     this.expect(TokenType.RBrace, 'view block end');
     return { kind: 'view', children, loc };
+  }
+
+  private parseStyleBlock(): StyleBlock {
+    const loc = this.loc();
+    this.expect(TokenType.Style);
+    this.expect(TokenType.LBrace, 'style block');
+    const css = this.check(TokenType.String) ? this.advance().value : '';
+    this.expect(TokenType.RBrace, 'style block end');
+    return { kind: 'style', css, loc };
   }
 
   private parseEnumDecl(): EnumDecl {

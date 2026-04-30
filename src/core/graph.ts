@@ -9,6 +9,7 @@ export interface GraphNode {
   id: string;
   name: string;
   type: 'signal' | 'comb' | 'event' | 'sensitivity' | 'view-binding' | 'assert';
+  isToken?: boolean;
 }
 
 export interface GraphEdge {

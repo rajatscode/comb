@@ -33,6 +33,7 @@ export function verify(mod: Module): VerifyResult {
   // 1. Build symbol table
   for (const decl of mod.body) {
     if (decl.kind === 'signal') symbols.set(decl.name, 'signal');
+    if (decl.kind === 'token') symbols.set(decl.name, 'signal'); // tokens are signals
     if (decl.kind === 'comb') symbols.set(decl.name, 'comb');
     if (decl.kind === 'enum') {
       symbols.set(decl.name, 'enum');
@@ -293,6 +294,9 @@ function buildGraph(mod: Module, symbols: Map<string, SymbolKind>): StaticGraph 
   for (const decl of mod.body) {
     if (decl.kind === 'signal') {
       nodes.push({ id: decl.name, name: decl.name, type: 'signal' });
+    }
+    if (decl.kind === 'token') {
+      nodes.push({ id: decl.name, name: decl.name, type: 'signal', isToken: true });
     }
     if (decl.kind === 'comb') {
       nodes.push({ id: decl.name, name: decl.name, type: 'comb' });

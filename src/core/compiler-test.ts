@@ -293,5 +293,79 @@ module Sync {
   assert(!result.js!.includes('function sense_a'), 'Should not generate a function declaration for sensitivity block');
 });
 
+// Test 15: token declaration — compiles to signal + CSS custom property effect
+test('token declaration — signal + CSS custom property', () => {
+  const source = `
+module Theme {
+  token primary: color = "#0052CC";
+  token radius: length = "8px";
+  comb info = primary;
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('createSignal("#0052CC"'), 'Should create signal for token');
+  assert(js.includes("setProperty('--primary'"), 'Should set CSS custom property --primary');
+  assert(js.includes("setProperty('--radius'"), 'Should set CSS custom property --radius');
+  assert(js.includes("token:primary"), 'Should name effect token:primary');
+
+  // Token should appear as signal in graph with isToken
+  const graph = result.graph!;
+  const primaryNode = graph.nodes.find(n => n.name === 'primary');
+  assert(primaryNode !== undefined, 'Expected primary node in graph');
+  assert(primaryNode!.type === 'signal', 'Token should be signal type in graph');
+  assert(primaryNode!.isToken === true, 'Token node should have isToken flag');
+
+  // Comb should depend on token (treated as signal)
+  const ast = result.ast!;
+  const infoComb = ast.body.find(d => d.kind === 'comb' && d.name === 'info') as any;
+  assert(infoComb.deps.includes('primary'), 'Comb should depend on token');
+});
+
+// Test 16: scoped style block — CSS scoping with hash
+test('scoped style block — CSS class scoping', () => {
+  const source = `
+module Button {
+  style {
+    .btn { padding: 8px; }
+    .btn:hover { background: blue; }
+  }
+  view {
+    <button class="btn">Click</button>
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  // Style should be injected
+  assert(js.includes("document.createElement('style')"), 'Should create style element');
+  assert(js.includes('document.head.appendChild(__style)'), 'Should append style to head');
+
+  // CSS classes should be scoped with hash
+  assert(js.includes('.btn_'), 'CSS should have scoped .btn_ class');
+
+  // View class attribute should also be scoped
+  assert(js.includes("'class', 'btn_"), 'View class attr should be scoped');
+});
+
+// Test 17: token in always block — writable like signal
+test('token writable in always block', () => {
+  const source = `
+module Theme {
+  token accent: color = "#ff0000";
+  always @(setAccent(color)) {
+    accent <= color;
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('setAccent'), 'Should have setAccent event handler');
+  assert(js.includes('setAccent(color)'), 'Should accept color param');
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

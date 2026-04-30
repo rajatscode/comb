@@ -2,8 +2,8 @@
 // Emits readable ES module JavaScript targeting the Comb runtime API
 
 import type {
-  Module, Declaration, SignalDecl, CombDecl, AlwaysBlock,
-  ViewBlock, EnumDecl, AssertDecl, Statement, SignalAssign, IfStatement,
+  Module, Declaration, SignalDecl, TokenDecl, CombDecl, AlwaysBlock,
+  ViewBlock, StyleBlock, EnumDecl, AssertDecl, Statement, SignalAssign, IfStatement,
   ExprStatement, VNode, VElement, VText, VExpr, VIf, VFor,
   VComponent, VAttr, Expr,
 } from './ast.js';
@@ -19,6 +19,16 @@ interface GenContext {
   elCount: number;
   txtCount: number;
   assertCount: number;
+  scopeHash: string;
+  hasStyle: boolean;
+}
+
+function simpleHash(str: string): string {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h).toString(36).slice(0, 5);
 }
 
 function createContext(mod: Module): GenContext {
@@ -32,9 +42,12 @@ function createContext(mod: Module): GenContext {
     elCount: 0,
     txtCount: 0,
     assertCount: 0,
+    scopeHash: simpleHash(mod.name),
+    hasStyle: mod.body.some(d => d.kind === 'style'),
   };
   for (const decl of mod.body) {
     if (decl.kind === 'signal') ctx.signals.add(decl.name);
+    if (decl.kind === 'token') ctx.signals.add(decl.name); // tokens are reactive signals
     if (decl.kind === 'comb') ctx.combs.add(decl.name);
     if (decl.kind === 'enum') ctx.enums.set(decl.name, decl.variants);
   }
@@ -42,6 +55,7 @@ function createContext(mod: Module): GenContext {
   return ctx;
 }
 
+function hasStyleBlock(ctx: GenContext): boolean { return ctx.hasStyle; }
 function ind(ctx: GenContext): string { return '  '.repeat(ctx.indent); }
 function nextEl(ctx: GenContext): string { return `el${ctx.elCount++}`; }
 function nextTxt(ctx: GenContext): string { return `txt${ctx.txtCount++}`; }
@@ -90,10 +104,10 @@ export function generate(mod: Module, graph: StaticGraph): string {
   const testCtx = { ...ctx, indent: 1, elCount: 0, txtCount: 0, assertCount: 0 };
 
   for (const decl of mod.body) {
-    if (decl.kind === 'signal' || decl.kind === 'comb' || decl.kind === 'enum' || decl.kind === 'assert') {
+    if (decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'comb' || decl.kind === 'enum' || decl.kind === 'assert') {
       lines.push(...emitDecl(decl, testCtx));
       lines.push('');
-      if (decl.kind === 'signal') signalNames.push(decl.name);
+      if (decl.kind === 'signal' || decl.kind === 'token') signalNames.push(decl.name);
       if (decl.kind === 'comb') combNames.push(decl.name);
     }
   }
@@ -116,9 +130,11 @@ export function generate(mod: Module, graph: StaticGraph): string {
 function emitDecl(decl: Declaration, ctx: GenContext): string[] {
   switch (decl.kind) {
     case 'signal': return emitSignal(decl, ctx);
+    case 'token': return emitToken(decl, ctx);
     case 'comb': return emitComb(decl, ctx);
     case 'always': return emitAlways(decl, ctx);
     case 'view': return emitView(decl, ctx);
+    case 'style': return emitStyle(decl, ctx);
     case 'enum': return emitEnum(decl, ctx);
     case 'assert': return emitAssert(decl, ctx);
   }
@@ -133,6 +149,23 @@ function emitSignal(decl: SignalDecl, ctx: GenContext): string[] {
     ? `{ name: '${decl.name}', module: $m, type: '${typeName}' }`
     : `{ name: '${decl.name}', module: $m }`;
   return [`${i}const [${decl.name}, ${setter}] = createSignal(${init}, ${meta});`];
+}
+
+function emitToken(decl: TokenDecl, ctx: GenContext): string[] {
+  const i = ind(ctx);
+  const init = emitExpr(decl.initial, ctx);
+  const setter = 'set' + capitalize(decl.name);
+  const typeName = decl.type.kind === 'simple' ? decl.type.name : undefined;
+  const meta = typeName
+    ? `{ name: '${decl.name}', module: $m, type: '${typeName}' }`
+    : `{ name: '${decl.name}', module: $m }`;
+  const cssVar = `--${decl.name.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
+  return [
+    `${i}const [${decl.name}, ${setter}] = createSignal(${init}, ${meta});`,
+    `${i}createEffect(() => {`,
+    `${i}  document.documentElement.style.setProperty('${cssVar}', String(${decl.name}()));`,
+    `${i}}, { name: 'token:${decl.name}', module: $m });`,
+  ];
 }
 
 function emitComb(decl: CombDecl, ctx: GenContext): string[] {
@@ -282,6 +315,19 @@ function emitView(decl: ViewBlock, ctx: GenContext): string[] {
   return lines;
 }
 
+function emitStyle(decl: StyleBlock, ctx: GenContext): string[] {
+  const i = ind(ctx);
+  const hash = ctx.scopeHash;
+  // Scope class names: .foo → .foo_hash
+  const scopedCss = decl.css.replace(/\.([a-zA-Z_][\w-]*)/g, `.$1_${hash}`);
+  const escaped = escapeStr(scopedCss);
+  return [
+    `${i}const __style = document.createElement('style');`,
+    `${i}__style.textContent = '${escaped}';`,
+    `${i}document.head.appendChild(__style);`,
+  ];
+}
+
 function emitVNode(node: VNode, parent: string, ctx: GenContext): string[] {
   switch (node.kind) {
     case 'element': return emitVElement(node, parent, ctx);
@@ -306,7 +352,11 @@ function emitVElement(node: VElement, parent: string, ctx: GenContext): string[]
       lines.push(...emitBindAttr(attr, v, ctx));
     } else if (attr.value) {
       if (attr.value.kind === 'literal' && attr.value.type === 'string') {
-        lines.push(`${i}${v}.setAttribute('${attr.name}', '${escapeStr(String(attr.value.value))}');`);
+        let attrVal = String(attr.value.value);
+        if (attr.name === 'class' && hasStyleBlock(ctx)) {
+          attrVal = attrVal.split(/\s+/).map(c => `${c}_${ctx.scopeHash}`).join(' ');
+        }
+        lines.push(`${i}${v}.setAttribute('${attr.name}', '${escapeStr(attrVal)}');`);
       } else if (isReactive(attr.value, ctx)) {
         lines.push(`${i}createEffect(() => { ${v}.setAttribute('${attr.name}', ${emitExpr(attr.value, ctx)}); }, { name: 'attr:${attr.name}', module: $m });`);
       } else {

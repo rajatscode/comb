@@ -24,14 +24,24 @@ export interface Param {
 
 export type Declaration =
   | SignalDecl
+  | TokenDecl
   | CombDecl
   | AlwaysBlock
   | ViewBlock
+  | StyleBlock
   | EnumDecl
   | AssertDecl;
 
 export interface SignalDecl {
   kind: 'signal';
+  name: string;
+  type: TypeExpr;
+  initial: Expr;
+  loc: SourceLoc;
+}
+
+export interface TokenDecl {
+  kind: 'token';
   name: string;
   type: TypeExpr;
   initial: Expr;
@@ -59,6 +69,12 @@ export interface AlwaysBlock {
 export interface ViewBlock {
   kind: 'view';
   children: VNode[];
+  loc: SourceLoc;
+}
+
+export interface StyleBlock {
+  kind: 'style';
+  css: string;
   loc: SourceLoc;
 }
 

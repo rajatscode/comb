@@ -11,6 +11,8 @@ export enum TokenType {
   Enum = 'enum',
   If = 'if',
   Else = 'else',
+  Token = 'token',
+  Style = 'style',
   Assert = 'assert',
   In = 'in',
   True = 'true',
@@ -82,6 +84,8 @@ const KEYWORDS: Record<string, TokenType> = {
   signal: TokenType.Signal,
   comb: TokenType.Comb,
   always: TokenType.Always,
+  token: TokenType.Token,
+  style: TokenType.Style,
   assert: TokenType.Assert,
   view: TokenType.View,
   enum: TokenType.Enum,
@@ -504,6 +508,27 @@ export function tokenize(source: string): Token[] {
             tokens.push(tok(TokenType.LBrace, '{', line, col - 1));
             inViewBlock = true;
             viewBraceDepth = 1;
+          }
+        }
+        if (kwType === TokenType.Style) {
+          skipWhitespace();
+          if (peek() === '{') {
+            advance();
+            tokens.push(tok(TokenType.LBrace, '{', line, col - 1));
+            // Read raw CSS content until matching '}'
+            let css = '';
+            let depth = 1;
+            while (pos < source.length && depth > 0) {
+              const c = peek();
+              if (c === '{') depth++;
+              if (c === '}') { depth--; if (depth === 0) break; }
+              css += advance();
+            }
+            tokens.push(tok(TokenType.String, css.trim(), line, col));
+            if (peek() === '}') {
+              advance();
+              tokens.push(tok(TokenType.RBrace, '}', line, col - 1));
+            }
           }
         }
       } else {
