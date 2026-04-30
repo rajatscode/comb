@@ -767,10 +767,10 @@ function showLanding() {
       // CPU: event loop latency (real)
       const cpu = await measureCpuLoad();
 
-      // Memory: JS heap as % of total allocated (not limit — limit is huge)
+      // Memory: JS heap as % of total allocated, clamped to 100
       const perfMem = (performance as any).memory;
       const mem = perfMem
-        ? (perfMem.usedJSHeapSize / perfMem.totalJSHeapSize) * 100
+        ? Math.min(100, (perfMem.usedJSHeapSize / perfMem.totalJSHeapSize) * 100)
         : 40 + Math.random() * 15;
 
       // Network: measure real fetch latency as a throughput proxy
@@ -785,13 +785,21 @@ function showLanding() {
         net = conn?.downlink ?? 10;
       }
 
-      // Storage: real disk usage
+      // Storage: measure localStorage + sessionStorage + cache size in KB
       let disk = 0;
       try {
-        const est = await navigator.storage?.estimate?.();
-        if (est && est.quota && est.usage) {
-          disk = (est.usage / est.quota) * 100;
+        let totalBytes = 0;
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i)!;
+          totalBytes += key.length + (localStorage.getItem(key)?.length ?? 0);
         }
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const key = sessionStorage.key(i)!;
+          totalBytes += key.length + (sessionStorage.getItem(key)?.length ?? 0);
+        }
+        // Also count performance entries as a proxy for cached resources
+        totalBytes += performance.getEntriesByType('resource').length * 1024;
+        disk = Math.round(totalBytes / 1024); // KB
       } catch {}
 
       cpuHist.push(cpu);

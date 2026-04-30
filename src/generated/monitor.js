@@ -530,7 +530,7 @@ export function Monitor(root) {
 
   const [memThreshold, setMemThreshold] = createSignal(85, { name: 'memThreshold', module: $m });
 
-  const [diskThreshold, setDiskThreshold] = createSignal(90, { name: 'diskThreshold', module: $m });
+  const [diskThreshold, setDiskThreshold] = createSignal(500, { name: 'diskThreshold', module: $m });
 
   const [lastAlert, setLastAlert] = createSignal("", { name: 'lastAlert', module: $m });
 
@@ -595,13 +595,13 @@ export function Monitor(root) {
 
   createEdgeEffect(() => diskHigh(), 'posedge', () => {
     batch(() => {
-      setLastAlert("Disk exceeded threshold");
+      setLastAlert("Storage exceeded threshold");
     });
   }, { name: 'posedge_diskHigh', module: $m });
 
   createEdgeEffect(() => diskHigh(), 'negedge', () => {
     batch(() => {
-      setLastAlert("Disk recovered");
+      setLastAlert("Storage recovered");
     });
   }, { name: 'negedge_diskHigh', module: $m });
 
@@ -653,13 +653,13 @@ export function Monitor(root) {
   el10.setAttribute('class', 'metric');
   const el11 = document.createElement('span');
   el11.setAttribute('class', 'metric-label');
-  const txt6 = document.createTextNode('Disk');
+  const txt6 = document.createTextNode('Storage');
   el11.appendChild(txt6);
   el10.appendChild(el11);
   const el12 = document.createElement('span');
   el12.setAttribute('class', 'metric-value');
   const txt7 = document.createTextNode('');
-  createEffect(() => { txt7.data = String((Math.round(disk()) + "%")); }, { name: 'view:round', module: $m, viewTarget: { element: 'span.metric-value', binding: 'text' } });
+  createEffect(() => { txt7.data = String((Math.round(disk()) + " KB")); }, { name: 'view:round', module: $m, viewTarget: { element: 'span.metric-value', binding: 'text' } });
   el12.appendChild(txt7);
   el10.appendChild(el12);
   el1.appendChild(el10);
@@ -681,7 +681,7 @@ export function Monitor(root) {
   const el16 = document.createElement('p');
   createEffect(() => { el16.setAttribute('class', (anyAlert() ? "status-alert" : "status-ok")); }, { name: 'view:attr:anyAlert', module: $m, viewTarget: { element: 'p', binding: 'attr:class' } });
   const txt10 = document.createTextNode('');
-  createEffect(() => { txt10.data = String((anyAlert() ? ((((cpuHigh() ? "CPU " : "") + (memHigh() ? "MEM " : "")) + (diskHigh() ? "DISK " : "")) + "alert") : "All systems normal")); }, { name: 'view:anyAlert', module: $m, viewTarget: { element: 'p', binding: 'text' } });
+  createEffect(() => { txt10.data = String((anyAlert() ? ((((cpuHigh() ? "CPU " : "") + (memHigh() ? "MEM " : "")) + (diskHigh() ? "STORAGE " : "")) + "alert") : "All systems normal")); }, { name: 'view:anyAlert', module: $m, viewTarget: { element: 'p', binding: 'text' } });
   el16.appendChild(txt10);
   el0.appendChild(el16);
   const el17 = document.createElement('p');
@@ -720,12 +720,12 @@ export function Monitor(root) {
   el18.appendChild(el21);
   const el23 = document.createElement('label');
   const txt14 = document.createTextNode('');
-  createEffect(() => { txt14.data = String((("DISK: " + Math.round(diskThreshold())) + "%")); }, { name: 'view:round', module: $m, viewTarget: { element: 'label', binding: 'text' } });
+  createEffect(() => { txt14.data = String((("STORAGE: " + Math.round(diskThreshold())) + "KB")); }, { name: 'view:round', module: $m, viewTarget: { element: 'label', binding: 'text' } });
   el23.appendChild(txt14);
   const el24 = document.createElement('input');
   el24.setAttribute('type', 'range');
   el24.setAttribute('min', '0');
-  el24.setAttribute('max', '100');
+  el24.setAttribute('max', '2000');
   el24.value = diskThreshold();
   createEffect(() => { el24.value = diskThreshold(); }, { name: 'view:bind:diskThreshold', module: $m, viewTarget: { element: 'input', binding: 'bind:value' } });
   el24.addEventListener('input', (e) => { setDiskThreshold(Number(e.target.value)); });
@@ -758,7 +758,7 @@ export function __test() {
 
   const [memThreshold, setMemThreshold] = createSignal(85, { name: 'memThreshold', module: $m });
 
-  const [diskThreshold, setDiskThreshold] = createSignal(90, { name: 'diskThreshold', module: $m });
+  const [diskThreshold, setDiskThreshold] = createSignal(500, { name: 'diskThreshold', module: $m });
 
   const [lastAlert, setLastAlert] = createSignal("", { name: 'lastAlert', module: $m });
 

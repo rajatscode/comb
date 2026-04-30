@@ -7,7 +7,7 @@ module Monitor {
   signal memAvg = 40.0;
   signal cpuThreshold = 40.0;
   signal memThreshold = 85.0;
-  signal diskThreshold = 90.0;
+  signal diskThreshold = 500.0;
   signal lastAlert = "";
 
   comb cpuHigh = cpuAvg > cpuThreshold;
@@ -23,8 +23,8 @@ module Monitor {
   always @(negedge cpuHigh) { lastAlert <= "CPU recovered"; }
   always @(posedge memHigh) { lastAlert <= "Memory exceeded threshold"; }
   always @(negedge memHigh) { lastAlert <= "Memory recovered"; }
-  always @(posedge diskHigh) { lastAlert <= "Disk exceeded threshold"; }
-  always @(negedge diskHigh) { lastAlert <= "Disk recovered"; }
+  always @(posedge diskHigh) { lastAlert <= "Storage exceeded threshold"; }
+  always @(negedge diskHigh) { lastAlert <= "Storage recovered"; }
 
   view {
     <div class="monitor">
@@ -40,8 +40,8 @@ module Monitor {
           <span class="metric-detail">{"avg " + round(memAvg) + "%"}</span>
         </div>
         <div class="metric">
-          <span class="metric-label">Disk</span>
-          <span class="metric-value">{round(disk) + "%"}</span>
+          <span class="metric-label">Storage</span>
+          <span class="metric-value">{round(disk) + " KB"}</span>
         </div>
         <div class="metric">
           <span class="metric-label">Network</span>
@@ -50,14 +50,14 @@ module Monitor {
       </div>
       <p class={anyAlert ? "status-alert" : "status-ok"}>
         {anyAlert
-          ? (cpuHigh ? "CPU " : "") + (memHigh ? "MEM " : "") + (diskHigh ? "DISK " : "") + "alert"
+          ? (cpuHigh ? "CPU " : "") + (memHigh ? "MEM " : "") + (diskHigh ? "STORAGE " : "") + "alert"
           : "All systems normal"}
       </p>
       <p class="alert-info">{"Alerts: " + str(alertCount) + " — " + lastAlert}</p>
       <div class="threshold-controls">
         <label>{"CPU: " + round(cpuThreshold) + "%"} <input type="range" min="0" max="100" @bind=cpuThreshold /></label>
         <label>{"MEM: " + round(memThreshold) + "%"} <input type="range" min="0" max="100" @bind=memThreshold /></label>
-        <label>{"DISK: " + round(diskThreshold) + "%"} <input type="range" min="0" max="100" @bind=diskThreshold /></label>
+        <label>{"STORAGE: " + round(diskThreshold) + "KB"} <input type="range" min="0" max="2000" @bind=diskThreshold /></label>
       </div>
     </div>
   }
