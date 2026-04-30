@@ -4,13 +4,15 @@
 import { createCell, createComb, createEffect, createPropagator, createScope, batch, circuit } from '../runtime/index.js';
 import { rgbToHsv, hsvToRgb, rgbToHex } from '../runtime/color.js';
 import { renderCircuitGraph } from '../visualizer.js';
+import { createDemoShell } from '../demo-shell.js';
 import type { StaticGraph } from '../core/graph.js';
 
 const MODULE = 'ColorPicker';
 
 export function mountColorPicker(root: HTMLElement): { dispose: () => void } {
-  root.style.display = 'flex';
-  root.style.flexDirection = 'row';
+  const shell = createDemoShell(root, { layout: 'split' });
+  const paneApp = shell.app;
+  const paneCircuit = shell.circuit;
 
   const scope = createScope();
 
@@ -41,14 +43,6 @@ export function mountColorPicker(root: HTMLElement): { dispose: () => void } {
   // Combs
   const hexColor = createComb(() => rgbToHex(r(), g(), b()), { name: 'hexColor', module: MODULE, deps: ['r', 'g', 'b'] });
   const preview = createComb(() => `rgb(${r()}, ${g()}, ${b()})`, { name: 'preview', module: MODULE, deps: ['r', 'g', 'b'] });
-
-  // --- DOM ---
-  const paneApp = document.createElement('div');
-  paneApp.className = 'pane pane-app';
-  const paneCircuit = document.createElement('div');
-  paneCircuit.className = 'pane pane-circuit';
-  root.appendChild(paneApp);
-  root.appendChild(paneCircuit);
 
   const wrapper = document.createElement('div');
   wrapper.className = 'form-wrapper color-picker';
@@ -158,6 +152,7 @@ export function mountColorPicker(root: HTMLElement): { dispose: () => void } {
   return {
     dispose: () => {
       scope.dispose();
+      shell.dispose();
     },
   };
 }

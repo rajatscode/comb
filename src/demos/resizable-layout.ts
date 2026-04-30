@@ -4,6 +4,7 @@
 import { Solver, Variable, Constraint, Expression, Operator, Strength } from 'kiwi.js';
 import { createCell, createEffect, createScope, batch, circuit } from '../runtime/index.js';
 import { renderCircuitGraph } from '../visualizer.js';
+import { createDemoShell } from '../demo-shell.js';
 import type { StaticGraph } from '../core/graph.js';
 
 const MODULE = 'ResizableLayout';
@@ -28,8 +29,6 @@ const __graph: StaticGraph = {
 };
 
 export function mountResizableLayout(root: HTMLElement): { dispose: () => void } {
-  root.style.display = 'flex';
-  root.style.flexDirection = 'row';
 
   const scope = createScope();
   circuit.loadStaticGraph(__graph);
@@ -89,14 +88,13 @@ export function mountResizableLayout(root: HTMLElement): { dispose: () => void }
   }, { name: 'solver', module: MODULE });
 
   // --- DOM ---
-  const layout = document.createElement('div');
-  layout.className = 'resizable-layout';
-  layout.style.width = '100%';
-
-  const paneApp = document.createElement('div');
-  paneApp.style.flex = '1';
-  paneApp.style.display = 'flex';
-  paneApp.style.flexDirection = 'column';
+  const shell = createDemoShell(root, {
+    layout: 'stacked',
+    title: 'Constraint-Based Layout',
+    description: 'Drag the dividers. Kiwi.js Cassowary solver enforces min/max widths and total = container.',
+  });
+  const paneApp = shell.app;
+  const paneCircuit = shell.circuit;
 
   const layoutContainer = document.createElement('div');
   layoutContainer.className = 'resizable-layout';
@@ -113,31 +111,12 @@ export function mountResizableLayout(root: HTMLElement): { dispose: () => void }
   layoutContainer.appendChild(div2);
   layoutContainer.appendChild(inspector);
 
-  // Title
-  const title = document.createElement('h2');
-  title.textContent = 'Constraint-Based Layout';
-  title.style.cssText = 'margin: 0 0 0.5rem; color: #e0e0e0; font-size: 1.2rem;';
-  paneApp.appendChild(title);
-
-  const desc = document.createElement('p');
-  desc.textContent = 'Drag the dividers. Kiwi.js Cassowary solver enforces min/max widths and total = container.';
-  desc.style.cssText = 'margin: 0 0 1rem; color: #888; font-size: 0.85rem;';
-  paneApp.appendChild(desc);
-
   paneApp.appendChild(layoutContainer);
 
   // Width readout
   const readout = document.createElement('div');
-  readout.style.cssText = 'margin-top: 0.75rem; font-family: monospace; font-size: 0.8rem; color: #888;';
+  readout.style.cssText = 'margin-top: 0.75rem; font-family: monospace; font-size: 0.8rem; color: #888; padding: 0 1rem;';
   paneApp.appendChild(readout);
-
-  const paneCircuit = document.createElement('div');
-  paneCircuit.className = 'pane pane-circuit';
-  paneCircuit.style.minHeight = '250px';
-
-  root.style.flexDirection = 'column';
-  root.appendChild(paneApp);
-  root.appendChild(paneCircuit);
 
   // --- Effects: bind cell values to DOM ---
   createEffect(() => {
@@ -213,6 +192,7 @@ export function mountResizableLayout(root: HTMLElement): { dispose: () => void }
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('mouseup', onMouseUp);
     scope.dispose();
+    shell.dispose();
   }
 
   return { dispose };

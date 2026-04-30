@@ -54,18 +54,23 @@ export function renderCircuitGraph(
   container.style.overflow = 'hidden';
 
   let unsub: (() => void) | undefined;
+  let ro: ResizeObserver | undefined;
 
-  // Build layout. If container has no dimensions yet, retry after a timeout.
-  function tryBuild() {
-    if (container.clientWidth > 0 && container.clientHeight > 0) {
-      buildLayout(container, graph, circuit, (u) => { unsub = u; }, highlights);
-    } else {
-      setTimeout(tryBuild, 50);
-    }
+  if (container.clientWidth > 0 && container.clientHeight > 0) {
+    buildLayout(container, graph, circuit, (u) => { unsub = u; }, highlights);
+  } else {
+    ro = new ResizeObserver((entries) => {
+      if (entries[0].contentRect.width > 0 && entries[0].contentRect.height > 0) {
+        ro!.disconnect();
+        ro = undefined;
+        buildLayout(container, graph, circuit, (u) => { unsub = u; }, highlights);
+      }
+    });
+    ro.observe(container);
   }
-  tryBuild();
 
   function dispose() {
+    ro?.disconnect();
     unsub?.();
     container.innerHTML = '';
   }
