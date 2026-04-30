@@ -8,34 +8,38 @@ const app = document.getElementById('app')!;
 
 // --- Framework code snippets (edge-detection only, no comments) ---
 const COMB_SNIPPET = `comb cpuHigh = cpuAvg > cpuThreshold;
-comb memHigh = memAvg > 85;
-comb diskHigh = disk > 90;
+comb memHigh = memAvg > memThreshold;
+comb diskHigh = disk > diskThreshold;
 
 always @(posedge cpuHigh) {
   alertCount <= alertCount + 1;
-  lastAlert <= "CPU crossed threshold";
+  lastAlert <= "CPU crossed " + cpuThreshDisplay;
 }
 always @(negedge cpuHigh) {
   lastAlert <= "CPU recovered";
 }
 always @(posedge memHigh) {
   alertCount <= alertCount + 1;
-  lastAlert <= "Memory exceeded 85%";
+  lastAlert <= "Memory exceeded " + memThreshDisplay;
 }
 always @(negedge memHigh) {
   lastAlert <= "Memory recovered";
 }
 always @(posedge diskHigh) {
   alertCount <= alertCount + 1;
-  lastAlert <= "Disk exceeded 90%";
+  lastAlert <= "Disk exceeded " + diskThreshDisplay;
 }
 always @(negedge diskHigh) {
   lastAlert <= "Disk recovered";
 }`;
 
-const REACT_SNIPPET = `const cpuHigh = cpuAvg > threshold;
-const memHigh = memAvg > 85;
-const diskHigh = disk > 90;
+const REACT_SNIPPET = `const [cpuThresh, setCpuThresh] = useState(80);
+const [memThresh, setMemThresh] = useState(85);
+const [diskThresh, setDiskThresh] = useState(90);
+
+const cpuHigh = cpuAvg > cpuThresh;
+const memHigh = memAvg > memThresh;
+const diskHigh = disk > diskThresh;
 
 const prevCpu = useRef(false);
 const prevMem = useRef(false);
@@ -44,46 +48,47 @@ const prevDisk = useRef(false);
 useEffect(() => {
   if (cpuHigh && !prevCpu.current) {
     setAlertCount(c => c + 1);
-    setLastAlert("CPU crossed threshold");
+    setLastAlert(\`CPU crossed \${cpuThresh}%\`);
   }
-  if (!cpuHigh && prevCpu.current) {
+  if (!cpuHigh && prevCpu.current)
     setLastAlert("CPU recovered");
-  }
   prevCpu.current = cpuHigh;
-}, [cpuHigh]);
+}, [cpuHigh, cpuThresh]);
 
 useEffect(() => {
   if (memHigh && !prevMem.current) {
     setAlertCount(c => c + 1);
-    setLastAlert("Memory exceeded 85%");
+    setLastAlert(\`Memory exceeded \${memThresh}%\`);
   }
-  if (!memHigh && prevMem.current) {
+  if (!memHigh && prevMem.current)
     setLastAlert("Memory recovered");
-  }
   prevMem.current = memHigh;
-}, [memHigh]);
+}, [memHigh, memThresh]);
 
 useEffect(() => {
   if (diskHigh && !prevDisk.current) {
     setAlertCount(c => c + 1);
-    setLastAlert("Disk exceeded 90%");
+    setLastAlert(\`Disk exceeded \${diskThresh}%\`);
   }
-  if (!diskHigh && prevDisk.current) {
+  if (!diskHigh && prevDisk.current)
     setLastAlert("Disk recovered");
-  }
   prevDisk.current = diskHigh;
-}, [diskHigh]);`;
+}, [diskHigh, diskThresh]);`;
 
-const SVELTE_SNIPPET = `let cpuHigh = $derived(cpuAvg > threshold);
-let memHigh = $derived(memAvg > 85);
-let diskHigh = $derived(disk > 90);
+const SVELTE_SNIPPET = `let cpuThresh = $state(80);
+let memThresh = $state(85);
+let diskThresh = $state(90);
+
+let cpuHigh = $derived(cpuAvg > cpuThresh);
+let memHigh = $derived(memAvg > memThresh);
+let diskHigh = $derived(disk > diskThresh);
 
 let prevCpu = false, prevMem = false, prevDisk = false;
 
 $effect(() => {
   if (cpuHigh && !prevCpu) {
     alertCount++;
-    lastAlert = "CPU crossed threshold";
+    lastAlert = \`CPU crossed \${cpuThresh}%\`;
   }
   if (!cpuHigh && prevCpu) lastAlert = "CPU recovered";
   prevCpu = cpuHigh;
@@ -91,7 +96,7 @@ $effect(() => {
 $effect(() => {
   if (memHigh && !prevMem) {
     alertCount++;
-    lastAlert = "Memory exceeded 85%";
+    lastAlert = \`Memory exceeded \${memThresh}%\`;
   }
   if (!memHigh && prevMem) lastAlert = "Memory recovered";
   prevMem = memHigh;
@@ -99,15 +104,19 @@ $effect(() => {
 $effect(() => {
   if (diskHigh && !prevDisk) {
     alertCount++;
-    lastAlert = "Disk exceeded 90%";
+    lastAlert = \`Disk exceeded \${diskThresh}%\`;
   }
   if (!diskHigh && prevDisk) lastAlert = "Disk recovered";
   prevDisk = diskHigh;
 });`;
 
-const SOLID_SNIPPET = `const cpuHigh = () => cpuAvg() > threshold();
-const memHigh = () => memAvg() > 85;
-const diskHigh = () => disk() > 90;
+const SOLID_SNIPPET = `const [cpuThresh, setCpuThresh] = createSignal(80);
+const [memThresh, setMemThresh] = createSignal(85);
+const [diskThresh, setDiskThresh] = createSignal(90);
+
+const cpuHigh = () => cpuAvg() > cpuThresh();
+const memHigh = () => memAvg() > memThresh();
+const diskHigh = () => disk() > diskThresh();
 
 let prevCpu = false, prevMem = false, prevDisk = false;
 
@@ -115,7 +124,7 @@ createEffect(() => {
   const h = cpuHigh();
   if (h && !prevCpu) {
     setAlertCount(c => c + 1);
-    setLastAlert("CPU crossed threshold");
+    setLastAlert(\`CPU crossed \${cpuThresh()}%\`);
   }
   if (!h && prevCpu) setLastAlert("CPU recovered");
   prevCpu = h;
@@ -124,7 +133,7 @@ createEffect(() => {
   const h = memHigh();
   if (h && !prevMem) {
     setAlertCount(c => c + 1);
-    setLastAlert("Memory exceeded 85%");
+    setLastAlert(\`Memory exceeded \${memThresh()}%\`);
   }
   if (!h && prevMem) setLastAlert("Memory recovered");
   prevMem = h;
@@ -133,7 +142,7 @@ createEffect(() => {
   const h = diskHigh();
   if (h && !prevDisk) {
     setAlertCount(c => c + 1);
-    setLastAlert("Disk exceeded 90%");
+    setLastAlert(\`Disk exceeded \${diskThresh()}%\`);
   }
   if (!h && prevDisk) setLastAlert("Disk recovered");
   prevDisk = h;
@@ -382,34 +391,29 @@ function showLanding() {
     let pass = 0;
     let fail = 0;
 
-    // Build table
+    // Build table — randomize ALL inputs including all 3 thresholds
     let html = '<table><thead><tr>';
-    html += '<th>#</th><th>cpuAvg</th><th>thresh</th><th>memAvg</th><th>disk</th>';
+    html += '<th>#</th><th>cpuAvg</th><th>cpuThr</th><th>memAvg</th><th>memThr</th><th>disk</th><th>diskThr</th>';
     html += '<th>cpuHigh</th><th>memHigh</th><th>diskHigh</th><th>anyAlert</th>';
     html += '</tr></thead><tbody>';
 
     for (let i = 0; i < NUM_TESTS; i++) {
       const t = __test();
-      const cpuAvg = Math.round(Math.random() * 100 * 10) / 10;
-      const thresh = Math.round(Math.random() * 100 * 10) / 10;
-      const memAvg = Math.round(Math.random() * 100 * 10) / 10;
-      const disk = Math.round(Math.random() * 100 * 10) / 10;
+      const r = () => Math.round(Math.random() * 100 * 10) / 10;
+      const cpuAvg = r(), cpuThr = r(), memAvg = r(), memThr = r(), disk = r(), diskThr = r();
 
       batch(() => {
         t.signals.cpuAvg.set(cpuAvg);
-        t.signals.cpuThreshold.set(thresh);
+        t.signals.cpuThreshold.set(cpuThr);
         t.signals.memAvg.set(memAvg);
+        t.signals.memThreshold.set(memThr);
         t.signals.disk.set(disk);
+        t.signals.diskThreshold.set(diskThr);
       });
 
-      const roundedCpuAvg = Math.round(cpuAvg * 10) / 10;
-      const roundedThresh = Math.round(thresh * 10) / 10;
-      const roundedMemAvg = Math.round(memAvg * 10) / 10;
-      const roundedDisk = Math.round(disk * 10) / 10;
-
-      const expectedCpuHigh = roundedCpuAvg > roundedThresh;
-      const expectedMemHigh = roundedMemAvg > 85;
-      const expectedDiskHigh = roundedDisk > 90;
+      const expectedCpuHigh = cpuAvg > cpuThr;
+      const expectedMemHigh = memAvg > memThr;
+      const expectedDiskHigh = disk > diskThr;
       const expectedAnyAlert = expectedCpuHigh || expectedMemHigh || expectedDiskHigh;
 
       const actualCpuHigh = t.combs.cpuHigh();
@@ -430,7 +434,7 @@ function showLanding() {
 
       html += `<tr>`;
       html += `<td>${i + 1}</td>`;
-      html += `<td>${cpuAvg}</td><td>${thresh}</td><td>${memAvg}</td><td>${disk}</td>`;
+      html += `<td>${cpuAvg}</td><td>${cpuThr}</td><td>${memAvg}</td><td>${memThr}</td><td>${disk}</td><td>${diskThr}</td>`;
       html += cell(cpuOk, actualCpuHigh);
       html += cell(memOk, actualMemHigh);
       html += cell(diskOk, actualDiskHigh);

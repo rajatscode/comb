@@ -28,6 +28,16 @@ export const __graph = {
       "type": "signal"
     },
     {
+      "id": "memThreshold",
+      "name": "memThreshold",
+      "type": "signal"
+    },
+    {
+      "id": "diskThreshold",
+      "name": "diskThreshold",
+      "type": "signal"
+    },
+    {
       "id": "cpuAvg",
       "name": "cpuAvg",
       "type": "signal"
@@ -98,8 +108,18 @@ export const __graph = {
       "type": "comb"
     },
     {
-      "id": "threshDisplay",
-      "name": "threshDisplay",
+      "id": "cpuThreshDisplay",
+      "name": "cpuThreshDisplay",
+      "type": "comb"
+    },
+    {
+      "id": "memThreshDisplay",
+      "name": "memThreshDisplay",
+      "type": "comb"
+    },
+    {
+      "id": "diskThreshDisplay",
+      "name": "diskThreshDisplay",
       "type": "comb"
     },
     {
@@ -233,8 +253,8 @@ export const __graph = {
       }
     },
     {
-      "id": "view:threshDisplay",
-      "name": "view:threshDisplay",
+      "id": "view:cpuThreshDisplay",
+      "name": "view:cpuThreshDisplay",
       "type": "view-effect",
       "viewTarget": {
         "element": "label",
@@ -244,6 +264,42 @@ export const __graph = {
     {
       "id": "view:bind:cpuThreshold",
       "name": "view:bind:cpuThreshold",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "input",
+        "binding": "bind:bind"
+      }
+    },
+    {
+      "id": "view:memThreshDisplay",
+      "name": "view:memThreshDisplay",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "label",
+        "binding": "text"
+      }
+    },
+    {
+      "id": "view:bind:memThreshold",
+      "name": "view:bind:memThreshold",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "input",
+        "binding": "bind:bind"
+      }
+    },
+    {
+      "id": "view:diskThreshDisplay",
+      "name": "view:diskThreshDisplay",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "label",
+        "binding": "text"
+      }
+    },
+    {
+      "id": "view:bind:diskThreshold",
+      "name": "view:bind:diskThreshold",
       "type": "view-effect",
       "viewTarget": {
         "element": "input",
@@ -268,7 +324,17 @@ export const __graph = {
       "type": "data"
     },
     {
+      "from": "memThreshold",
+      "to": "memHigh",
+      "type": "data"
+    },
+    {
       "from": "disk",
+      "to": "diskHigh",
+      "type": "data"
+    },
+    {
+      "from": "diskThreshold",
       "to": "diskHigh",
       "type": "data"
     },
@@ -319,7 +385,17 @@ export const __graph = {
     },
     {
       "from": "cpuThreshold",
-      "to": "threshDisplay",
+      "to": "cpuThreshDisplay",
+      "type": "data"
+    },
+    {
+      "from": "memThreshold",
+      "to": "memThreshDisplay",
+      "type": "data"
+    },
+    {
+      "from": "diskThreshold",
+      "to": "diskThreshDisplay",
       "type": "data"
     },
     {
@@ -473,13 +549,33 @@ export const __graph = {
       "type": "data"
     },
     {
-      "from": "threshDisplay",
-      "to": "view:threshDisplay",
+      "from": "cpuThreshDisplay",
+      "to": "view:cpuThreshDisplay",
       "type": "data"
     },
     {
       "from": "cpuThreshold",
       "to": "view:bind:cpuThreshold",
+      "type": "data"
+    },
+    {
+      "from": "memThreshDisplay",
+      "to": "view:memThreshDisplay",
+      "type": "data"
+    },
+    {
+      "from": "memThreshold",
+      "to": "view:bind:memThreshold",
+      "type": "data"
+    },
+    {
+      "from": "diskThreshDisplay",
+      "to": "view:diskThreshDisplay",
+      "type": "data"
+    },
+    {
+      "from": "diskThreshold",
+      "to": "view:bind:diskThreshold",
       "type": "data"
     }
   ]
@@ -500,6 +596,10 @@ export function Monitor(root) {
 
   const [cpuThreshold, setCpuThreshold] = createSignal(80, { name: 'cpuThreshold', module: $m, type: 'float' });
 
+  const [memThreshold, setMemThreshold] = createSignal(85, { name: 'memThreshold', module: $m, type: 'float' });
+
+  const [diskThreshold, setDiskThreshold] = createSignal(90, { name: 'diskThreshold', module: $m, type: 'float' });
+
   const [cpuAvg, setCpuAvg] = createSignal(25, { name: 'cpuAvg', module: $m, type: 'float' });
 
   const [memAvg, setMemAvg] = createSignal(40, { name: 'memAvg', module: $m, type: 'float' });
@@ -510,9 +610,9 @@ export function Monitor(root) {
 
   const cpuHigh = createComb(() => (cpuAvg() > cpuThreshold()), { name: 'cpuHigh', module: $m, deps: ["cpuAvg","cpuThreshold"] });
 
-  const memHigh = createComb(() => (memAvg() > 85), { name: 'memHigh', module: $m, deps: ["memAvg"] });
+  const memHigh = createComb(() => (memAvg() > memThreshold()), { name: 'memHigh', module: $m, deps: ["memAvg","memThreshold"] });
 
-  const diskHigh = createComb(() => (disk() > 90), { name: 'diskHigh', module: $m, deps: ["disk"] });
+  const diskHigh = createComb(() => (disk() > diskThreshold()), { name: 'diskHigh', module: $m, deps: ["disk","diskThreshold"] });
 
   const anyAlert = createComb(() => ((cpuHigh() || memHigh()) || diskHigh()), { name: 'anyAlert', module: $m, deps: ["cpuHigh","memHigh","diskHigh"] });
 
@@ -528,7 +628,11 @@ export function Monitor(root) {
 
   const memAvgDisplay = createComb(() => (String(Math.round(memAvg())) + "%"), { name: 'memAvgDisplay', module: $m, deps: ["memAvg"] });
 
-  const threshDisplay = createComb(() => (String(Math.round(cpuThreshold())) + "%"), { name: 'threshDisplay', module: $m, deps: ["cpuThreshold"] });
+  const cpuThreshDisplay = createComb(() => (String(Math.round(cpuThreshold())) + "%"), { name: 'cpuThreshDisplay', module: $m, deps: ["cpuThreshold"] });
+
+  const memThreshDisplay = createComb(() => (String(Math.round(memThreshold())) + "%"), { name: 'memThreshDisplay', module: $m, deps: ["memThreshold"] });
+
+  const diskThreshDisplay = createComb(() => (String(Math.round(diskThreshold())) + "%"), { name: 'diskThreshDisplay', module: $m, deps: ["diskThreshold"] });
 
   const statusText = createComb(() => (anyAlert() ? (((("ALERT: " + (cpuHigh() ? "CPU " : "")) + (memHigh() ? "MEM " : "")) + (diskHigh() ? "DISK " : "")) + "threshold exceeded") : "All systems normal"), { name: 'statusText', module: $m, deps: ["anyAlert","cpuHigh","memHigh","diskHigh"] });
 
@@ -537,39 +641,39 @@ export function Monitor(root) {
   createEdgeEffect(() => cpuHigh(), 'posedge', () => {
     batch(() => {
       setAlertCount((alertCount() + 1));
-      setLastAlert(("CPU crossed " + threshDisplay()));
+      setLastAlert(("CPU crossed " + cpuThreshDisplay()));
     });
   }, { name: 'posedge_cpuHigh', module: $m });
 
   createEdgeEffect(() => cpuHigh(), 'negedge', () => {
     batch(() => {
-      setLastAlert(("CPU recovered below " + threshDisplay()));
+      setLastAlert(("CPU recovered below " + cpuThreshDisplay()));
     });
   }, { name: 'negedge_cpuHigh', module: $m });
 
   createEdgeEffect(() => memHigh(), 'posedge', () => {
     batch(() => {
       setAlertCount((alertCount() + 1));
-      setLastAlert("Memory exceeded 85%");
+      setLastAlert(("Memory exceeded " + memThreshDisplay()));
     });
   }, { name: 'posedge_memHigh', module: $m });
 
   createEdgeEffect(() => memHigh(), 'negedge', () => {
     batch(() => {
-      setLastAlert("Memory recovered below 85%");
+      setLastAlert(("Memory recovered below " + memThreshDisplay()));
     });
   }, { name: 'negedge_memHigh', module: $m });
 
   createEdgeEffect(() => diskHigh(), 'posedge', () => {
     batch(() => {
       setAlertCount((alertCount() + 1));
-      setLastAlert("Disk usage exceeded 90%");
+      setLastAlert(("Disk exceeded " + diskThreshDisplay()));
     });
   }, { name: 'posedge_diskHigh', module: $m });
 
   createEdgeEffect(() => diskHigh(), 'negedge', () => {
     batch(() => {
-      setLastAlert("Disk usage recovered");
+      setLastAlert(("Disk recovered below " + diskThreshDisplay()));
     });
   }, { name: 'negedge_diskHigh', module: $m });
 
@@ -669,20 +773,53 @@ export function Monitor(root) {
   createEffect(() => { txt16.data = String(lastAlert()); }, { name: 'view:lastAlert', module: $m, viewTarget: { element: 'p.alert-info', binding: 'text' } });
   el17.appendChild(txt16);
   el0.appendChild(el17);
-  const el18 = document.createElement('label');
-  const txt17 = document.createTextNode('CPU Threshold:');
-  el18.appendChild(txt17);
+  const el18 = document.createElement('div');
+  el18.setAttribute('class', 'threshold-controls');
+  const el19 = document.createElement('label');
+  const txt17 = document.createTextNode('CPU:');
+  el19.appendChild(txt17);
   const txt18 = document.createTextNode('');
-  createEffect(() => { txt18.data = String(threshDisplay()); }, { name: 'view:threshDisplay', module: $m, viewTarget: { element: 'label', binding: 'text' } });
-  el18.appendChild(txt18);
-  const el19 = document.createElement('input');
-  el19.setAttribute('type', 'range');
-  el19.setAttribute('min', '0');
-  el19.setAttribute('max', '100');
-  el19.value = cpuThreshold();
-  createEffect(() => { el19.value = cpuThreshold(); }, { name: 'view:bind:cpuThreshold', module: $m, viewTarget: { element: 'input', binding: 'bind:value' } });
-  el19.addEventListener('input', (e) => { setCpuThreshold(Number(e.target.value)); });
+  createEffect(() => { txt18.data = String(cpuThreshDisplay()); }, { name: 'view:cpuThreshDisplay', module: $m, viewTarget: { element: 'label', binding: 'text' } });
+  el19.appendChild(txt18);
+  const el20 = document.createElement('input');
+  el20.setAttribute('type', 'range');
+  el20.setAttribute('min', '0');
+  el20.setAttribute('max', '100');
+  el20.value = cpuThreshold();
+  createEffect(() => { el20.value = cpuThreshold(); }, { name: 'view:bind:cpuThreshold', module: $m, viewTarget: { element: 'input', binding: 'bind:value' } });
+  el20.addEventListener('input', (e) => { setCpuThreshold(Number(e.target.value)); });
+  el19.appendChild(el20);
   el18.appendChild(el19);
+  const el21 = document.createElement('label');
+  const txt19 = document.createTextNode('MEM:');
+  el21.appendChild(txt19);
+  const txt20 = document.createTextNode('');
+  createEffect(() => { txt20.data = String(memThreshDisplay()); }, { name: 'view:memThreshDisplay', module: $m, viewTarget: { element: 'label', binding: 'text' } });
+  el21.appendChild(txt20);
+  const el22 = document.createElement('input');
+  el22.setAttribute('type', 'range');
+  el22.setAttribute('min', '0');
+  el22.setAttribute('max', '100');
+  el22.value = memThreshold();
+  createEffect(() => { el22.value = memThreshold(); }, { name: 'view:bind:memThreshold', module: $m, viewTarget: { element: 'input', binding: 'bind:value' } });
+  el22.addEventListener('input', (e) => { setMemThreshold(Number(e.target.value)); });
+  el21.appendChild(el22);
+  el18.appendChild(el21);
+  const el23 = document.createElement('label');
+  const txt21 = document.createTextNode('DISK:');
+  el23.appendChild(txt21);
+  const txt22 = document.createTextNode('');
+  createEffect(() => { txt22.data = String(diskThreshDisplay()); }, { name: 'view:diskThreshDisplay', module: $m, viewTarget: { element: 'label', binding: 'text' } });
+  el23.appendChild(txt22);
+  const el24 = document.createElement('input');
+  el24.setAttribute('type', 'range');
+  el24.setAttribute('min', '0');
+  el24.setAttribute('max', '100');
+  el24.value = diskThreshold();
+  createEffect(() => { el24.value = diskThreshold(); }, { name: 'view:bind:diskThreshold', module: $m, viewTarget: { element: 'input', binding: 'bind:value' } });
+  el24.addEventListener('input', (e) => { setDiskThreshold(Number(e.target.value)); });
+  el23.appendChild(el24);
+  el18.appendChild(el23);
   el0.appendChild(el18);
   root.appendChild(el0);
 
@@ -704,6 +841,10 @@ export function __test() {
 
   const [cpuThreshold, setCpuThreshold] = createSignal(80, { name: 'cpuThreshold', module: $m, type: 'float' });
 
+  const [memThreshold, setMemThreshold] = createSignal(85, { name: 'memThreshold', module: $m, type: 'float' });
+
+  const [diskThreshold, setDiskThreshold] = createSignal(90, { name: 'diskThreshold', module: $m, type: 'float' });
+
   const [cpuAvg, setCpuAvg] = createSignal(25, { name: 'cpuAvg', module: $m, type: 'float' });
 
   const [memAvg, setMemAvg] = createSignal(40, { name: 'memAvg', module: $m, type: 'float' });
@@ -714,9 +855,9 @@ export function __test() {
 
   const cpuHigh = createComb(() => (cpuAvg() > cpuThreshold()), { name: 'cpuHigh', module: $m, deps: ["cpuAvg","cpuThreshold"] });
 
-  const memHigh = createComb(() => (memAvg() > 85), { name: 'memHigh', module: $m, deps: ["memAvg"] });
+  const memHigh = createComb(() => (memAvg() > memThreshold()), { name: 'memHigh', module: $m, deps: ["memAvg","memThreshold"] });
 
-  const diskHigh = createComb(() => (disk() > 90), { name: 'diskHigh', module: $m, deps: ["disk"] });
+  const diskHigh = createComb(() => (disk() > diskThreshold()), { name: 'diskHigh', module: $m, deps: ["disk","diskThreshold"] });
 
   const anyAlert = createComb(() => ((cpuHigh() || memHigh()) || diskHigh()), { name: 'anyAlert', module: $m, deps: ["cpuHigh","memHigh","diskHigh"] });
 
@@ -732,15 +873,19 @@ export function __test() {
 
   const memAvgDisplay = createComb(() => (String(Math.round(memAvg())) + "%"), { name: 'memAvgDisplay', module: $m, deps: ["memAvg"] });
 
-  const threshDisplay = createComb(() => (String(Math.round(cpuThreshold())) + "%"), { name: 'threshDisplay', module: $m, deps: ["cpuThreshold"] });
+  const cpuThreshDisplay = createComb(() => (String(Math.round(cpuThreshold())) + "%"), { name: 'cpuThreshDisplay', module: $m, deps: ["cpuThreshold"] });
+
+  const memThreshDisplay = createComb(() => (String(Math.round(memThreshold())) + "%"), { name: 'memThreshDisplay', module: $m, deps: ["memThreshold"] });
+
+  const diskThreshDisplay = createComb(() => (String(Math.round(diskThreshold())) + "%"), { name: 'diskThreshDisplay', module: $m, deps: ["diskThreshold"] });
 
   const statusText = createComb(() => (anyAlert() ? (((("ALERT: " + (cpuHigh() ? "CPU " : "")) + (memHigh() ? "MEM " : "")) + (diskHigh() ? "DISK " : "")) + "threshold exceeded") : "All systems normal"), { name: 'statusText', module: $m, deps: ["anyAlert","cpuHigh","memHigh","diskHigh"] });
 
   const statusClass = createComb(() => (anyAlert() ? "status-alert" : "status-ok"), { name: 'statusClass', module: $m, deps: ["anyAlert"] });
 
   return {
-    signals: { cpu: { get: cpu, set: setCpu }, mem: { get: mem, set: setMem }, disk: { get: disk, set: setDisk }, net: { get: net, set: setNet }, cpuThreshold: { get: cpuThreshold, set: setCpuThreshold }, cpuAvg: { get: cpuAvg, set: setCpuAvg }, memAvg: { get: memAvg, set: setMemAvg }, alertCount: { get: alertCount, set: setAlertCount }, lastAlert: { get: lastAlert, set: setLastAlert } },
-    combs: { cpuHigh, memHigh, diskHigh, anyAlert, cpuDisplay, memDisplay, diskDisplay, netDisplay, avgDisplay, memAvgDisplay, threshDisplay, statusText, statusClass },
+    signals: { cpu: { get: cpu, set: setCpu }, mem: { get: mem, set: setMem }, disk: { get: disk, set: setDisk }, net: { get: net, set: setNet }, cpuThreshold: { get: cpuThreshold, set: setCpuThreshold }, memThreshold: { get: memThreshold, set: setMemThreshold }, diskThreshold: { get: diskThreshold, set: setDiskThreshold }, cpuAvg: { get: cpuAvg, set: setCpuAvg }, memAvg: { get: memAvg, set: setMemAvg }, alertCount: { get: alertCount, set: setAlertCount }, lastAlert: { get: lastAlert, set: setLastAlert } },
+    combs: { cpuHigh, memHigh, diskHigh, anyAlert, cpuDisplay, memDisplay, diskDisplay, netDisplay, avgDisplay, memAvgDisplay, cpuThreshDisplay, memThreshDisplay, diskThreshDisplay, statusText, statusClass },
     dispose: __scope.dispose,
   };
 }

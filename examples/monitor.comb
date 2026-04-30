@@ -4,14 +4,16 @@ module Monitor {
   signal disk: float = 5.0;
   signal net: float = 10.0;
   signal cpuThreshold: float = 80.0;
+  signal memThreshold: float = 85.0;
+  signal diskThreshold: float = 90.0;
   signal cpuAvg: float = 25.0;
   signal memAvg: float = 40.0;
   signal alertCount: int = 0;
   signal lastAlert: string = "";
 
   comb cpuHigh = cpuAvg > cpuThreshold;
-  comb memHigh = memAvg > 85;
-  comb diskHigh = disk > 90;
+  comb memHigh = memAvg > memThreshold;
+  comb diskHigh = disk > diskThreshold;
   comb anyAlert = cpuHigh || memHigh || diskHigh;
 
   comb cpuDisplay = str(round(cpu)) + "%";
@@ -20,7 +22,9 @@ module Monitor {
   comb netDisplay = str(round(net)) + " MB/s";
   comb avgDisplay = str(round(cpuAvg)) + "%";
   comb memAvgDisplay = str(round(memAvg)) + "%";
-  comb threshDisplay = str(round(cpuThreshold)) + "%";
+  comb cpuThreshDisplay = str(round(cpuThreshold)) + "%";
+  comb memThreshDisplay = str(round(memThreshold)) + "%";
+  comb diskThreshDisplay = str(round(diskThreshold)) + "%";
 
   comb statusText = anyAlert
     ? "ALERT: " + (cpuHigh ? "CPU " : "") + (memHigh ? "MEM " : "") + (diskHigh ? "DISK " : "") + "threshold exceeded"
@@ -29,29 +33,29 @@ module Monitor {
 
   always @(posedge cpuHigh) {
     alertCount <= alertCount + 1;
-    lastAlert <= "CPU crossed " + threshDisplay;
+    lastAlert <= "CPU crossed " + cpuThreshDisplay;
   }
 
   always @(negedge cpuHigh) {
-    lastAlert <= "CPU recovered below " + threshDisplay;
+    lastAlert <= "CPU recovered below " + cpuThreshDisplay;
   }
 
   always @(posedge memHigh) {
     alertCount <= alertCount + 1;
-    lastAlert <= "Memory exceeded 85%";
+    lastAlert <= "Memory exceeded " + memThreshDisplay;
   }
 
   always @(negedge memHigh) {
-    lastAlert <= "Memory recovered below 85%";
+    lastAlert <= "Memory recovered below " + memThreshDisplay;
   }
 
   always @(posedge diskHigh) {
     alertCount <= alertCount + 1;
-    lastAlert <= "Disk usage exceeded 90%";
+    lastAlert <= "Disk exceeded " + diskThreshDisplay;
   }
 
   always @(negedge diskHigh) {
-    lastAlert <= "Disk usage recovered";
+    lastAlert <= "Disk recovered below " + diskThreshDisplay;
   }
 
   view {
@@ -78,9 +82,17 @@ module Monitor {
       </div>
       <p class={statusClass}>{statusText}</p>
       <p class="alert-info">Alerts fired: {str(alertCount)} — {lastAlert}</p>
-      <label>CPU Threshold: {threshDisplay}
-        <input type="range" min="0" max="100" @bind=cpuThreshold />
-      </label>
+      <div class="threshold-controls">
+        <label>CPU: {cpuThreshDisplay}
+          <input type="range" min="0" max="100" @bind=cpuThreshold />
+        </label>
+        <label>MEM: {memThreshDisplay}
+          <input type="range" min="0" max="100" @bind=memThreshold />
+        </label>
+        <label>DISK: {diskThreshDisplay}
+          <input type="range" min="0" max="100" @bind=diskThreshold />
+        </label>
+      </div>
     </div>
   }
 }
