@@ -99,13 +99,19 @@ export function mountColorPicker(root: HTMLElement): { dispose: () => void } {
     sliderEls.push({ input, valueEl });
   }
 
-  // Wire slider inputs to cell setters
+  // Wire slider inputs to cell setters (throttled to 1 per frame)
   for (let i = 0; i < sliderDefs.length; i++) {
     const def = sliderDefs[i];
     const slider = sliderEls[i];
+    let rafPending = false;
     slider.input.addEventListener('input', () => {
-      batch(() => {
-        def.set(parseInt(slider.input.value, 10));
+      if (rafPending) return;
+      rafPending = true;
+      requestAnimationFrame(() => {
+        rafPending = false;
+        batch(() => {
+          def.set(parseInt(slider.input.value, 10));
+        });
       });
     });
   }
