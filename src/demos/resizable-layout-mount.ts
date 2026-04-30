@@ -2,11 +2,10 @@
 // Handles: Kiwi.js Cassowary solver, mouse drag, ResizeObserver, circuit graph
 
 import { Solver, Variable, Constraint, Expression, Operator, Strength } from 'kiwi.js';
-import { ResizableLayout, __graph, __test } from '../generated/resizable-layout.js';
+import { ResizableLayout, __graph } from '../generated/resizable-layout.js';
 import { createDemoShell } from '../demo-shell.js';
 import { renderCircuitGraph } from '../visualizer.js';
-import { circuit } from '../runtime/index.js';
-import { batch } from '../runtime/index.js';
+import { circuit, batch } from '../runtime/index.js';
 
 const MODULE = 'ResizableLayout';
 
@@ -26,8 +25,11 @@ export function mountResizableLayout(root: HTMLElement): { dispose: () => void }
   paneApp.appendChild(layoutContainer);
   const component = ResizableLayout(layoutContainer);
 
-  // Get signal setters via __test()
-  const test = __test();
+  // Use the circuit graph's registered setters on the MOUNTED component instance
+  function setSignal(name: string, value: any) {
+    const node = circuit.getNode(`${MODULE}.${name}`);
+    if (node?.setValue) node.setValue(value);
+  }
 
   // Width readout
   const readout = document.createElement('div');
@@ -77,9 +79,9 @@ export function mountResizableLayout(root: HTMLElement): { dispose: () => void }
     sidebarW = newSidebar;
     inspectorW = newInspector;
     batch(() => {
-      test.signals.sidebarWidth.set(newSidebar);
-      test.signals.mainWidth.set(newMain);
-      test.signals.inspectorWidth.set(newInspector);
+      setSignal('sidebarWidth', newSidebar);
+      setSignal('mainWidth', newMain);
+      setSignal('inspectorWidth', newInspector);
     });
     readout.textContent = `sidebar: ${newSidebar}px  |  main: ${newMain}px  |  inspector: ${newInspector}px  |  total: ${newSidebar + newMain + newInspector + DIVIDER_W}px / ${containerWidth}px`;
   }
@@ -94,6 +96,14 @@ export function mountResizableLayout(root: HTMLElement): { dispose: () => void }
   const dividers = layoutContainer.querySelectorAll('.divider');
   const div1 = dividers[0] as HTMLElement | undefined;
   const div2 = dividers[1] as HTMLElement | undefined;
+
+  // Style dividers for drag interaction
+  dividers.forEach((d) => {
+    const el = d as HTMLElement;
+    el.style.cssText += 'cursor: col-resize; width: 6px; background: #444; flex-shrink: 0; transition: background 0.15s;';
+    el.addEventListener('mouseenter', () => { el.style.background = '#666'; });
+    el.addEventListener('mouseleave', () => { if (!dragging) el.style.background = '#444'; });
+  });
 
   function onMouseDown(which: 'left' | 'right', e: MouseEvent) {
     e.preventDefault();
@@ -148,7 +158,6 @@ export function mountResizableLayout(root: HTMLElement): { dispose: () => void }
     ro.disconnect();
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('mouseup', onMouseUp);
-    test.dispose();
     component.dispose();
     shell.dispose();
   }

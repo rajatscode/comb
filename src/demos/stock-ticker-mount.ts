@@ -1,21 +1,19 @@
 // stock-ticker-mount.ts — Thin wrapper for compiled StockTicker module
 // Handles: setInterval price walk, moving average calculation, waveform, circuit graph
 
-import { StockTicker, __graph, __test } from '../generated/stock-ticker.js';
+import { StockTicker, __graph } from '../generated/stock-ticker.js';
 import { createDemoShell } from '../demo-shell.js';
 import { renderCircuitGraph } from '../visualizer.js';
 import { renderWaveform } from '../waveform.js';
-import { circuit } from '../runtime/index.js';
-import { batch } from '../runtime/index.js';
+import { circuit, batch } from '../runtime/index.js';
 
 const MODULE = 'StockTicker';
 
 export function mountStockTicker(root: HTMLElement): { dispose: () => void } {
-  // Create shell: stacked layout (app on top, circuit + waveform below)
   const shell = createDemoShell(root, {
     layout: 'stacked',
     title: 'Stock Ticker',
-    description: 'Random-walk price, moving average, threshold alert. Wrapper feeds price updates via setInterval.',
+    description: 'Random-walk price, moving average, threshold alert. Compiled from stock-ticker.comb.',
   });
   const paneApp = shell.app;
   const paneCircuit = shell.circuit;
@@ -24,9 +22,6 @@ export function mountStockTicker(root: HTMLElement): { dispose: () => void } {
   const componentRoot = document.createElement('div');
   paneApp.appendChild(componentRoot);
   const component = StockTicker(componentRoot);
-
-  // Get signal setters via __test() for feeding price data from JS
-  const test = __test();
 
   // Price history buffer for moving average (managed in JS)
   const history: number[] = [100];
@@ -37,6 +32,7 @@ export function mountStockTicker(root: HTMLElement): { dispose: () => void } {
   // Waveform section
   const waveformSection = document.createElement('div');
   waveformSection.className = 'waveform-container';
+  waveformSection.style.cssText = 'max-height: 180px; overflow: hidden;';
   const waveformHeader = document.createElement('div');
   waveformHeader.style.cssText = 'padding: 4px 12px; font-size: 0.7rem; color: #666; letter-spacing: 1px; text-transform: uppercase;';
   waveformHeader.textContent = 'Signal Waveforms';
@@ -54,10 +50,22 @@ export function mountStockTicker(root: HTMLElement): { dispose: () => void } {
   // Circuit graph
   renderCircuitGraph(paneCircuit, __graph as any, circuit);
 
-  // Price update interval -- random walk
+  // Use the circuit graph's registered setters on the MOUNTED component instance
+  // (not __test() which creates a separate signal graph)
+  function setSignal(name: string, value: any) {
+    const node = circuit.getNode(`${MODULE}.${name}`);
+    if (node?.setValue) node.setValue(value);
+  }
+
+  function getSignal(name: string): any {
+    const node = circuit.getNode(`${MODULE}.${name}`);
+    return node?.getValue ? node.getValue() : undefined;
+  }
+
+  // Price update interval — random walk
   const intervalId = setInterval(() => {
-    const currentPrice = test.signals.price.get();
-    const delta = (Math.random() - 0.48) * 3; // slight upward bias
+    const currentPrice = getSignal('price') ?? 100;
+    const delta = (Math.random() - 0.48) * 3;
     const newPrice = Math.round((currentPrice + delta) * 100) / 100;
     history.push(newPrice);
     if (history.length > 20) history.shift();
@@ -68,8 +76,8 @@ export function mountStockTicker(root: HTMLElement): { dispose: () => void } {
     const avg = Math.round((sum / history.length) * 100) / 100;
 
     batch(() => {
-      test.signals.price.set(newPrice);
-      test.signals.movingAvg.set(avg);
+      setSignal('price', newPrice);
+      setSignal('movingAvg', avg);
     });
   }, 500);
 
@@ -77,7 +85,6 @@ export function mountStockTicker(root: HTMLElement): { dispose: () => void } {
     clearInterval(intervalId);
     circuit.stopRecording();
     waveform.dispose();
-    test.dispose();
     component.dispose();
     shell.dispose();
   }
