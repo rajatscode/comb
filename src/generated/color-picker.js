@@ -34,13 +34,13 @@ export const __graph = {
       "type": "cell"
     },
     {
-      "id": "constraint:rgbToHsvProp",
-      "name": "rgbToHsvProp",
+      "id": "constraint:rgbToHsvProp:0",
+      "name": "rgbToHsvProp[0]",
       "type": "constraint"
     },
     {
-      "id": "constraint:hsvToRgbProp",
-      "name": "hsvToRgbProp",
+      "id": "constraint:hsvToRgbProp:0",
+      "name": "hsvToRgbProp[0]",
       "type": "constraint"
     },
     {
@@ -129,121 +129,61 @@ export const __graph = {
   "edges": [
     {
       "from": "r",
-      "to": "constraint:rgbToHsvProp",
+      "to": "constraint:rgbToHsvProp:0",
       "type": "data"
-    },
-    {
-      "from": "constraint:rgbToHsvProp",
-      "to": "r",
-      "type": "write"
     },
     {
       "from": "g",
-      "to": "constraint:rgbToHsvProp",
+      "to": "constraint:rgbToHsvProp:0",
       "type": "data"
-    },
-    {
-      "from": "constraint:rgbToHsvProp",
-      "to": "g",
-      "type": "write"
     },
     {
       "from": "b",
-      "to": "constraint:rgbToHsvProp",
+      "to": "constraint:rgbToHsvProp:0",
       "type": "data"
     },
     {
-      "from": "constraint:rgbToHsvProp",
-      "to": "b",
-      "type": "write"
-    },
-    {
-      "from": "h",
-      "to": "constraint:rgbToHsvProp",
-      "type": "data"
-    },
-    {
-      "from": "constraint:rgbToHsvProp",
+      "from": "constraint:rgbToHsvProp:0",
       "to": "h",
       "type": "write"
     },
     {
-      "from": "s",
-      "to": "constraint:rgbToHsvProp",
-      "type": "data"
-    },
-    {
-      "from": "constraint:rgbToHsvProp",
+      "from": "constraint:rgbToHsvProp:0",
       "to": "s",
       "type": "write"
     },
     {
-      "from": "v",
-      "to": "constraint:rgbToHsvProp",
-      "type": "data"
-    },
-    {
-      "from": "constraint:rgbToHsvProp",
+      "from": "constraint:rgbToHsvProp:0",
       "to": "v",
       "type": "write"
     },
     {
       "from": "h",
-      "to": "constraint:hsvToRgbProp",
+      "to": "constraint:hsvToRgbProp:0",
       "type": "data"
-    },
-    {
-      "from": "constraint:hsvToRgbProp",
-      "to": "h",
-      "type": "write"
     },
     {
       "from": "s",
-      "to": "constraint:hsvToRgbProp",
+      "to": "constraint:hsvToRgbProp:0",
       "type": "data"
-    },
-    {
-      "from": "constraint:hsvToRgbProp",
-      "to": "s",
-      "type": "write"
     },
     {
       "from": "v",
-      "to": "constraint:hsvToRgbProp",
+      "to": "constraint:hsvToRgbProp:0",
       "type": "data"
     },
     {
-      "from": "constraint:hsvToRgbProp",
-      "to": "v",
-      "type": "write"
-    },
-    {
-      "from": "r",
-      "to": "constraint:hsvToRgbProp",
-      "type": "data"
-    },
-    {
-      "from": "constraint:hsvToRgbProp",
+      "from": "constraint:hsvToRgbProp:0",
       "to": "r",
       "type": "write"
     },
     {
-      "from": "g",
-      "to": "constraint:hsvToRgbProp",
-      "type": "data"
-    },
-    {
-      "from": "constraint:hsvToRgbProp",
+      "from": "constraint:hsvToRgbProp:0",
       "to": "g",
       "type": "write"
     },
     {
-      "from": "b",
-      "to": "constraint:hsvToRgbProp",
-      "type": "data"
-    },
-    {
-      "from": "constraint:hsvToRgbProp",
+      "from": "constraint:hsvToRgbProp:0",
       "to": "b",
       "type": "write"
     },
@@ -343,11 +283,11 @@ export function ColorPicker(root) {
     const __g = g();
     const __b = b();
     batch(() => {
-      setH(rgbToHsv(r(), g(), b()).h);
-      setS(rgbToHsv(r(), g(), b()).s);
-      setV(rgbToHsv(r(), g(), b()).v);
+      setH(rgbToHsv(__r, __g, __b).h);
+      setS(rgbToHsv(__r, __g, __b).s);
+      setV(rgbToHsv(__r, __g, __b).v);
     });
-  }, { name: 'rgbToHsvProp:0', module: $m, deps: ['r', 'g', 'b'] });
+  }, { name: 'rgbToHsvProp:0', module: $m, deps: ['r', 'g', 'b'], writes: ['h', 's', 'v'] });
 
   createPropagator(() => {
     // Read inputs: h, s, v
@@ -355,11 +295,11 @@ export function ColorPicker(root) {
     const __s = s();
     const __v = v();
     batch(() => {
-      setR(hsvToRgb(h(), s(), v()).r);
-      setG(hsvToRgb(h(), s(), v()).g);
-      setB(hsvToRgb(h(), s(), v()).b);
+      setR(hsvToRgb(__h, __s, __v).r);
+      setG(hsvToRgb(__h, __s, __v).g);
+      setB(hsvToRgb(__h, __s, __v).b);
     });
-  }, { name: 'hsvToRgbProp:0', module: $m, deps: ['h', 's', 'v'] });
+  }, { name: 'hsvToRgbProp:0', module: $m, deps: ['h', 's', 'v'], writes: ['r', 'g', 'b'] });
 
   const hexColor = createComb(() => rgbToHex(r(), g(), b()), { name: 'hexColor', module: $m, deps: ["r","g","b"] });
 
@@ -491,11 +431,11 @@ export function __test() {
     const __g = g();
     const __b = b();
     batch(() => {
-      setH(rgbToHsv(r(), g(), b()).h);
-      setS(rgbToHsv(r(), g(), b()).s);
-      setV(rgbToHsv(r(), g(), b()).v);
+      setH(rgbToHsv(__r, __g, __b).h);
+      setS(rgbToHsv(__r, __g, __b).s);
+      setV(rgbToHsv(__r, __g, __b).v);
     });
-  }, { name: 'rgbToHsvProp:0', module: $m, deps: ['r', 'g', 'b'] });
+  }, { name: 'rgbToHsvProp:0', module: $m, deps: ['r', 'g', 'b'], writes: ['h', 's', 'v'] });
 
   createPropagator(() => {
     // Read inputs: h, s, v
@@ -503,11 +443,11 @@ export function __test() {
     const __s = s();
     const __v = v();
     batch(() => {
-      setR(hsvToRgb(h(), s(), v()).r);
-      setG(hsvToRgb(h(), s(), v()).g);
-      setB(hsvToRgb(h(), s(), v()).b);
+      setR(hsvToRgb(__h, __s, __v).r);
+      setG(hsvToRgb(__h, __s, __v).g);
+      setB(hsvToRgb(__h, __s, __v).b);
     });
-  }, { name: 'hsvToRgbProp:0', module: $m, deps: ['h', 's', 'v'] });
+  }, { name: 'hsvToRgbProp:0', module: $m, deps: ['h', 's', 'v'], writes: ['r', 'g', 'b'] });
 
   const hexColor = createComb(() => rgbToHex(r(), g(), b()), { name: 'hexColor', module: $m, deps: ["r","g","b"] });
 
