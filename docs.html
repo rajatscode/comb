@@ -116,6 +116,7 @@
 
   <div class="docs-body">
     <aside class="docs-sidebar" id="sidebar">
+      <a href="#why">Why Comb?</a>
       <div class="sidebar-group">Language</div>
       <a href="#primitives">Primitives</a>
       <a href="#directives">Directives</a>
@@ -137,6 +138,25 @@
         <code>.comb</code> files declare signals, derived values, state transitions, and views in a single module.
         The compiler extracts a static dependency graph (<code>__graph</code>), verifies it, and emits readable JavaScript.
       </p>
+
+      <!-- Why Comb -->
+      <h2 id="why">Why Comb?</h2>
+      <p>Five things you can do in Comb that other frameworks make hard:</p>
+
+      <h3>See why the submit button is disabled</h3>
+      <p>Write <code>comb canSubmit = usernameValid && emailValid && passwordStrong</code>. The compiler extracts every dependency statically. The circuit diagram renders them as a live schematic with real-time values flowing through wires. If you misspell a dependency or reference one that doesn't exist, it's a compile error &mdash; not a silent bug that ships to production. <a href="/#registration">Try the Dependency Debugger &rarr;</a></p>
+
+      <h3>Bidirectional color conversion without glue code</h3>
+      <p>Declare 6 cells (R, G, B, H, S, V) and two constraints. The propagator network handles convergence automatically &mdash; edit any slider and all others update through the constraint solver. No <code>onChange</code> ping-pong, no manual state synchronization, no infinite loop guards. The compiler verifies that constraint inputs are cells and catches self-triggering writes. <a href="/#color">Try the Color Picker &rarr;</a></p>
+
+      <h3>Drag-resize panels with constraint solving</h3>
+      <p>Declare <code>sidebar + content + inspector == total</code> and <code>sidebar >= 200</code>. Wire the constraints to reactive cells. The Kiwi.js Cassowary solver enforces the invariants while you drag dividers. The circuit graph shows the solver as a node with bidirectional edges to every pane width. <a href="/#layout">Try the Constraint Layout &rarr;</a></p>
+
+      <h3>Replay every state change like a logic analyzer</h3>
+      <p>Every signal in the circuit graph records its history automatically. The waveform debugger plots signal traces over time &mdash; scrub through history, see causality between signals, watch how a threshold crossing triggers an alert. No Redux DevTools setup, no manual action logging. It falls out of the <code>__graph</code> for free. <a href="/#ticker">Try the Waveform Debugger &rarr;</a></p>
+
+      <h3>Refactor and know you didn't break dataflow</h3>
+      <p>The compiler extracts <code>__graph</code> from both the old and new version of your code. The circuit differ highlights added, removed, and changed nodes and edges. You can see at a glance whether a refactor preserved the reactive topology or introduced a breaking change. Zero prior art in web frameworks. <a href="/#diff">Try the Circuit Diff &rarr;</a></p>
 
       <!-- Primitives -->
       <h2 id="primitives">Primitives</h2>

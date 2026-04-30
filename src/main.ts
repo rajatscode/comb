@@ -20,6 +20,35 @@ function createLanding(): HTMLElement {
       <a href="#demos-section" class="hero-cta" onclick="document.querySelector('.pipeline-section').scrollIntoView({behavior:'smooth'});return false;">Try the Demos &#8595;</a>
     </section>
 
+    <section class="usecases-section">
+      <h2 class="section-title">What Can You Build?</h2>
+      <div class="usecase-card">
+        <div class="usecase-title">See why the submit button is disabled</div>
+        <div class="usecase-desc">Write <code>comb canSubmit = valid1 &amp;&amp; valid2</code>. The circuit diagram shows every signal feeding into it with live values. If you forgot a dependency, the compiler tells you.</div>
+        <a href="#registration" class="usecase-link">Try it &rarr;</a>
+      </div>
+      <div class="usecase-card">
+        <div class="usecase-title">Bidirectional color conversion without glue code</div>
+        <div class="usecase-desc">Declare constraints between RGB and HSV. Edit any slider, all others update. No <code>onChange</code> ping-pong.</div>
+        <a href="#color" class="usecase-link">Try it &rarr;</a>
+      </div>
+      <div class="usecase-card">
+        <div class="usecase-title">Drag-resize panels with constraint solving</div>
+        <div class="usecase-desc">Declare <code>sidebar + content == total</code>, <code>sidebar >= 200</code>. The Cassowary solver handles the math.</div>
+        <a href="#layout" class="usecase-link">Try it &rarr;</a>
+      </div>
+      <div class="usecase-card">
+        <div class="usecase-title">Replay every state change like a logic analyzer</div>
+        <div class="usecase-desc">Every signal records its history automatically. Scrub through time, see causality. No Redux setup.</div>
+        <a href="#ticker" class="usecase-link">Try it &rarr;</a>
+      </div>
+      <div class="usecase-card">
+        <div class="usecase-title">Refactor and know you didn't break dataflow</div>
+        <div class="usecase-desc">The compiler diffs the circuit graph before and after. Broken wires show in red.</div>
+        <a href="#diff" class="usecase-link">Try it &rarr;</a>
+      </div>
+    </section>
+
     <section class="pipeline-section">
       <h2 class="section-title">The __graph Pipeline</h2>
       <div class="pipeline-diagram">

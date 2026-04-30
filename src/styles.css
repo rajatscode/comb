@@ -657,6 +657,23 @@ a:hover { text-decoration: underline; }
   text-align: center;
 }
 
+/* Use cases */
+.usecases-section {
+  padding: 3rem 0;
+  border-top: 1px solid var(--border);
+}
+.usecase-card {
+  padding: var(--space-md) var(--space-lg);
+  border-left: 3px solid var(--accent);
+  margin-bottom: var(--space-md);
+  background: var(--bg-surface);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.usecase-title { color: var(--text); font-weight: 600; margin-bottom: var(--space-xs); font-size: 0.95rem; }
+.usecase-desc { color: var(--text-muted); font-size: 0.85rem; line-height: 1.5; margin-bottom: var(--space-xs); }
+.usecase-link { color: var(--accent); font-size: 0.85rem; text-decoration: none; }
+.usecase-link:hover { text-decoration: underline; }
+
 /* Pipeline */
 .pipeline-section {
   padding: 3rem 0;
