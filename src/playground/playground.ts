@@ -5,13 +5,17 @@ import { renderCircuitGraph } from '../visualizer.js';
 import counterSrc from '../../examples/counter.comb?raw';
 import registrationSrc from '../../examples/registration.comb?raw';
 import colorPickerSrc from '../../examples/color-picker.comb?raw';
+import compositionSrc from '../../examples/composition.comb?raw';
+import assertionsSrc from '../../examples/assertions.comb?raw';
+import dashboardSrc from '../../examples/dashboard.comb?raw';
 
 const EXAMPLES: Record<string, string> = {
   counter: counterSrc,
   registration: registrationSrc,
   'color-picker': colorPickerSrc,
-  composition: `module ClickCounter {\n  input label: string = "Click";\n  output clicks: int = 0;\n  always @(click) { clicks <= clicks + 1; }\n  view {\n    <button @click=click>{label} ({clicks})</button>\n  }\n}\n\nmodule App {\n  signal totalClicks: int = 0;\n  view {\n    <div>\n      <ClickCounter label="Button A" clicks:={totalClicks} />\n      <p>Total: {totalClicks}</p>\n    </div>\n  }\n}\n`,
-  assertions: `module SafeCounter {\n  signal count: int = 0;\n  comb doubled = count * 2;\n  assert always (count >= 0);\n  assert doubled == count * 2;\n  always @(increment) { count <= count + 1; }\n  view {\n    <div>\n      <p>Count: {count}, Doubled: {doubled}</p>\n      <button @click=increment>+</button>\n    </div>\n  }\n}\n`,
+  composition: compositionSrc,
+  dashboard: dashboardSrc,
+  assertions: assertionsSrc,
   blank: `module App {\n  signal count: int = 0;\n\n  comb label = "Count: " + str(count);\n\n  always @(click) {\n    count <= count + 1;\n  }\n\n  view {\n    <div>\n      <p>{label}</p>\n      <button @click=click>+1</button>\n    </div>\n  }\n}\n`,
 };
 

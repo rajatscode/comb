@@ -1,0 +1,46 @@
+module DataSource {
+  output value: int = 0;
+  output label: string = "Sensor A";
+
+  always @(tick) {
+    value <= value + 1;
+  }
+
+  view {
+    <div class="source">
+      <span>{label}: {value}</span>
+      <button @click=tick>Tick</button>
+    </div>
+  }
+}
+
+module Display {
+  input value: int = 0;
+  input title: string = "Display";
+
+  comb doubled = value * 2;
+  comb status = value > 10 ? "high" : "normal";
+
+  assert always (doubled == value * 2);
+
+  view {
+    <div class="display">
+      <h3>{title}</h3>
+      <p>Value: {value}</p>
+      <p>Doubled: {doubled}</p>
+      <p class={status}>{status}</p>
+    </div>
+  }
+}
+
+module Dashboard {
+  signal sensorValue: int = 0;
+
+  view {
+    <div class="dashboard">
+      <h2>Multi-Module Dashboard</h2>
+      <DataSource value:={sensorValue} />
+      <Display value={sensorValue} title="Monitor" />
+    </div>
+  }
+}
