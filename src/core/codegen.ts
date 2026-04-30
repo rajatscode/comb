@@ -252,7 +252,7 @@ function emitConstraint(decl: ConstraintDecl, ctx: GenContext): string[] {
     for (const stmt of clause.body) lines.push(...emitStmt(stmt, ctx));
     ctx.indent = savedIndent;
     lines.push(`${i}  });`);
-    lines.push(`${i}}, [${clause.inputs.map(inp => `'${inp}'`).join(', ')}], { name: '${decl.name}:${ci}', module: $m });`);
+    lines.push(`${i}}, { name: '${decl.name}:${ci}', module: $m, deps: [${clause.inputs.map(inp => `'${inp}'`).join(', ')}] });`);
   }
   return lines;
 }

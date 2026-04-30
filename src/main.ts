@@ -383,3 +383,56 @@ nav.addEventListener('click', (e) => {
 
 window.addEventListener('hashchange', route);
 route();
+
+// --- HMR: hot-reload generated .comb modules with state preservation ---
+if (import.meta.hot) {
+  // Snapshot signal values from the circuit before dispose
+  function snapshotSignals(): Map<string, any> {
+    const snapshot = new Map<string, any>();
+    for (const node of circuit.getNodes()) {
+      if (node.getValue) {
+        snapshot.set(node.id, node.getValue());
+      }
+    }
+    return snapshot;
+  }
+
+  // Restore signal values after remount
+  function restoreSignals(snapshot: Map<string, any>) {
+    for (const node of circuit.getNodes()) {
+      const saved = snapshot.get(node.id);
+      if (saved !== undefined && node.setValue) {
+        try { node.setValue(saved); } catch (_) { /* signal shape may have changed */ }
+      }
+    }
+  }
+
+  // Registration demo HMR
+  import.meta.hot.accept('./generated/registration.js', (newModule) => {
+    if (!newModule || currentView !== 'registration') return;
+    const snapshot = snapshotSignals();
+    if (currentDispose) { currentDispose(); currentDispose = null; }
+    circuit.reset();
+    const demoWrap = document.getElementById('demo-wrap');
+    if (demoWrap) {
+      demoWrap.innerHTML = '';
+      const { RegistrationForm, __graph } = newModule;
+      const result = RegistrationForm(demoWrap);
+      restoreSignals(snapshot);
+      currentDispose = result.dispose;
+      console.log('[comb HMR] Registration reloaded, signals restored');
+    }
+  });
+
+  // Counter demo HMR (if wired up in future)
+  import.meta.hot.accept('./generated/counter.js', (newModule) => {
+    if (!newModule) return;
+    console.log('[comb HMR] counter.js updated');
+  });
+
+  // Traffic-light HMR
+  import.meta.hot.accept('./generated/traffic-light.js', (newModule) => {
+    if (!newModule) return;
+    console.log('[comb HMR] traffic-light.js updated');
+  });
+}

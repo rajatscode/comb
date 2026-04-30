@@ -39,9 +39,22 @@ export const __graph = {
       "type": "event"
     },
     {
-      "id": "view",
-      "name": "view",
-      "type": "view-binding"
+      "id": "view:label",
+      "name": "view:label",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "p.display",
+        "binding": "text"
+      }
+    },
+    {
+      "id": "view:doubled",
+      "name": "view:doubled",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "p",
+        "binding": "text"
+      }
     }
   ],
   "edges": [
@@ -72,12 +85,12 @@ export const __graph = {
     },
     {
       "from": "label",
-      "to": "view",
+      "to": "view:label",
       "type": "data"
     },
     {
       "from": "doubled",
-      "to": "view",
+      "to": "view:doubled",
       "type": "data"
     }
   ]
@@ -130,14 +143,14 @@ export function Counter(root) {
   const el2 = document.createElement('p');
   el2.setAttribute('class', 'display_rnr4f');
   const txt1 = document.createTextNode('');
-  createEffect(() => { txt1.data = String(label()); }, { name: 'view:txt1', module: $m });
+  createEffect(() => { txt1.data = String(label()); }, { name: 'view:label', module: $m, viewTarget: { element: 'p.display', binding: 'text' } });
   el2.appendChild(txt1);
   el0.appendChild(el2);
   const el3 = document.createElement('p');
   const txt2 = document.createTextNode('doubled =');
   el3.appendChild(txt2);
   const txt3 = document.createTextNode('');
-  createEffect(() => { txt3.data = String(doubled()); }, { name: 'view:txt3', module: $m });
+  createEffect(() => { txt3.data = String(doubled()); }, { name: 'view:doubled', module: $m, viewTarget: { element: 'p', binding: 'text' } });
   el3.appendChild(txt3);
   el0.appendChild(el3);
   const el4 = document.createElement('div');

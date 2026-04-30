@@ -13,6 +13,7 @@ export interface GraphNode {
   valueType?: string;
   deps: string[];
   getValue: (() => any) | null;
+  setValue: ((v: any) => void) | null;
   staticOrigin: boolean;
   runtimeAttached: boolean;
   staticType?: string; // original type from static graph (e.g. 'event', 'view-binding')
@@ -75,6 +76,7 @@ export class CircuitGraph {
           type: nodeType,
           deps: [],
           getValue: null,
+          setValue: null,
           staticOrigin: true,
           runtimeAttached: false,
           staticType: sn.type,
@@ -137,6 +139,7 @@ export class CircuitGraph {
         valueType: info.valueType,
         deps: info.deps ?? [],
         getValue: null,
+        setValue: null,
         staticOrigin: false,
         runtimeAttached: true,
       });
@@ -154,6 +157,11 @@ export class CircuitGraph {
   setNodeValue(nodeId: string, getter: () => any): void {
     const node = this.nodes.get(nodeId);
     if (node) node.getValue = getter;
+  }
+
+  setNodeSetter(nodeId: string, setter: (v: any) => void): void {
+    const node = this.nodes.get(nodeId);
+    if (node) node.setValue = setter;
   }
 
   private pendingListenerEvents: GraphEvent[] = [];

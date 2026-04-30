@@ -83,9 +83,130 @@ export const __graph = {
       "type": "event"
     },
     {
-      "id": "view",
-      "name": "view",
-      "type": "view-binding"
+      "id": "view:bind:username",
+      "name": "view:bind:username",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "input",
+        "binding": "bind:bind"
+      }
+    },
+    {
+      "id": "view:attr:class",
+      "name": "view:attr:class",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "span",
+        "binding": "attr:class"
+      }
+    },
+    {
+      "id": "view:usernameValid",
+      "name": "view:usernameValid",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "span",
+        "binding": "text"
+      }
+    },
+    {
+      "id": "view:bind:email",
+      "name": "view:bind:email",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "input",
+        "binding": "bind:bind"
+      }
+    },
+    {
+      "id": "view:attr:class",
+      "name": "view:attr:class",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "span",
+        "binding": "attr:class"
+      }
+    },
+    {
+      "id": "view:emailValid",
+      "name": "view:emailValid",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "span",
+        "binding": "text"
+      }
+    },
+    {
+      "id": "view:requiredStrength",
+      "name": "view:requiredStrength",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "span",
+        "binding": "text"
+      }
+    },
+    {
+      "id": "view:bind:password",
+      "name": "view:bind:password",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "input",
+        "binding": "bind:bind"
+      }
+    },
+    {
+      "id": "view:attr:class",
+      "name": "view:attr:class",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "span",
+        "binding": "attr:class"
+      }
+    },
+    {
+      "id": "view:strengthLabel",
+      "name": "view:strengthLabel",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "span",
+        "binding": "text"
+      }
+    },
+    {
+      "id": "view:bind:confirm",
+      "name": "view:bind:confirm",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "input",
+        "binding": "bind:bind"
+      }
+    },
+    {
+      "id": "view:attr:class",
+      "name": "view:attr:class",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "span",
+        "binding": "attr:class"
+      }
+    },
+    {
+      "id": "view:passwordsMatch",
+      "name": "view:passwordsMatch",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "span",
+        "binding": "text"
+      }
+    },
+    {
+      "id": "view:submitLabel",
+      "name": "view:submitLabel",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "button",
+        "binding": "text"
+      }
     }
   ],
   "edges": [
@@ -191,57 +312,72 @@ export const __graph = {
     },
     {
       "from": "username",
-      "to": "view",
+      "to": "view:bind:username",
       "type": "data"
     },
     {
       "from": "usernameValid",
-      "to": "view",
+      "to": "view:attr:class",
+      "type": "data"
+    },
+    {
+      "from": "usernameValid",
+      "to": "view:usernameValid",
       "type": "data"
     },
     {
       "from": "email",
-      "to": "view",
+      "to": "view:bind:email",
       "type": "data"
     },
     {
       "from": "emailValid",
-      "to": "view",
+      "to": "view:attr:class",
+      "type": "data"
+    },
+    {
+      "from": "emailValid",
+      "to": "view:emailValid",
       "type": "data"
     },
     {
       "from": "requiredStrength",
-      "to": "view",
+      "to": "view:requiredStrength",
       "type": "data"
     },
     {
       "from": "password",
-      "to": "view",
+      "to": "view:bind:password",
       "type": "data"
     },
     {
       "from": "passwordStrong",
-      "to": "view",
+      "to": "view:attr:class",
       "type": "data"
     },
     {
       "from": "strengthLabel",
-      "to": "view",
+      "to": "view:strengthLabel",
       "type": "data"
     },
     {
       "from": "confirm",
-      "to": "view",
+      "to": "view:bind:confirm",
       "type": "data"
     },
     {
       "from": "passwordsMatch",
-      "to": "view",
+      "to": "view:attr:class",
+      "type": "data"
+    },
+    {
+      "from": "passwordsMatch",
+      "to": "view:passwordsMatch",
       "type": "data"
     },
     {
       "from": "submitLabel",
-      "to": "view",
+      "to": "view:submitLabel",
       "type": "data"
     }
   ]
@@ -319,14 +455,14 @@ export function RegistrationForm(root) {
   el2.appendChild(el3);
   const el4 = document.createElement('input');
   el4.value = username();
-  createEffect(() => { el4.value = username(); }, { name: 'bind:username', module: $m });
+  createEffect(() => { el4.value = username(); }, { name: 'view:bind:username', module: $m, viewTarget: { element: 'input', binding: 'bind:value' } });
   el4.addEventListener('input', (e) => { setUsername(e.target.value); });
   el4.setAttribute('placeholder', '3+ characters');
   el2.appendChild(el4);
   const el5 = document.createElement('span');
-  createEffect(() => { el5.setAttribute('class', (usernameValid() ? "valid" : "invalid")); }, { name: 'attr:class', module: $m });
+  createEffect(() => { el5.setAttribute('class', (usernameValid() ? "valid" : "invalid")); }, { name: 'view:attr:usernameValid', module: $m, viewTarget: { element: 'span', binding: 'attr:class' } });
   const txt2 = document.createTextNode('');
-  createEffect(() => { txt2.data = String((usernameValid() ? "ok" : "too short")); }, { name: 'view:txt2', module: $m });
+  createEffect(() => { txt2.data = String((usernameValid() ? "ok" : "too short")); }, { name: 'view:usernameValid', module: $m, viewTarget: { element: 'span', binding: 'text' } });
   el5.appendChild(txt2);
   el2.appendChild(el5);
   el0.appendChild(el2);
@@ -338,14 +474,14 @@ export function RegistrationForm(root) {
   el6.appendChild(el7);
   const el8 = document.createElement('input');
   el8.value = email();
-  createEffect(() => { el8.value = email(); }, { name: 'bind:email', module: $m });
+  createEffect(() => { el8.value = email(); }, { name: 'view:bind:email', module: $m, viewTarget: { element: 'input', binding: 'bind:value' } });
   el8.addEventListener('input', (e) => { setEmail(e.target.value); });
   el8.setAttribute('placeholder', 'you@example.com');
   el6.appendChild(el8);
   const el9 = document.createElement('span');
-  createEffect(() => { el9.setAttribute('class', (emailValid() ? "valid" : "invalid")); }, { name: 'attr:class', module: $m });
+  createEffect(() => { el9.setAttribute('class', (emailValid() ? "valid" : "invalid")); }, { name: 'view:attr:emailValid', module: $m, viewTarget: { element: 'span', binding: 'attr:class' } });
   const txt4 = document.createTextNode('');
-  createEffect(() => { txt4.data = String((emailValid() ? "ok" : "needs @ and .")); }, { name: 'view:txt4', module: $m });
+  createEffect(() => { txt4.data = String((emailValid() ? "ok" : "needs @ and .")); }, { name: 'view:emailValid', module: $m, viewTarget: { element: 'span', binding: 'text' } });
   el9.appendChild(txt4);
   el6.appendChild(el9);
   el0.appendChild(el6);
@@ -357,7 +493,7 @@ export function RegistrationForm(root) {
   el10.appendChild(el11);
   const el12 = document.createElement('span');
   const txt6 = document.createTextNode('');
-  createEffect(() => { txt6.data = String(requiredStrength()); }, { name: 'view:txt6', module: $m });
+  createEffect(() => { txt6.data = String(requiredStrength()); }, { name: 'view:requiredStrength', module: $m, viewTarget: { element: 'span', binding: 'text' } });
   el12.appendChild(txt6);
   el10.appendChild(el12);
   const el13 = document.createElement('label');
@@ -366,13 +502,13 @@ export function RegistrationForm(root) {
   el10.appendChild(el13);
   const el14 = document.createElement('input');
   el14.value = password();
-  createEffect(() => { el14.value = password(); }, { name: 'bind:password', module: $m });
+  createEffect(() => { el14.value = password(); }, { name: 'view:bind:password', module: $m, viewTarget: { element: 'input', binding: 'bind:value' } });
   el14.addEventListener('input', (e) => { setPassword(e.target.value); });
   el10.appendChild(el14);
   const el15 = document.createElement('span');
-  createEffect(() => { el15.setAttribute('class', (passwordStrong() ? "valid" : "invalid")); }, { name: 'attr:class', module: $m });
+  createEffect(() => { el15.setAttribute('class', (passwordStrong() ? "valid" : "invalid")); }, { name: 'view:attr:passwordStrong', module: $m, viewTarget: { element: 'span', binding: 'attr:class' } });
   const txt8 = document.createTextNode('');
-  createEffect(() => { txt8.data = String(strengthLabel()); }, { name: 'view:txt8', module: $m });
+  createEffect(() => { txt8.data = String(strengthLabel()); }, { name: 'view:strengthLabel', module: $m, viewTarget: { element: 'span', binding: 'text' } });
   el15.appendChild(txt8);
   el10.appendChild(el15);
   el0.appendChild(el10);
@@ -384,20 +520,20 @@ export function RegistrationForm(root) {
   el16.appendChild(el17);
   const el18 = document.createElement('input');
   el18.value = confirm();
-  createEffect(() => { el18.value = confirm(); }, { name: 'bind:confirm', module: $m });
+  createEffect(() => { el18.value = confirm(); }, { name: 'view:bind:confirm', module: $m, viewTarget: { element: 'input', binding: 'bind:value' } });
   el18.addEventListener('input', (e) => { setConfirm(e.target.value); });
   el16.appendChild(el18);
   const el19 = document.createElement('span');
-  createEffect(() => { el19.setAttribute('class', (passwordsMatch() ? "valid" : "invalid")); }, { name: 'attr:class', module: $m });
+  createEffect(() => { el19.setAttribute('class', (passwordsMatch() ? "valid" : "invalid")); }, { name: 'view:attr:passwordsMatch', module: $m, viewTarget: { element: 'span', binding: 'attr:class' } });
   const txt10 = document.createTextNode('');
-  createEffect(() => { txt10.data = String((passwordsMatch() ? "match" : "no match")); }, { name: 'view:txt10', module: $m });
+  createEffect(() => { txt10.data = String((passwordsMatch() ? "match" : "no match")); }, { name: 'view:passwordsMatch', module: $m, viewTarget: { element: 'span', binding: 'text' } });
   el19.appendChild(txt10);
   el16.appendChild(el19);
   el0.appendChild(el16);
   const el20 = document.createElement('button');
   el20.addEventListener('click', submit);
   const txt11 = document.createTextNode('');
-  createEffect(() => { txt11.data = String(submitLabel()); }, { name: 'view:txt11', module: $m });
+  createEffect(() => { txt11.data = String(submitLabel()); }, { name: 'view:submitLabel', module: $m, viewTarget: { element: 'button', binding: 'text' } });
   el20.appendChild(txt11);
   el0.appendChild(el20);
   root.appendChild(el0);

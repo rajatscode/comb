@@ -136,6 +136,8 @@ export function createSignal<T>(
     notify(signal);
   };
 
+  circuit.setNodeSetter(nodeId, (v: any) => write(v));
+
   return [read, write];
 }
 
@@ -297,6 +299,8 @@ export function createCell<T>(
     circuit.notifyChange(nodeId, old, merged);
     notify(signal);
   };
+
+  circuit.setNodeSetter(nodeId, (v: any) => set(v));
 
   return [get, set];
 }
