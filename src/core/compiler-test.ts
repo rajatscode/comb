@@ -678,5 +678,162 @@ module Simple {
   assert(!js.includes('createPropagator'), 'Should not import createPropagator when no constraints');
 });
 
+// --- Test 32: Method call — arr.map(|x| x + 1) compiles ---
+test('method call — arr.map compiles to arr.map((x) => x + 1)', () => {
+  const source = `
+module MethodTest {
+  signal items: int[] = [1, 2, 3];
+  comb doubled = items.map(|x| x * 2);
+  comb filtered = items.filter(|x| x > 1);
+  comb joined = items.join(", ");
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('.map('), 'Should emit .map() method call');
+  assert(js.includes('.filter('), 'Should emit .filter() method call');
+  assert(js.includes('.join('), 'Should emit .join() method call');
+  assert(js.includes('(x) => (x * 2)'), 'Lambda should compile to arrow function');
+});
+
+// --- Test 33: Object.keys global method call compiles ---
+test('Object.keys(obj) compiles to Object.keys(obj)', () => {
+  const source = `
+module GlobalTest {
+  signal config: string = "test";
+  comb parsed = JSON.parse(config);
+  comb logged = console.log(config);
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('JSON.parse('), 'Should emit JSON.parse()');
+  assert(js.includes('console.log('), 'Should emit console.log()');
+});
+
+// --- Test 34: Component with <slot /> and parent with children compiles ---
+test('component with slot and parent children — clean compile', () => {
+  const source = `
+module Card {
+  input title: string = "";
+
+  view {
+    <div class="card">
+      <h3>{title}</h3>
+      <div class="card-body">
+        <slot />
+      </div>
+    </div>
+  }
+}
+
+module App {
+  view {
+    <Card title="My Card">
+      <p>Child content here</p>
+    </Card>
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  // Card factory should accept __children parameter
+  assert(js.includes('__children'), 'Card should accept __children parameter');
+  // Card should insert __children at slot position
+  assert(js.includes('appendChild(__children)'), 'Card should append __children at slot');
+  // App should create child content and pass to Card
+  assert(js.includes('createDocumentFragment'), 'App should create document fragment for children');
+});
+
+// --- Test 35: select @bind emits change event ---
+test('select @bind — emits change event listener', () => {
+  const source = `
+module SelectTest {
+  signal category: string = "a";
+  view {
+    <select @bind=category>
+      <option value="a">A</option>
+      <option value="b">B</option>
+    </select>
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes("addEventListener('change'"), 'Select should use change event');
+  assert(js.includes('.value = category()'), 'Select should bind value property');
+  assert(!js.includes("addEventListener('input'"), 'Select should not use input event');
+});
+
+// --- Test 36: checkbox @bind emits checked property ---
+test('checkbox @bind — emits checked property binding', () => {
+  const source = `
+module CheckboxTest {
+  signal agreed: bool = false;
+  view {
+    <input type="checkbox" @bind=agreed />
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('.checked = agreed()'), 'Checkbox should bind checked property');
+  assert(js.includes('e.target.checked'), 'Checkbox should read e.target.checked');
+  assert(js.includes("addEventListener('change'"), 'Checkbox should use change event');
+});
+
+// --- Test 37: radio @bind emits checked comparison ---
+test('radio @bind — emits checked comparison binding', () => {
+  const source = `
+module RadioTest {
+  signal color: string = "red";
+  view {
+    <input type="radio" name="color" value="red" @bind=color />
+    <input type="radio" name="color" value="blue" @bind=color />
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('.checked = (color()'), 'Radio should compare checked to value');
+  assert(js.includes('if (e.target.checked)'), 'Radio should check if target is checked');
+  assert(js.includes("addEventListener('change'"), 'Radio should use change event');
+});
+
+// --- Test 38: textarea @bind compiles correctly ---
+test('textarea @bind — compiles with value property and input event', () => {
+  const source = `
+module TextareaTest {
+  signal text: string = "";
+  view {
+    <textarea @bind=text></textarea>
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('.value = text()'), 'Textarea should bind value property');
+  assert(js.includes("addEventListener('input'"), 'Textarea should use input event');
+});
+
+// --- Test 39: Lambda params do not trigger undefined reference ---
+test('lambda params — no undefined reference errors', () => {
+  const source = `
+module LambdaTest {
+  signal users: string[] = ["alice", "bob"];
+  comb upper = users.map(|u| u);
+  comb found = users.find(|item| item == "alice");
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);
