@@ -889,8 +889,224 @@ module TypeCompat {
 }`;
   const result = compile(source);
   assert(result.errors.length === 0, `Expected no errors`);
-  assert(result.warnings.length === 0, `Expected no warnings for int→float widening, got: ${result.warnings.map(w => w.message)}`);
+  assert(result.warnings.length === 0, `Expected no warnings for int->float widening, got: ${result.warnings.map(w => w.message)}`);
 });
 
+// =============================================
+// Feature: Custom Function Declarations (fn)
+// =============================================
+
+// --- Test 43: fn declaration — parses and emits correct JS function ---
+test('fn declaration — parses and emits correct JS function', () => {
+  const source = `
+module FnTest {
+  signal x: int = 5;
+
+  fn clamp(value: int, min: int, max: int) -> int {
+    value < min ? min : value > max ? max : value;
+  }
+
+  comb clamped = clamp(x, 0, 10);
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('function clamp(value, min, max)'), 'Should emit function declaration');
+  assert(js.includes('return'), 'Should have implicit return for last expression');
+  assert(js.includes('clamp(x()'), 'Should call clamp with signal read');
+});
+
+// --- Test 44: fn with explicit return ---
+test('fn with explicit return statement', () => {
+  const source = `
+module ReturnTest {
+  fn add(a: int, b: int) -> int {
+    return a + b;
+  }
+
+  signal x: int = 0;
+  comb sum = add(x, 5);
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('function add(a, b)'), 'Should emit function declaration');
+  assert(js.includes('return (a + b)'), 'Should emit explicit return');
+});
+
+// --- Test 45: fn call arg count validation ---
+test('fn call — wrong arg count produces error', () => {
+  const source = `
+module ArgTest {
+  fn double(x: int) -> int {
+    x * 2;
+  }
+
+  signal a: int = 5;
+  comb result = double(a, 3);
+}`;
+  const result = compile(source);
+  assert(result.errors.length > 0, 'Expected error for wrong arg count');
+  assert(result.errors.some(e => e.message.includes("'double'") && e.message.includes('1') && e.message.includes('2')), `Error should mention arg count mismatch, got: ${result.errors.map(e => e.message)}`);
+});
+
+// --- Test 46: fn call to user-defined function compiles correctly ---
+test('fn call to user-defined function compiles correctly', () => {
+  const source = `
+module CallTest {
+  signal price: float = 19.99;
+
+  fn formatPrice(amount: float) -> string {
+    "$" + str(amount);
+  }
+
+  comb display = formatPrice(price);
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('function formatPrice(amount)'), 'Should emit formatPrice');
+  assert(js.includes('formatPrice(price())'), 'Comb should call formatPrice with signal read');
+});
+
+// =============================================
+// Feature: String Template Literals
+// =============================================
+
+// --- Test 47: Template literal with interpolation ---
+test('template literal with interpolation parses and emits JS template literal', () => {
+  const source = `
+module TemplateTest {
+  signal name: string = "World";
+  signal count: int = 3;
+
+  comb greeting = \`Hello, \${name}! You have \${count} items.\`;
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('`Hello, ${name()}'), 'Should emit JS template literal with signal read');
+  assert(js.includes('${count()}'), 'Should emit interpolation for count signal');
+});
+
+// --- Test 48: Template literal without interpolation ---
+test('template literal without interpolation', () => {
+  const source = `
+module SimpleTemplate {
+  signal x: int = 0;
+  comb msg = \`hello world\`;
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('`hello world`'), 'Should emit plain template literal');
+});
+
+// =============================================
+// Feature: Destructuring Assignment
+// =============================================
+
+// --- Test 49: Object destructuring ---
+test('const { a, b } = obj — parses and emits JS destructuring', () => {
+  const source = `
+module DestructTest {
+  signal data: { x: int, y: int } = { x: 1, y: 2 };
+
+  always @(update) {
+    const { x, y } = data;
+    data <= { x: y, y: x };
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('const { x, y } ='), 'Should emit object destructuring');
+});
+
+// --- Test 50: Array destructuring ---
+test('const [first, ...rest] = arr — parses and emits JS destructuring', () => {
+  const source = `
+module ArrayDestructTest {
+  signal items: int[] = [1, 2, 3];
+
+  always @(process) {
+    const [first, ...rest] = items;
+    items <= rest;
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('const [first, ...rest] ='), 'Should emit array destructuring with rest');
+});
+
+// =============================================
+// Feature: Try/Catch
+// =============================================
+
+// --- Test 51: Try/catch without param ---
+test('try/catch — parses and emits JS try/catch', () => {
+  const source = `
+module TryCatchTest {
+  signal result: int = 0;
+  signal error: string = "";
+
+  always @(submit) {
+    try {
+      result <= 42;
+    } catch {
+      error <= "Something went wrong";
+    }
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('try {'), 'Should emit try block');
+  assert(js.includes('} catch ('), 'Should emit catch block');
+  assert(js.includes('setResult(42)'), 'Try body should have signal assign');
+  assert(js.includes('setError("Something went wrong")'), 'Catch body should have signal assign');
+});
+
+// --- Test 52: Try/catch with param ---
+test('try/catch with error parameter', () => {
+  const source = `
+module TryCatchParamTest {
+  signal error: string = "";
+
+  always @(submit) {
+    try {
+      error <= "";
+    } catch (e) {
+      error <= "Error caught";
+    }
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('catch (e)'), 'Should emit catch with named parameter');
+});
+
+// --- Test 53: Calling undefined function produces error ---
+test('calling undefined function produces error', () => {
+  const source = `
+module UndefinedFn {
+  signal x: int = 0;
+  comb result = nonExistentFn(x);
+}`;
+  const result = compile(source);
+  assert(result.errors.length > 0, 'Expected error for undefined function');
+  assert(result.errors.some(e => e.message.includes('nonExistentFn')), `Error should mention nonExistentFn, got: ${result.errors.map(e => e.message)}`);
+});
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

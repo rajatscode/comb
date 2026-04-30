@@ -212,7 +212,7 @@ module Builtins {
   assert(js.includes('Math.abs('), 'abs should emit Math.abs');
 });
 
-// Test 9: Constraint locals codegen
+// Test 10: Constraint locals codegen
 test('constraint — uses locals in body', () => {
   const source = `
 module ConstraintTest {
@@ -242,5 +242,98 @@ module ConstraintTest {
   assert(js.includes("writes:"), 'Should include writes metadata');
 });
 
+// =============================================
+// Feature: fn declarations codegen
+// =============================================
+
+// Test 11: fn generates readable JS function
+test('fn declaration — generates readable JS function', () => {
+  const source = `
+module FnCodegen {
+  fn clamp(x: int, min: int, max: int) -> int {
+    x < min ? min : x > max ? max : x;
+  }
+
+  signal val: int = 15;
+  comb clamped = clamp(val, 0, 10);
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Errors: ${result.errors.map(e => e.message)}`);
+  const js = result.js!;
+
+  assert(js.includes('function clamp(x, min, max)'), 'Should emit function with params');
+  assert(js.includes('return'), 'Should have return for last expr');
+  assert(js.includes('clamp(val()'), 'Should call user function with reactive arg');
+});
+
+// =============================================
+// Feature: Template literals codegen
+// =============================================
+
+// Test 12: Template literal emits JS template literal
+test('template literal — emits JS template literal', () => {
+  const source = `
+module TemplateCodegen {
+  signal name: string = "world";
+  comb msg = \`hello \${name}\`;
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Errors: ${result.errors.map(e => e.message)}`);
+  const js = result.js!;
+
+  assert(js.includes('`hello ${name()}`'), 'Should emit JS template literal with interpolation');
+});
+
+// =============================================
+// Feature: Destructuring codegen
+// =============================================
+
+// Test 13: Object destructuring emits correct JS
+test('destructuring — emits correct JS', () => {
+  const source = `
+module DestructCodegen {
+  signal data: { a: int, b: int } = { a: 1, b: 2 };
+  signal out: int = 0;
+
+  always @(process) {
+    const { a, b } = data;
+    out <= a;
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Errors: ${result.errors.map(e => e.message)}`);
+  const js = result.js!;
+
+  assert(js.includes('const { a, b } = data()'), 'Should emit object destructuring with signal read');
+});
+
+// =============================================
+// Feature: Try/catch codegen
+// =============================================
+
+// Test 14: Try/catch emits correct JS
+test('try/catch — emits correct JS', () => {
+  const source = `
+module TryCatchCodegen {
+  signal x: int = 0;
+  signal err: string = "";
+
+  always @(doIt) {
+    try {
+      x <= 1;
+    } catch (e) {
+      err <= "failed";
+    }
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Errors: ${result.errors.map(e => e.message)}`);
+  const js = result.js!;
+
+  assert(js.includes('try {'), 'Should emit try');
+  assert(js.includes('} catch (e) {'), 'Should emit catch with param');
+  assert(js.includes('setX(1)'), 'Try body should set X');
+  assert(js.includes('setErr("failed")'), 'Catch body should set err');
+});
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

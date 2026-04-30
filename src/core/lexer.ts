@@ -27,6 +27,11 @@ export enum TokenType {
   Eventually = 'eventually',
   Within = 'within',
   X = 'X',
+  Fn = 'fn',
+  Return = 'return',
+  Const = 'const',
+  Try = 'try',
+  Catch = 'catch',
 
   // Directives
   AtIf = '@if',
@@ -37,6 +42,7 @@ export enum TokenType {
   // Literals
   Number = 'NUMBER',
   String = 'STRING',
+  Template = 'TEMPLATE',
   Identifier = 'IDENTIFIER',
 
   // Operators
@@ -55,6 +61,7 @@ export enum TokenType {
   And = '&&',
   Or = '||',
   Not = '!',
+  Arrow = '->',
   Question = '?',
   Colon = ':',
   Dot = '.',
@@ -114,6 +121,11 @@ const KEYWORDS: Record<string, TokenType> = {
   eventually: TokenType.Eventually,
   within: TokenType.Within,
   X: TokenType.X,
+  fn: TokenType.Fn,
+  return: TokenType.Return,
+  const: TokenType.Const,
+  try: TokenType.Try,
+  catch: TokenType.Catch,
 };
 
 export function tokenize(source: string): Token[] {
@@ -184,6 +196,21 @@ export function tokenize(source: string): Token[] {
     return str;
   }
 
+  function readTemplate(): string {
+    advance(); // skip opening backtick
+    let raw = '';
+    while (pos < source.length && peek() !== '`') {
+      if (peek() === '\\') {
+        raw += advance(); // backslash
+        if (pos < source.length) raw += advance(); // escaped char
+      } else {
+        raw += advance();
+      }
+    }
+    if (pos < source.length) advance(); // skip closing backtick
+    return raw;
+  }
+
   function readNumber(): string {
     let num = '';
     while (pos < source.length && (isDigit(peek()) || peek() === '.')) {
@@ -219,6 +246,10 @@ export function tokenize(source: string): Token[] {
       tokens.push(tok(TokenType.String, readString(), sl, sc));
       return;
     }
+    if (ch === '`') {
+      tokens.push(tok(TokenType.Template, readTemplate(), sl, sc));
+      return;
+    }
     if (isDigit(ch)) {
       tokens.push(tok(TokenType.Number, readNumber(), sl, sc));
       return;
@@ -231,7 +262,11 @@ export function tokenize(source: string): Token[] {
 
     switch (ch) {
       case '+': advance(); tokens.push(tok(TokenType.Plus, '+', sl, sc)); return;
-      case '-': advance(); tokens.push(tok(TokenType.Minus, '-', sl, sc)); return;
+      case '-':
+        advance();
+        if (peek() === '>') { advance(); tokens.push(tok(TokenType.Arrow, '->', sl, sc)); }
+        else { tokens.push(tok(TokenType.Minus, '-', sl, sc)); }
+        return;
       case '*': advance(); tokens.push(tok(TokenType.Star, '*', sl, sc)); return;
       case '/': advance(); tokens.push(tok(TokenType.Slash, '/', sl, sc)); return;
       case '%': advance(); tokens.push(tok(TokenType.Percent, '%', sl, sc)); return;
@@ -245,6 +280,7 @@ export function tokenize(source: string): Token[] {
       case ']': advance(); tokens.push(tok(TokenType.RBracket, ']', sl, sc)); return;
       case '{': advance(); tokens.push(tok(TokenType.LBrace, '{', sl, sc)); return;
       case '}': advance(); tokens.push(tok(TokenType.RBrace, '}', sl, sc)); return;
+      case '`': tokens.push(tok(TokenType.Template, readTemplate(), sl, sc)); return;
       case '|':
         advance();
         if (peek() === '|') { advance(); tokens.push(tok(TokenType.Or, '||', sl, sc)); }
@@ -529,6 +565,10 @@ export function tokenize(source: string): Token[] {
       tokens.push(tok(TokenType.String, readString(), sl, sc));
       continue;
     }
+    if (ch === '`') {
+      tokens.push(tok(TokenType.Template, readTemplate(), sl, sc));
+      continue;
+    }
     if (isDigit(ch)) {
       tokens.push(tok(TokenType.Number, readNumber(), sl, sc));
       continue;
@@ -594,7 +634,11 @@ export function tokenize(source: string): Token[] {
 
     switch (ch) {
       case '+': advance(); tokens.push(tok(TokenType.Plus, '+', sl, sc)); break;
-      case '-': advance(); tokens.push(tok(TokenType.Minus, '-', sl, sc)); break;
+      case '-':
+        advance();
+        if (peek() === '>') { advance(); tokens.push(tok(TokenType.Arrow, '->', sl, sc)); }
+        else { tokens.push(tok(TokenType.Minus, '-', sl, sc)); }
+        break;
       case '*': advance(); tokens.push(tok(TokenType.Star, '*', sl, sc)); break;
       case '/': advance(); tokens.push(tok(TokenType.Slash, '/', sl, sc)); break;
       case '%': advance(); tokens.push(tok(TokenType.Percent, '%', sl, sc)); break;
@@ -608,6 +652,7 @@ export function tokenize(source: string): Token[] {
       case ']': advance(); tokens.push(tok(TokenType.RBracket, ']', sl, sc)); break;
       case '{': advance(); tokens.push(tok(TokenType.LBrace, '{', sl, sc)); break;
       case '}': advance(); tokens.push(tok(TokenType.RBrace, '}', sl, sc)); break;
+      case '`': tokens.push(tok(TokenType.Template, readTemplate(), sl, sc)); break;
       case '|':
         advance();
         if (peek() === '|') { advance(); tokens.push(tok(TokenType.Or, '||', sl, sc)); }

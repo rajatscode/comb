@@ -3,8 +3,9 @@
 
 import type {
   Module, Declaration, InputDecl, OutputDecl, SignalDecl, TokenDecl, CombDecl, CellDecl,
-  ConstraintDecl, AlwaysBlock, ViewBlock, StyleBlock, EnumDecl, AssertDecl, TemporalAssertDecl, Statement,
-  SignalAssign, IfStatement, ExprStatement, VNode, VElement, VText, VExpr, VIf, VFor,
+  ConstraintDecl, AlwaysBlock, ViewBlock, StyleBlock, EnumDecl, AssertDecl, TemporalAssertDecl, FnDecl,
+  Statement, SignalAssign, IfStatement, ExprStatement, ReturnStmt, DestructureStmt, TryStmt,
+  VNode, VElement, VText, VExpr, VIf, VFor,
   VComponent, VAttr, Expr,
 } from './ast.js';
 import type { StaticGraph } from './graph.js';
@@ -18,6 +19,7 @@ interface GenContext {
   inputs: Set<string>;
   outputs: Set<string>;
   enums: Map<string, string[]>;
+  userFunctions: Set<string>;
   indent: number;
   elCount: number;
   txtCount: number;
@@ -46,6 +48,7 @@ function createContext(mod: Module): GenContext {
     inputs: new Set(),
     outputs: new Set(),
     enums: new Map(),
+    userFunctions: new Set(),
     indent: 1,
     elCount: 0,
     txtCount: 0,
@@ -62,6 +65,7 @@ function createContext(mod: Module): GenContext {
     if (decl.kind === 'cell') { ctx.cells.add(decl.name); ctx.signals.add(decl.name); } // cells are reactive
     if (decl.kind === 'comb') ctx.combs.add(decl.name);
     if (decl.kind === 'enum') ctx.enums.set(decl.name, decl.variants);
+    if (decl.kind === 'fn') ctx.userFunctions.add(decl.name);
   }
   for (const p of mod.params) ctx.params.add(p.name);
   return ctx;
@@ -154,7 +158,7 @@ export function generate(mod: Module, graph: StaticGraph): string {
   const testCtx = { ...ctx, indent: 1, elCount: 0, txtCount: 0, assertCount: 0 };
 
   for (const decl of mod.body) {
-    if (decl.kind === 'input' || decl.kind === 'output' || decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'comb' || decl.kind === 'cell' || decl.kind === 'constraint' || decl.kind === 'enum' || decl.kind === 'assert' || decl.kind === 'temporal_assert') {
+    if (decl.kind === 'input' || decl.kind === 'output' || decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'comb' || decl.kind === 'cell' || decl.kind === 'constraint' || decl.kind === 'enum' || decl.kind === 'assert' || decl.kind === 'temporal_assert' || decl.kind === 'fn') {
       lines.push(...emitDecl(decl, testCtx));
       lines.push('');
       if (decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'input' || decl.kind === 'output' || decl.kind === 'cell') signalNames.push(decl.name);
@@ -192,6 +196,7 @@ function emitDecl(decl: Declaration, ctx: GenContext): string[] {
     case 'constraint': return emitConstraint(decl, ctx);
     case 'assert': return emitAssert(decl, ctx);
     case 'temporal_assert': return emitTemporalAssert(decl, ctx);
+    case 'fn': return emitFnDecl(decl, ctx);
   }
 }
 
@@ -402,6 +407,26 @@ function emitTemporalAssert(decl: TemporalAssertDecl, ctx: GenContext): string[]
   ];
 }
 
+function emitFnDecl(decl: FnDecl, ctx: GenContext): string[] {
+  const i = ind(ctx);
+  const paramNames = decl.params.map(p => p.name).join(', ');
+  const lines = [`${i}function ${decl.name}(${paramNames}) {`];
+  ctx.indent++;
+  // Emit body statements. The last expression statement gets an implicit return.
+  for (let si = 0; si < decl.body.length; si++) {
+    const stmt = decl.body[si];
+    const isLast = si === decl.body.length - 1;
+    if (isLast && stmt.kind === 'expr_stmt') {
+      // Implicit return for last expression statement
+      lines.push(`${ind(ctx)}return ${emitExpr(stmt.expr, ctx)};`);
+    } else {
+      lines.push(...emitStmt(stmt, ctx));
+    }
+  }
+  ctx.indent--;
+  lines.push(`${i}}`);
+  return lines;
+}
 // Statements
 
 function emitStmt(stmt: Statement, ctx: GenContext): string[] {
@@ -409,6 +434,9 @@ function emitStmt(stmt: Statement, ctx: GenContext): string[] {
     case 'assign': return emitAssign(stmt, ctx);
     case 'if': return emitIf(stmt, ctx);
     case 'expr_stmt': return [`${ind(ctx)}${emitExpr(stmt.expr, ctx)};`];
+    case 'return': return emitReturn(stmt, ctx);
+    case 'destructure': return emitDestructure(stmt, ctx);
+    case 'try': return emitTry(stmt, ctx);
   }
 }
 
@@ -461,6 +489,42 @@ function emitIf(stmt: IfStatement, ctx: GenContext): string[] {
   } else {
     lines.push(`${i}}`);
   }
+  return lines;
+}
+
+function emitReturn(stmt: ReturnStmt, ctx: GenContext): string[] {
+  const i = ind(ctx);
+  if (stmt.value) {
+    return [`${i}return ${emitExpr(stmt.value, ctx)};`];
+  }
+  return [`${i}return;`];
+}
+
+function emitDestructure(stmt: DestructureStmt, ctx: GenContext): string[] {
+  const i = ind(ctx);
+  const value = emitExpr(stmt.value, ctx);
+  if (stmt.pattern.kind === 'object') {
+    const fields = stmt.pattern.fields.map(f => f.alias ? `${f.key}: ${f.alias}` : f.key).join(', ');
+    return [`${i}const { ${fields} } = ${value};`];
+  } else {
+    const elements = [...stmt.pattern.elements];
+    if (stmt.pattern.rest) elements.push(`...${stmt.pattern.rest}`);
+    return [`${i}const [${elements.join(', ')}] = ${value};`];
+  }
+}
+
+function emitTry(stmt: TryStmt, ctx: GenContext): string[] {
+  const i = ind(ctx);
+  const catchParam = stmt.catchParam || '__err';
+  const lines = [`${i}try {`];
+  ctx.indent++;
+  for (const s of stmt.body) lines.push(...emitStmt(s, ctx));
+  ctx.indent--;
+  lines.push(`${i}} catch (${catchParam}) {`);
+  ctx.indent++;
+  for (const s of stmt.catchBody) lines.push(...emitStmt(s, ctx));
+  ctx.indent--;
+  lines.push(`${i}}`);
   return lines;
 }
 
@@ -803,8 +867,18 @@ function emitExpr(expr: Expr, ctx: GenContext): string {
       const e = emitExpr(expr.end, ctx);
       return `Array.from({ length: ${e} - ${s} }, (_, i) => i + ${s})`;
     }
-    case 'template':
-      return `''`; // template not fully supported yet
+    case 'template': {
+      let result = '`';
+      for (const part of expr.parts) {
+        if (typeof part === 'string') {
+          result += part;
+        } else {
+          result += '${' + emitExpr(part, ctx) + '}';
+        }
+      }
+      result += '`';
+      return result;
+    }
   }
 }
 
@@ -854,6 +928,7 @@ function isReactive(expr: Expr, ctx: GenContext): boolean {
     case 'index': return isReactive(expr.object, ctx) || isReactive(expr.index, ctx);
     case 'array': return expr.elements.some(e => isReactive(e, ctx));
     case 'object': return expr.properties.some(p => isReactive(p.value, ctx));
+    case 'template': return expr.parts.some(p => typeof p !== 'string' && isReactive(p, ctx));
     default: return false;
   }
 }

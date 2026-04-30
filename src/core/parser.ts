@@ -1,14 +1,15 @@
 // parser.ts — Recursive descent parser with Pratt expression parsing for Comb
 
-import { Token, TokenType } from './lexer.js';
+import { Token, TokenType, tokenize } from './lexer.js';
 import type {
   Module, Param, Declaration, InputDecl, OutputDecl, SignalDecl, TokenDecl, CellDecl,
-  CombDecl, ConstraintDecl, ConstraintClause,
+  CombDecl, ConstraintDecl, ConstraintClause, FnDecl,
   AlwaysBlock, ViewBlock, StyleBlock, EnumDecl, AssertDecl, TemporalAssertDecl, EventTrigger, Statement,
-  SignalAssign, IfStatement, ExprStatement, VNode, VElement, VText, VExpr, VIf, VFor,
+  SignalAssign, IfStatement, ExprStatement, ReturnStmt, DestructureStmt, DestructurePattern,
+  TryStmt, VNode, VElement, VText, VExpr, VIf, VFor,
   VComponent, VAttr, Expr, Literal, Identifier, BinaryExpr, UnaryExpr,
   TernaryExpr, CallExpr, MemberExpr, IndexExpr, ArrayExpr, ObjectExpr,
-  SpreadExpr, LambdaExpr, RangeExpr, TypeExpr, ObjectType, RangeType, UnionType, SourceLoc,
+  SpreadExpr, LambdaExpr, RangeExpr, TemplateExpr, TypeExpr, ObjectType, RangeType, UnionType, SourceLoc,
 } from './ast.js';
 
 export class ParseError extends Error {
@@ -191,6 +192,7 @@ class Parser {
       case TokenType.Style: return this.parseStyleBlock();
       case TokenType.Enum: return this.parseEnumDecl();
       case TokenType.Assert: return this.parseAssertDecl();
+      case TokenType.Fn: return this.parseFnDecl();
       default: this.error(`Unexpected token '${t.value}' in module body, expected declaration`);
     }
   }
@@ -456,10 +458,43 @@ class Parser {
     return { kind: 'assert', mode, expr, deps: [], loc };
   }
 
+  private parseFnDecl(): FnDecl {
+    const loc = this.loc();
+    this.expect(TokenType.Fn);
+    const name = this.expect(TokenType.Identifier, 'function name').value;
+    this.expect(TokenType.LParen, 'function params');
+    const params: { name: string; type?: TypeExpr }[] = [];
+    while (!this.check(TokenType.RParen) && !this.check(TokenType.EOF)) {
+      const pName = this.expect(TokenType.Identifier, 'param name').value;
+      let pType: TypeExpr | undefined;
+      if (this.match(TokenType.Colon)) {
+        pType = this.parseType();
+      }
+      params.push({ name: pName, type: pType });
+      if (!this.check(TokenType.RParen)) this.expect(TokenType.Comma, 'function params');
+    }
+    this.expect(TokenType.RParen, 'function params end');
+    let returnType: TypeExpr | undefined;
+    if (this.check(TokenType.Arrow)) {
+      this.advance();
+      returnType = this.parseType();
+    }
+    this.expect(TokenType.LBrace, 'function body');
+    const body: Statement[] = [];
+    while (!this.check(TokenType.RBrace) && !this.check(TokenType.EOF)) {
+      body.push(this.parseStatement());
+    }
+    this.expect(TokenType.RBrace, 'function body end');
+    return { kind: 'fn', name, params, returnType, body, loc };
+  }
+
   // Statements
 
   private parseStatement(): Statement {
     if (this.check(TokenType.AtIf) || this.check(TokenType.If)) return this.parseIfStatement();
+    if (this.check(TokenType.Return)) return this.parseReturnStmt();
+    if (this.check(TokenType.Const)) return this.parseDestructureStmt();
+    if (this.check(TokenType.Try)) return this.parseTryStmt();
 
     const loc = this.loc();
     this.inStatementContext = true;
@@ -503,6 +538,91 @@ class Parser {
       }
     }
     return { kind: 'if', condition, then, else_, loc };
+  }
+
+  private parseReturnStmt(): ReturnStmt {
+    const loc = this.loc();
+    this.expect(TokenType.Return);
+    let value: Expr | undefined;
+    if (!this.check(TokenType.Semicolon) && !this.check(TokenType.RBrace)) {
+      this.inStatementContext = true;
+      value = this.parseExpr();
+      this.inStatementContext = false;
+    }
+    this.match(TokenType.Semicolon);
+    return { kind: 'return', value, loc };
+  }
+
+  private parseDestructureStmt(): DestructureStmt {
+    const loc = this.loc();
+    this.expect(TokenType.Const);
+
+    let pattern: DestructurePattern;
+    if (this.check(TokenType.LBrace)) {
+      // Object destructuring: const { a, b } = expr;
+      this.advance();
+      const fields: { key: string; alias?: string }[] = [];
+      while (!this.check(TokenType.RBrace) && !this.check(TokenType.EOF)) {
+        const key = this.expect(TokenType.Identifier, 'destructure key').value;
+        let alias: string | undefined;
+        if (this.match(TokenType.Colon)) {
+          alias = this.expect(TokenType.Identifier, 'destructure alias').value;
+        }
+        fields.push({ key, alias });
+        if (!this.check(TokenType.RBrace)) this.expect(TokenType.Comma, 'destructure fields');
+      }
+      this.expect(TokenType.RBrace, 'destructure pattern end');
+      pattern = { kind: 'object', fields };
+    } else if (this.check(TokenType.LBracket)) {
+      // Array destructuring: const [a, b, ...rest] = expr;
+      this.advance();
+      const elements: string[] = [];
+      let rest: string | undefined;
+      while (!this.check(TokenType.RBracket) && !this.check(TokenType.EOF)) {
+        if (this.check(TokenType.Spread)) {
+          this.advance();
+          rest = this.expect(TokenType.Identifier, 'rest element').value;
+        } else {
+          elements.push(this.expect(TokenType.Identifier, 'destructure element').value);
+        }
+        if (!this.check(TokenType.RBracket)) this.expect(TokenType.Comma, 'destructure elements');
+      }
+      this.expect(TokenType.RBracket, 'destructure pattern end');
+      pattern = { kind: 'array', elements, rest };
+    } else {
+      this.error('Expected { or [ after const for destructuring');
+    }
+
+    this.expect(TokenType.Assign, 'destructure assignment');
+    this.inStatementContext = true;
+    const value = this.parseExpr();
+    this.inStatementContext = false;
+    this.expect(TokenType.Semicolon, 'destructure statement');
+    return { kind: 'destructure', pattern, value, loc };
+  }
+
+  private parseTryStmt(): TryStmt {
+    const loc = this.loc();
+    this.expect(TokenType.Try);
+    this.expect(TokenType.LBrace, 'try body');
+    const body: Statement[] = [];
+    while (!this.check(TokenType.RBrace) && !this.check(TokenType.EOF)) {
+      body.push(this.parseStatement());
+    }
+    this.expect(TokenType.RBrace, 'try body end');
+    this.expect(TokenType.Catch, 'catch clause');
+    let catchParam: string | undefined;
+    if (this.match(TokenType.LParen)) {
+      catchParam = this.expect(TokenType.Identifier, 'catch parameter').value;
+      this.expect(TokenType.RParen, 'catch parameter end');
+    }
+    this.expect(TokenType.LBrace, 'catch body');
+    const catchBody: Statement[] = [];
+    while (!this.check(TokenType.RBrace) && !this.check(TokenType.EOF)) {
+      catchBody.push(this.parseStatement());
+    }
+    this.expect(TokenType.RBrace, 'catch body end');
+    return { kind: 'try', body, catchParam, catchBody, loc };
   }
 
   // View nodes
@@ -774,6 +894,7 @@ class Parser {
     if (t.type === TokenType.LBrace) return this.parseObjectExpr();
     if (t.type === TokenType.Spread) { this.advance(); return { kind: 'spread', expr: this.parseExpr(12), loc }; }
     if (t.type === TokenType.Pipe) return this.parseLambda();
+    if (t.type === TokenType.Template) return this.parseTemplateExpr();
     if (t.type === TokenType.Identifier) { this.advance(); return { kind: 'identifier', name: t.value, loc }; }
     // Allow keywords that can appear as identifiers in expressions
     if (t.type === TokenType.X) { this.advance(); return { kind: 'identifier', name: 'X', loc }; }
@@ -818,5 +939,47 @@ class Parser {
     }
     this.expect(TokenType.Pipe, 'lambda body');
     return { kind: 'lambda', params, body: this.parseExpr(), loc };
+  }
+
+  private parseTemplateExpr(): TemplateExpr {
+    const loc = this.loc();
+    const raw = this.advance().value; // consume the Template token
+    const parts: (string | Expr)[] = [];
+
+    // Split on ${...} interpolations
+    let i = 0;
+    while (i < raw.length) {
+      if (raw[i] === '$' && i + 1 < raw.length && raw[i + 1] === '{') {
+        // Find matching closing brace
+        let depth = 1;
+        let j = i + 2;
+        while (j < raw.length && depth > 0) {
+          if (raw[j] === '{') depth++;
+          else if (raw[j] === '}') depth--;
+          j++;
+        }
+        // j is now past the closing brace
+        const exprStr = raw.slice(i + 2, j - 1);
+        // Tokenize just the expression, wrap in a dummy context so we can parse it
+        // We use a simple wrapping: "signal __x: int = <expr>;" which puts the expr at token index 5
+        const innerTokens = tokenize(`signal __x: int = ${exprStr};`);
+        // Tokens: signal(0) __x(1) :(2) int(3) =(4) <expr_tokens...> ;(last) EOF(last)
+        const subParser = new Parser(innerTokens);
+        (subParser as any).pos = 5; // skip to the expression
+        const expr = subParser.parseExpr();
+        parts.push(expr);
+        i = j;
+      } else {
+        // Text segment
+        let text = '';
+        while (i < raw.length && !(raw[i] === '$' && i + 1 < raw.length && raw[i + 1] === '{')) {
+          text += raw[i];
+          i++;
+        }
+        if (text.length > 0) parts.push(text);
+      }
+    }
+
+    return { kind: 'template', parts, loc };
   }
 }
