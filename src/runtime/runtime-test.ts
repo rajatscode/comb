@@ -3,6 +3,8 @@
 
 import { createSignal, createComb, createEffect, batch, untrack, createScope, onMount, onDestroy } from './signals.js';
 import { circuit } from './circuit.js';
+import { reconcileKeyed } from './reconcile.js';
+import type { KeyedState } from './reconcile.js';
 
 let passed = 0;
 let failed = 0;
@@ -258,6 +260,182 @@ test('onDestroy runs in reverse order (LIFO)', () => {
   onDestroy(() => { order.push(3); });
   scope.dispose();
   assertEqual(JSON.stringify(order), JSON.stringify([3, 2, 1]), 'onDestroy should run LIFO');
+});
+
+// --- reconcileKeyed tests (with minimal DOM mock) ---
+
+// Minimal DOM mock for Node.js environment
+function createMockDOM() {
+  interface MockNode {
+    nodeType: number;
+    textContent: string;
+    parentNode: MockNode | null;
+    childNodes: MockNode[];
+    nextSibling: MockNode | null;
+    _tag?: string;
+    _data?: string;
+  }
+
+  function createNode(tag: string): MockNode {
+    const node: MockNode = {
+      nodeType: 1,
+      textContent: '',
+      parentNode: null,
+      childNodes: [],
+      nextSibling: null,
+      _tag: tag,
+    };
+    return node;
+  }
+
+  function updateSiblings(parent: MockNode) {
+    for (let i = 0; i < parent.childNodes.length; i++) {
+      parent.childNodes[i].nextSibling = parent.childNodes[i + 1] || null;
+    }
+  }
+
+  const container = createNode('div');
+
+  // Add DOM methods to container
+  (container as any).appendChild = function(child: MockNode) {
+    child.parentNode = container;
+    container.childNodes.push(child);
+    updateSiblings(container);
+    return child;
+  };
+
+  (container as any).insertBefore = function(newNode: MockNode, refNode: MockNode | null) {
+    newNode.parentNode = container;
+    if (refNode === null) {
+      container.childNodes.push(newNode);
+    } else {
+      const idx = container.childNodes.indexOf(refNode);
+      if (idx === -1) {
+        container.childNodes.push(newNode);
+      } else {
+        container.childNodes.splice(idx, 0, newNode);
+      }
+    }
+    updateSiblings(container);
+    return newNode;
+  };
+
+  (container as any).removeChild = function(child: MockNode) {
+    const idx = container.childNodes.indexOf(child);
+    if (idx !== -1) {
+      container.childNodes.splice(idx, 1);
+      child.parentNode = null;
+      updateSiblings(container);
+    }
+    return child;
+  };
+
+  const anchor = createNode('comment');
+  anchor._data = '@for';
+  (container as any).appendChild(anchor);
+
+  return { container, anchor };
+}
+
+test('reconcileKeyed — initial render creates all nodes', () => {
+  const { container, anchor } = createMockDOM();
+  const state: KeyedState = { keyMap: new Map(), disposers: new Map() };
+  const items = [{ id: 1, name: 'A' }, { id: 2, name: 'B' }, { id: 3, name: 'C' }];
+
+  let createCount = 0;
+  reconcileKeyed(
+    container as any,
+    anchor as any,
+    items,
+    (item) => item.id,
+    (item) => { createCount++; const n = { textContent: item.name, parentNode: null, childNodes: [], nextSibling: null, nodeType: 1 }; return n as any; },
+    () => {},
+    state,
+  );
+
+  assertEqual(createCount, 3, 'should create 3 nodes');
+  assertEqual(state.keyMap.size, 3, 'keyMap should have 3 entries');
+  assert(state.keyMap.has(1), 'keyMap should have key 1');
+  assert(state.keyMap.has(2), 'keyMap should have key 2');
+  assert(state.keyMap.has(3), 'keyMap should have key 3');
+});
+
+test('reconcileKeyed — adding an item only creates one new node', () => {
+  const { container, anchor } = createMockDOM();
+  const state: KeyedState = { keyMap: new Map(), disposers: new Map() };
+
+  // Initial render
+  const items1 = [{ id: 1, name: 'A' }, { id: 2, name: 'B' }];
+  let createCount = 0;
+  const createFn = (item: any) => { createCount++; return { textContent: item.name, parentNode: null, childNodes: [], nextSibling: null, nodeType: 1 } as any; };
+  const updateFn = (node: any, item: any) => { node.textContent = item.name; };
+
+  reconcileKeyed(container as any, anchor as any, items1, (item) => item.id, createFn, updateFn, state);
+  assertEqual(createCount, 2, 'initial: should create 2 nodes');
+
+  // Add one item
+  createCount = 0;
+  const items2 = [{ id: 1, name: 'A' }, { id: 2, name: 'B' }, { id: 3, name: 'C' }];
+  reconcileKeyed(container as any, anchor as any, items2, (item) => item.id, createFn, updateFn, state);
+  assertEqual(createCount, 1, 'after add: should only create 1 new node');
+  assertEqual(state.keyMap.size, 3, 'keyMap should have 3 entries');
+});
+
+test('reconcileKeyed — removing an item removes its node', () => {
+  const { container, anchor } = createMockDOM();
+  const state: KeyedState = { keyMap: new Map(), disposers: new Map() };
+
+  const items1 = [{ id: 1, name: 'A' }, { id: 2, name: 'B' }, { id: 3, name: 'C' }];
+  const createFn = (item: any) => { const n = { textContent: item.name, parentNode: null, childNodes: [], nextSibling: null, nodeType: 1 } as any; return n; };
+  const updateFn = () => {};
+
+  reconcileKeyed(container as any, anchor as any, items1, (item) => item.id, createFn, updateFn, state);
+  assertEqual(state.keyMap.size, 3, 'initial: 3 entries');
+
+  // Remove middle item
+  const items2 = [{ id: 1, name: 'A' }, { id: 3, name: 'C' }];
+  reconcileKeyed(container as any, anchor as any, items2, (item) => item.id, createFn, updateFn, state);
+  assertEqual(state.keyMap.size, 2, 'after remove: 2 entries');
+  assert(!state.keyMap.has(2), 'key 2 should be removed');
+});
+
+test('reconcileKeyed — disposer called on removal', () => {
+  const { container, anchor } = createMockDOM();
+  const state: KeyedState = { keyMap: new Map(), disposers: new Map() };
+
+  const items1 = [{ id: 1, name: 'A' }, { id: 2, name: 'B' }];
+  const createFn = (item: any) => { return { textContent: item.name, parentNode: null, childNodes: [], nextSibling: null, nodeType: 1 } as any; };
+
+  reconcileKeyed(container as any, anchor as any, items1, (item) => item.id, createFn, () => {}, state);
+
+  // Add a disposer for key 2
+  let disposed = false;
+  state.disposers.set(2, () => { disposed = true; });
+
+  // Remove item with id 2
+  const items2 = [{ id: 1, name: 'A' }];
+  reconcileKeyed(container as any, anchor as any, items2, (item) => item.id, createFn, () => {}, state);
+  assertEqual(disposed, true, 'disposer for removed key should be called');
+});
+
+test('reconcileKeyed — update function called for existing keys', () => {
+  const { container, anchor } = createMockDOM();
+  const state: KeyedState = { keyMap: new Map(), disposers: new Map() };
+
+  const items1 = [{ id: 1, name: 'A' }];
+  const createFn = (item: any) => { return { textContent: item.name, parentNode: null, childNodes: [], nextSibling: null, nodeType: 1 } as any; };
+
+  let updateCalled = false;
+  let updatedName = '';
+  const updateFn = (_node: any, item: any) => { updateCalled = true; updatedName = item.name; };
+
+  reconcileKeyed(container as any, anchor as any, items1, (item) => item.id, createFn, updateFn, state);
+
+  // Update the item's name (same key)
+  const items2 = [{ id: 1, name: 'Updated' }];
+  reconcileKeyed(container as any, anchor as any, items2, (item) => item.id, createFn, updateFn, state);
+  assertEqual(updateCalled, true, 'update function should be called');
+  assertEqual(updatedName, 'Updated', 'update should receive new item data');
 });
 
 // --- Deferred test: verify onMount actually fires via microtask ---

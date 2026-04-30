@@ -678,5 +678,101 @@ module Simple {
   assert(!js.includes('createPropagator'), 'Should not import createPropagator when no constraints');
 });
 
+// --- Test 32: @for with key=expr parses keyExpr ---
+test('@for with key=expr — keyExpr is present in AST', () => {
+  const source = `
+module ListApp {
+  signal items: array = [{ id: 1, name: "a" }, { id: 2, name: "b" }];
+  view {
+    <ul>
+      @for item in items key=item.id {
+        <li>{item.name}</li>
+      }
+    </ul>
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const ast = result.ast!;
+  const viewDecl = ast.body.find(d => d.kind === 'view') as any;
+  assert(viewDecl !== undefined, 'Expected view declaration');
+
+  // The @for node is inside the <ul> element
+  const ulEl = viewDecl.children[0];
+  const forNode = ulEl.children[0];
+  assert(forNode.kind === 'for', 'Expected @for node');
+  assert(forNode.variable === 'item', 'Expected variable to be item');
+  assert(forNode.keyExpr !== undefined, 'Expected keyExpr to be present');
+  assert(forNode.keyExpr.kind === 'member', 'Expected keyExpr to be member expression');
+  assert(forNode.keyExpr.property === 'id', 'Expected keyExpr property to be id');
+});
+
+// --- Test 33: @for with key emits reconcileKeyed ---
+test('@for with key — codegen emits reconcileKeyed', () => {
+  const source = `
+module ListApp {
+  signal items: array = [{ id: 1, name: "a" }];
+  view {
+    <ul>
+      @for item in items key=item.id {
+        <li>{item.name}</li>
+      }
+    </ul>
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('reconcileKeyed'), 'Should emit reconcileKeyed call');
+  assert(js.includes('__forState'), 'Should create keyed state');
+  assert(js.includes('keyMap'), 'Should reference keyMap in state');
+  assert(js.includes('__item.id'), 'Should emit key function with item.id');
+});
+
+// --- Test 34: @for without key — backward compatible full re-render ---
+test('@for without key — backward compat, no reconcileKeyed', () => {
+  const source = `
+module ListApp {
+  signal items: array = ["a", "b", "c"];
+  view {
+    <ul>
+      @for item in items {
+        <li>{item}</li>
+      }
+    </ul>
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(!js.includes('reconcileKeyed'), 'Should NOT emit reconcileKeyed for unkeyed @for');
+  assert(js.includes('for (const item of'), 'Should emit traditional for-of loop');
+  assert(js.includes('.remove()'), 'Should clear container on each render');
+});
+
+// --- Test 35: @for with key — imports reconcileKeyed ---
+test('@for with key — imports reconcileKeyed from runtime', () => {
+  const source = `
+module ListApp {
+  signal items: array = [{ id: 1 }];
+  view {
+    @for item in items key=item.id {
+      <div>{item.id}</div>
+    }
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('reconcileKeyed'), 'Should import reconcileKeyed');
+  // Import line should have reconcileKeyed
+  const importLine = js.split('\n').find(l => l.includes('import'));
+  assert(importLine !== undefined && importLine.includes('reconcileKeyed'), 'Import line should include reconcileKeyed');
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

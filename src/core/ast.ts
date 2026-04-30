@@ -210,6 +210,7 @@ export interface VFor {
   kind: 'for';
   variable: string;
   iterable: Expr;
+  keyExpr?: Expr;
   body: VNode[];
   loc: SourceLoc;
 }

@@ -560,6 +560,15 @@ class Parser {
     const variable = this.expect(TokenType.Identifier, '@for variable').value;
     this.expect(TokenType.In, '@for iterable');
     const iterable = this.parseExpr();
+
+    // Optional key=expr before the body block
+    let keyExpr: Expr | undefined;
+    if (this.peek().type === TokenType.Identifier && this.peek().value === 'key' && this.peekAt(1).type === TokenType.Assign) {
+      this.advance(); // consume 'key'
+      this.advance(); // consume '='
+      keyExpr = this.parseExpr();
+    }
+
     this.expect(TokenType.LBrace, '@for body');
     const body: VNode[] = [];
     while (!this.check(TokenType.RBrace) && !this.check(TokenType.EOF)) {
@@ -567,7 +576,7 @@ class Parser {
       if (node) body.push(node);
     }
     this.expect(TokenType.RBrace, '@for body end');
-    return { kind: 'for', variable, iterable, body, loc };
+    return { kind: 'for', variable, iterable, keyExpr, body, loc };
   }
 
   private parseVExprNode(): VExpr {
