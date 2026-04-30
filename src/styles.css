@@ -1033,8 +1033,8 @@ a:hover { text-decoration: underline; }
 .showcase-panels { background: #1a1a2e; border-radius: 0 0 8px 8px; }
 .panel { display: none; padding: 1rem; }
 .panel.active { display: block; }
-.panel pre { margin: 0; overflow-x: auto; }
-.panel code { font-size: 0.85rem; line-height: 1.5; font-family: 'SF Mono', 'Fira Code', monospace; }
+.panel pre { margin: 0; overflow: visible; white-space: pre; }
+.panel code { font-size: 0.82rem; line-height: 1.5; font-family: 'SF Mono', 'Fira Code', monospace; }
 
 .panel-footer {
   display: flex;
@@ -1096,17 +1096,19 @@ a:hover { text-decoration: underline; }
 
 .comb-editor {
   width: 100%;
-  min-height: 500px;
+  height: auto;
   background: #12121e;
   color: #e0e0e0;
   border: none;
   font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   line-height: 1.5;
-  resize: vertical;
+  resize: none;
   outline: none;
   padding: 1rem;
   tab-size: 2;
+  overflow: hidden;
+  field-sizing: content;
 }
 
 .comb-errors {
