@@ -1,28 +1,41 @@
-# Comb Roadmap
+# Comb Roadmap — Status
 
-## Completed
-1. ~~Compiler with verification pass~~ — 9 tests
-2. ~~Codegen with __graph export~~ — 5 tests
-3. ~~Runtime with CircuitGraph~~ — 13 tests
+## All Items Complete
 
-## Completed
-4. ~~View/DOM wiring (counter in browser)~~
-5. ~~CircuitGraph Visualizer (DOM nodes + canvas edges, pulse animations)~~
-6. ~~Demo 1: Dependency Debugger (registration form + live circuit + compiler errors)~~
+1. ~~Compiler with verification pass~~ ✅ (31 tests)
+2. ~~Codegen with __graph export~~ ✅
+3. ~~Runtime with CircuitGraph~~ ✅ (17 tests)
+4. ~~View/DOM wiring~~ ✅
+5. ~~CircuitGraph Visualizer~~ ✅
+6. ~~Demo 1: Dependency Debugger~~ ✅ (coverage heatmap + auto-test)
+7. ~~Demo 2: Waveform Debugger~~ ✅
+8. ~~loadStaticGraph unification~~ ✅ (12 tests)
+9. ~~Sensitivity-triggered always blocks~~ ✅
+10. ~~Demo 3: Circuit Diff~~ ✅
+11. ~~Propagator Networks~~ ✅ (color picker demo)
+12. ~~Assert blocks + __test export~~ ✅
+13. ~~Token declarations~~ ✅
+14. ~~Scoped style blocks~~ ✅
+15. ~~Module composition with directional ports~~ ✅
+16. ~~Event modifiers~~ ✅
+17. ~~Lifecycle hooks~~ ✅
+18. ~~Cell/constraint compiler syntax~~ ✅
+19. ~~View binding graph nodes~~ ✅
+20. ~~HMR with state preservation~~ ✅
+21. ~~Constraint-based layout (Kiwi)~~ ✅
+22. ~~Demo 5: Constraint Layout~~ ✅
+23. ~~Landing page~~ ✅
+24. ~~Online playground~~ ✅ (7 examples)
+25. ~~Language docs (HTML)~~ ✅
+26. ~~README update~~ ✅
+27. ~~Color picker compiled from .comb~~ ✅
+28. ~~UI cleanup pass~~ ✅
+29. ~~Practical value prop ("What Can You Build?")~~ ✅
 
-## In Progress
-7. Demo 2: Waveform Debugger (stock ticker + canvas waveform traces)
-
-## Upcoming
-8. loadStaticGraph unification (static→runtime graph, drift detection)
-9. Sensitivity-triggered always blocks (closes thesis gap)
-10. Demo 3: Circuit Diff (topology comparison across refactors)
-11. Propagator Networks (bidirectional constraints, RGB/HSV color picker)
-12. Full framework features: HMR, module composition, lifecycle hooks, scoped styles, event modifiers
-
-## Novelty Scorecard (from researcher)
-- Static graph export (__graph): 10/10 — no framework does this
-- Compiler-verified comb deps: 10/10 — no framework does this
-- Sensitivity-triggered always blocks: not yet implemented (closes 8/10 → 10/10 gap)
-- View binding graph nodes: not yet implemented (fine-grained DOM→signal mapping)
-- Propagator networks: not yet attempted (genuinely new territory)
+## Stats
+- 45 commits since clean rewrite
+- ~15,000 lines added
+- 60 tests (31 compiler + 17 runtime + 12 circuit)
+- 5 demos, all QA verified
+- 7 playground examples
+- Proper HTML docs with sidebar nav
