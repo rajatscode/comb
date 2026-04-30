@@ -7,51 +7,136 @@ import monitorSrc from '../examples/monitor.comb?raw';
 const app = document.getElementById('app')!;
 
 // --- Framework code snippets (edge-detection only, no comments) ---
-const COMB_SNIPPET = `always @(posedge cpuHigh) {
-  alertCount <= alertCount + 1;
-  lastAlert <= "CPU crossed " + threshDisplay;
-}
+const COMB_SNIPPET = `comb cpuHigh = cpuAvg > cpuThreshold;
+comb memHigh = memAvg > 85;
+comb diskHigh = disk > 90;
 
+always @(posedge cpuHigh) {
+  alertCount <= alertCount + 1;
+  lastAlert <= "CPU crossed threshold";
+}
 always @(negedge cpuHigh) {
-  lastAlert <= "CPU recovered below " + threshDisplay;
+  lastAlert <= "CPU recovered";
+}
+always @(posedge memHigh) {
+  alertCount <= alertCount + 1;
+  lastAlert <= "Memory exceeded 85%";
+}
+always @(negedge memHigh) {
+  lastAlert <= "Memory recovered";
+}
+always @(posedge diskHigh) {
+  alertCount <= alertCount + 1;
+  lastAlert <= "Disk exceeded 90%";
+}
+always @(negedge diskHigh) {
+  lastAlert <= "Disk recovered";
 }`;
 
-const REACT_SNIPPET = `const prevHigh = useRef(false);
+const REACT_SNIPPET = `const cpuHigh = cpuAvg > threshold;
+const memHigh = memAvg > 85;
+const diskHigh = disk > 90;
+
+const prevCpu = useRef(false);
+const prevMem = useRef(false);
+const prevDisk = useRef(false);
 
 useEffect(() => {
-  if (cpuHigh && !prevHigh.current) {
+  if (cpuHigh && !prevCpu.current) {
     setAlertCount(c => c + 1);
-    setLastAlert(\`CPU crossed \${threshold}%\`);
+    setLastAlert("CPU crossed threshold");
   }
-  if (!cpuHigh && prevHigh.current) {
-    setLastAlert(\`CPU recovered below \${threshold}%\`);
+  if (!cpuHigh && prevCpu.current) {
+    setLastAlert("CPU recovered");
   }
-  prevHigh.current = cpuHigh;
-}, [cpuHigh, threshold]);`;
+  prevCpu.current = cpuHigh;
+}, [cpuHigh]);
 
-const SVELTE_SNIPPET = `let prevHigh = false;
+useEffect(() => {
+  if (memHigh && !prevMem.current) {
+    setAlertCount(c => c + 1);
+    setLastAlert("Memory exceeded 85%");
+  }
+  if (!memHigh && prevMem.current) {
+    setLastAlert("Memory recovered");
+  }
+  prevMem.current = memHigh;
+}, [memHigh]);
+
+useEffect(() => {
+  if (diskHigh && !prevDisk.current) {
+    setAlertCount(c => c + 1);
+    setLastAlert("Disk exceeded 90%");
+  }
+  if (!diskHigh && prevDisk.current) {
+    setLastAlert("Disk recovered");
+  }
+  prevDisk.current = diskHigh;
+}, [diskHigh]);`;
+
+const SVELTE_SNIPPET = `let cpuHigh = $derived(cpuAvg > threshold);
+let memHigh = $derived(memAvg > 85);
+let diskHigh = $derived(disk > 90);
+
+let prevCpu = false, prevMem = false, prevDisk = false;
+
 $effect(() => {
-  if (cpuHigh && !prevHigh) {
+  if (cpuHigh && !prevCpu) {
     alertCount++;
-    lastAlert = \`CPU crossed \${threshold}%\`;
+    lastAlert = "CPU crossed threshold";
   }
-  if (!cpuHigh && prevHigh) {
-    lastAlert = \`CPU recovered below \${threshold}%\`;
+  if (!cpuHigh && prevCpu) lastAlert = "CPU recovered";
+  prevCpu = cpuHigh;
+});
+$effect(() => {
+  if (memHigh && !prevMem) {
+    alertCount++;
+    lastAlert = "Memory exceeded 85%";
   }
-  prevHigh = cpuHigh;
+  if (!memHigh && prevMem) lastAlert = "Memory recovered";
+  prevMem = memHigh;
+});
+$effect(() => {
+  if (diskHigh && !prevDisk) {
+    alertCount++;
+    lastAlert = "Disk exceeded 90%";
+  }
+  if (!diskHigh && prevDisk) lastAlert = "Disk recovered";
+  prevDisk = diskHigh;
 });`;
 
-const SOLID_SNIPPET = `let prevHigh = false;
+const SOLID_SNIPPET = `const cpuHigh = () => cpuAvg() > threshold();
+const memHigh = () => memAvg() > 85;
+const diskHigh = () => disk() > 90;
+
+let prevCpu = false, prevMem = false, prevDisk = false;
+
 createEffect(() => {
-  const isHigh = cpuAvg() > threshold();
-  if (isHigh && !prevHigh) {
+  const h = cpuHigh();
+  if (h && !prevCpu) {
     setAlertCount(c => c + 1);
-    setLastAlert(\`CPU crossed \${threshold()}%\`);
+    setLastAlert("CPU crossed threshold");
   }
-  if (!isHigh && prevHigh) {
-    setLastAlert(\`CPU recovered below \${threshold()}%\`);
+  if (!h && prevCpu) setLastAlert("CPU recovered");
+  prevCpu = h;
+});
+createEffect(() => {
+  const h = memHigh();
+  if (h && !prevMem) {
+    setAlertCount(c => c + 1);
+    setLastAlert("Memory exceeded 85%");
   }
-  prevHigh = isHigh;
+  if (!h && prevMem) setLastAlert("Memory recovered");
+  prevMem = h;
+});
+createEffect(() => {
+  const h = diskHigh();
+  if (h && !prevDisk) {
+    setAlertCount(c => c + 1);
+    setLastAlert("Disk exceeded 90%");
+  }
+  if (!h && prevDisk) setLastAlert("Disk recovered");
+  prevDisk = h;
 });`;
 
 function escapeHtml(s: string): string {
@@ -96,7 +181,13 @@ function createLanding(): HTMLElement {
       </div>
     </section>
 
+    <section class="tooling-callout">
+      <p>Everything below is <strong>free</strong> — generated automatically from your .comb source. No setup, no plugins, no config.</p>
+    </section>
+
     <section class="circuit-graph-section">
+      <h2 class="section-title">Circuit Graph</h2>
+      <p style="text-align:center; color:#888; font-size:0.85rem; margin-bottom:1rem;">Every signal, derived value, edge trigger, and DOM binding — extracted at compile time.</p>
       <div id="circuit-graph" class="circuit-graph-container"></div>
     </section>
 
@@ -353,21 +444,30 @@ function showLanding() {
     // Start threshold at 40 so alerts fire quickly
     set('cpuThreshold', 40);
 
-    // Simulation - spike early so users see an alert fast
+    // Simulation — spike CPU early, vary all 4 metrics
     const cpuHist: number[] = [];
+    const memHist: number[] = [];
     let tick = 0;
     const iv = setInterval(() => {
       tick++;
-      const spike = (tick % 20 > 4 && tick % 20 < 12);
-      const cpu = spike ? 40 + Math.random() * 30 : 15 + Math.random() * 20;
-      const mem = 40 + 20 * Math.sin(tick / 40) + Math.random() * 10;
+      const cpuSpike = (tick % 20 > 4 && tick % 20 < 12);
+      const cpu = cpuSpike ? 40 + Math.random() * 30 : 15 + Math.random() * 20;
+      const mem = 40 + 25 * Math.sin(tick / 40) + Math.random() * 10;
+      const disk = 30 + 20 * Math.sin(tick / 80) + Math.random() * 5;
+      const net = 5 + Math.random() * 50;
       cpuHist.push(cpu);
+      memHist.push(mem);
       if (cpuHist.length > 10) cpuHist.shift();
-      const avg = cpuHist.reduce((a, b) => a + b) / cpuHist.length;
+      if (memHist.length > 10) memHist.shift();
+      const cpuAvg = cpuHist.reduce((a, b) => a + b) / cpuHist.length;
+      const memAvg = memHist.reduce((a, b) => a + b) / memHist.length;
       batch(() => {
         set('cpu', Math.round(cpu * 10) / 10);
         set('mem', Math.round(mem * 10) / 10);
-        set('cpuAvg', Math.round(avg * 10) / 10);
+        set('disk', Math.round(disk * 10) / 10);
+        set('net', Math.round(net * 10) / 10);
+        set('cpuAvg', Math.round(cpuAvg * 10) / 10);
+        set('memAvg', Math.round(memAvg * 10) / 10);
       });
     }, 500);
 
@@ -386,6 +486,9 @@ function showLanding() {
         `${M}.cpu`,
         `${M}.cpuAvg`,
         `${M}.cpuHigh`,
+        `${M}.mem`,
+        `${M}.memHigh`,
+        `${M}.anyAlert`,
       ]);
       waveformDispose = wfResult.dispose;
     }

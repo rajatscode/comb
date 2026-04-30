@@ -1,18 +1,31 @@
 module Monitor {
   signal cpu: float = 25.0;
   signal mem: float = 40.0;
+  signal disk: float = 5.0;
+  signal net: float = 10.0;
   signal cpuThreshold: float = 80.0;
   signal cpuAvg: float = 25.0;
+  signal memAvg: float = 40.0;
   signal alertCount: int = 0;
   signal lastAlert: string = "";
 
   comb cpuHigh = cpuAvg > cpuThreshold;
+  comb memHigh = memAvg > 85;
+  comb diskHigh = disk > 90;
+  comb anyAlert = cpuHigh || memHigh || diskHigh;
+
   comb cpuDisplay = str(round(cpu)) + "%";
-  comb avgDisplay = str(round(cpuAvg)) + "%";
   comb memDisplay = str(round(mem)) + "%";
+  comb diskDisplay = str(round(disk)) + "%";
+  comb netDisplay = str(round(net)) + " MB/s";
+  comb avgDisplay = str(round(cpuAvg)) + "%";
+  comb memAvgDisplay = str(round(memAvg)) + "%";
   comb threshDisplay = str(round(cpuThreshold)) + "%";
-  comb statusText = cpuHigh ? "ALERT: CPU above " + threshDisplay : "Normal";
-  comb statusClass = cpuHigh ? "status-alert" : "status-ok";
+
+  comb statusText = anyAlert
+    ? "ALERT: " + (cpuHigh ? "CPU " : "") + (memHigh ? "MEM " : "") + (diskHigh ? "DISK " : "") + "threshold exceeded"
+    : "All systems normal";
+  comb statusClass = anyAlert ? "status-alert" : "status-ok";
 
   always @(posedge cpuHigh) {
     alertCount <= alertCount + 1;
@@ -21,6 +34,24 @@ module Monitor {
 
   always @(negedge cpuHigh) {
     lastAlert <= "CPU recovered below " + threshDisplay;
+  }
+
+  always @(posedge memHigh) {
+    alertCount <= alertCount + 1;
+    lastAlert <= "Memory exceeded 85%";
+  }
+
+  always @(negedge memHigh) {
+    lastAlert <= "Memory recovered below 85%";
+  }
+
+  always @(posedge diskHigh) {
+    alertCount <= alertCount + 1;
+    lastAlert <= "Disk usage exceeded 90%";
+  }
+
+  always @(negedge diskHigh) {
+    lastAlert <= "Disk usage recovered";
   }
 
   view {
@@ -32,13 +63,22 @@ module Monitor {
           <span class="metric-detail">avg {avgDisplay}</span>
         </div>
         <div class="metric">
-          <span class="metric-label">MEM</span>
+          <span class="metric-label">Memory</span>
           <span class="metric-value">{memDisplay}</span>
+          <span class="metric-detail">avg {memAvgDisplay}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Disk I/O</span>
+          <span class="metric-value">{diskDisplay}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Network</span>
+          <span class="metric-value">{netDisplay}</span>
         </div>
       </div>
       <p class={statusClass}>{statusText}</p>
-      <p class="alert-info">Alerts fired: {str(alertCount)} | {lastAlert}</p>
-      <label>Threshold: {threshDisplay}
+      <p class="alert-info">Alerts fired: {str(alertCount)} — {lastAlert}</p>
+      <label>CPU Threshold: {threshDisplay}
         <input type="range" min="0" max="100" @bind=cpuThreshold />
       </label>
     </div>
