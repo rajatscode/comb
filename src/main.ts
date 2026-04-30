@@ -365,7 +365,7 @@ async function loadRegistration(container: HTMLElement) {
 }
 
 async function loadTicker(container: HTMLElement) {
-  const { mountStockTicker } = await import('./demos/stock-ticker.js');
+  const { mountStockTicker } = await import('./demos/stock-ticker-mount.js');
   const result = mountStockTicker(container);
   currentDispose = result.dispose;
 }
@@ -377,13 +377,13 @@ async function loadDiff(container: HTMLElement) {
 }
 
 async function loadColor(container: HTMLElement) {
-  const { mountColorPicker } = await import('./demos/color-picker.js');
+  const { mountColorPicker } = await import('./demos/color-picker-mount.js');
   const result = mountColorPicker(container);
   currentDispose = result.dispose;
 }
 
 async function loadLayout(container: HTMLElement) {
-  const { mountResizableLayout } = await import('./demos/resizable-layout.js');
+  const { mountResizableLayout } = await import('./demos/resizable-layout-mount.js');
   const result = mountResizableLayout(container);
   currentDispose = result.dispose;
 }

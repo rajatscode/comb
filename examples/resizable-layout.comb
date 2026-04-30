@@ -1,0 +1,28 @@
+module ResizableLayout {
+  signal sidebarWidth: int = 220;
+  signal mainWidth: int = 460;
+  signal inspectorWidth: int = 220;
+
+  comb sidebarStyle = "width: " + str(sidebarWidth) + "px";
+  comb mainStyle = "width: " + str(mainWidth) + "px";
+  comb inspectorStyle = "width: " + str(inspectorWidth) + "px";
+
+  view {
+    <div class="resizable-layout">
+      <div class="pane sidebar" style={sidebarStyle}>
+        <h3>Sidebar</h3>
+        <p>Width: {str(sidebarWidth)}px</p>
+      </div>
+      <div class="divider" data-divider="left"></div>
+      <div class="pane main" style={mainStyle}>
+        <h3>Main Editor</h3>
+        <p>Width: {str(mainWidth)}px</p>
+      </div>
+      <div class="divider" data-divider="right"></div>
+      <div class="pane inspector" style={inspectorStyle}>
+        <h3>Inspector</h3>
+        <p>Width: {str(inspectorWidth)}px</p>
+      </div>
+    </div>
+  }
+}
