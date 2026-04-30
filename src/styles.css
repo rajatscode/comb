@@ -1071,16 +1071,185 @@ a:hover { text-decoration: underline; }
 .showcase-callout code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85rem; color: #7b8cff; background: rgba(123, 140, 255, 0.1); padding: 0.1rem 0.4rem; border-radius: 3px; }
 
 /* ============================================
-   Live Preview (inline monitor)
+   Live Demo (full-width running monitor)
    ============================================ */
 
-.live-preview-section { margin: 2rem 0; }
-.live-preview-header { color: #999; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 1px; font-size: 0.8rem; }
-.live-preview-container { border: 1px solid #2a2a4a; border-radius: 8px; overflow: hidden; background: #12121e; }
-.live-preview-row { display: flex; min-height: 280px; }
-.live-preview-app { flex: 0 0 340px; padding: 1rem; border-right: 1px solid #2a2a4a; }
-.live-preview-circuit { flex: 1; position: relative; min-height: 280px; overflow: hidden; }
-.live-preview-waveform { height: 140px; border-top: 1px solid #2a2a4a; position: relative; overflow: hidden; background: #12121e; }
+.live-demo-section { margin: 0 0 2rem; }
+.live-demo-container {
+  border: 1px solid #2a2a4a;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #12121e;
+  padding: 1.5rem;
+}
+
+/* ============================================
+   Editable Code + Framework Tabs
+   ============================================ */
+
+.code-editor-section { margin: 0 0 2rem; }
+
+.comb-editor {
+  width: 100%;
+  min-height: 200px;
+  background: #12121e;
+  color: #e0e0e0;
+  border: none;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+  padding: 0;
+  tab-size: 2;
+}
+
+.comb-errors {
+  display: none;
+  background: rgba(255, 70, 70, 0.1);
+  color: #ff6b6b;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.8rem;
+  padding: 0.6rem 0.8rem;
+  border-top: 1px solid #3a2020;
+  white-space: pre-wrap;
+  margin-top: 0.5rem;
+}
+
+/* ============================================
+   Circuit Graph Section (full-width)
+   ============================================ */
+
+.circuit-graph-section { margin: 0 0 2rem; }
+.circuit-graph-container {
+  width: 100%;
+  height: 420px;
+  border: 1px solid #2a2a4a;
+  border-radius: 8px;
+  background: #12121e;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ============================================
+   Waveform Section (full-width)
+   ============================================ */
+
+.waveform-section { margin: 0 0 2rem; }
+.waveform-landing-container {
+  width: 100%;
+  max-height: 160px;
+  overflow: hidden;
+  border: 1px solid #2a2a4a;
+  border-radius: 8px;
+  background: #12121e;
+  position: relative;
+}
+
+/* ============================================
+   Auto-Test Matrix
+   ============================================ */
+
+.autotest-section {
+  margin: 0 0 2rem;
+  padding: 2rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.autotest-desc {
+  text-align: center;
+  color: #888;
+  font-size: 0.9rem;
+  margin: 0 0 1.5rem;
+}
+
+.matrix-wrapper {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.matrix-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.matrix-corner {
+  flex: 0 0 80px;
+  font-size: 0.65rem;
+  color: #666;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  text-align: right;
+  padding-right: 8px;
+}
+
+.matrix-col-label {
+  flex: 1;
+  text-align: center;
+  font-size: 0.7rem;
+  color: #888;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.matrix-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.matrix-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.matrix-row-label {
+  flex: 0 0 80px;
+  text-align: right;
+  padding-right: 8px;
+  font-size: 0.7rem;
+  color: #888;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.matrix-cell {
+  flex: 1;
+  aspect-ratio: 1;
+  min-height: 28px;
+  max-height: 40px;
+  background: #2a2a40;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  color: #666;
+  transition: background 0.2s;
+}
+
+.matrix-cell.pass {
+  background: #1e4a1e;
+  color: #4ae04a;
+}
+
+.matrix-cell.fail {
+  background: #4a1e1e;
+  color: #ff6b6b;
+}
+
+.matrix-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.autotest-result {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.85rem;
+}
 
 /* Prominent feature card (auto-testing) */
 .feature-card-prominent {
@@ -1092,10 +1261,9 @@ a:hover { text-decoration: underline; }
 }
 
 @media (max-width: 640px) {
-  .live-preview-row { flex-direction: column; }
-  .live-preview-app { flex: 0 0 auto; border-right: none; border-bottom: 1px solid #2a2a4a; }
-  .live-preview-circuit { min-height: 250px; }
   .showcase-tabs { flex-wrap: wrap; }
+  .matrix-cell { min-height: 22px; font-size: 0.55rem; }
+  .matrix-corner, .matrix-row-label { flex: 0 0 50px; font-size: 0.6rem; }
 }
 
 /* ============================================

@@ -1,198 +1,58 @@
 import { circuit } from './runtime/index.js';
 import { batch } from './runtime/index.js';
 import { renderCircuitGraph } from './visualizer.js';
+import { renderWaveform } from './waveform.js';
+import monitorSrc from '../examples/monitor.comb?raw';
 
 const app = document.getElementById('app')!;
 
-// --- Framework code samples for the showcase ---
-const COMB_CODE = `module Monitor {
-  signal cpu: float = 25.0;
-  signal mem: float = 40.0;
-  signal cpuThreshold: float = 80.0;
-  signal cpuAvg: float = 25.0;
-  signal alertCount: int = 0;
-  signal lastAlert: string = "";
+// --- Framework code snippets (edge-detection only, no comments) ---
+const COMB_SNIPPET = `always @(posedge cpuHigh) {
+  alertCount <= alertCount + 1;
+  lastAlert <= "CPU crossed " + threshDisplay;
+}
 
-  comb cpuHigh = cpuAvg > cpuThreshold;
-  comb cpuDisplay = str(round(cpu)) + "%";
-  comb avgDisplay = str(round(cpuAvg)) + "%";
-  comb memDisplay = str(round(mem)) + "%";
-  comb threshDisplay = str(round(cpuThreshold)) + "%";
-  comb statusText = cpuHigh ? "ALERT: CPU above " + threshDisplay : "Normal";
-  comb statusClass = cpuHigh ? "status-alert" : "status-ok";
-
-  always @(posedge cpuHigh) {
-    alertCount <= alertCount + 1;
-    lastAlert <= "CPU crossed " + threshDisplay;
-  }
-
-  always @(negedge cpuHigh) {
-    lastAlert <= "CPU recovered below " + threshDisplay;
-  }
-
-  view {
-    <div class="monitor">
-      <div class="monitor-metrics">
-        <div class="metric">
-          <span class="metric-label">CPU</span>
-          <span class="metric-value">{cpuDisplay}</span>
-          <span class="metric-detail">avg {avgDisplay}</span>
-        </div>
-        <div class="metric">
-          <span class="metric-label">MEM</span>
-          <span class="metric-value">{memDisplay}</span>
-        </div>
-      </div>
-      <p class={statusClass}>{statusText}</p>
-      <p class="alert-info">Alerts fired: {str(alertCount)} | {lastAlert}</p>
-      <label>Threshold: {threshDisplay}
-        <input type="range" min="0" max="100" @bind=cpuThreshold />
-      </label>
-    </div>
-  }
+always @(negedge cpuHigh) {
+  lastAlert <= "CPU recovered below " + threshDisplay;
 }`;
 
-const REACT_CODE = `function Monitor() {
-  const [cpu, setCpu] = useState(25);
-  const [cpuAvg, setCpuAvg] = useState(25);
-  const [threshold, setThreshold] = useState(80);
-  const [alertCount, setAlertCount] = useState(0);
-  const [lastAlert, setLastAlert] = useState('');
-  const prevHigh = useRef(false);
+const REACT_SNIPPET = `const prevHigh = useRef(false);
 
-  const cpuHigh = cpuAvg > threshold;
+useEffect(() => {
+  if (cpuHigh && !prevHigh.current) {
+    setAlertCount(c => c + 1);
+    setLastAlert(\`CPU crossed \${threshold}%\`);
+  }
+  if (!cpuHigh && prevHigh.current) {
+    setLastAlert(\`CPU recovered below \${threshold}%\`);
+  }
+  prevHigh.current = cpuHigh;
+}, [cpuHigh, threshold]);`;
 
-  // Edge detection \u2014 fire ONCE on transition
-  useEffect(() => {
-    if (cpuHigh && !prevHigh.current) {
-      setAlertCount(c => c + 1);
-      setLastAlert(\`CPU crossed \${threshold}%\`);
-    }
-    if (!cpuHigh && prevHigh.current) {
-      setLastAlert(\`CPU recovered below \${threshold}%\`);
-    }
-    prevHigh.current = cpuHigh;
-  }, [cpuHigh, threshold]);
+const SVELTE_SNIPPET = `let prevHigh = false;
+$effect(() => {
+  if (cpuHigh && !prevHigh) {
+    alertCount++;
+    lastAlert = \`CPU crossed \${threshold}%\`;
+  }
+  if (!cpuHigh && prevHigh) {
+    lastAlert = \`CPU recovered below \${threshold}%\`;
+  }
+  prevHigh = cpuHigh;
+});`;
 
-  return (
-    <div className="monitor">
-      <div className="metrics">
-        <div>CPU: {Math.round(cpu)}%</div>
-        <div>avg: {Math.round(cpuAvg)}%</div>
-      </div>
-      <p className={cpuHigh ? 'alert' : 'ok'}>
-        {cpuHigh ? \`ALERT: CPU above \${threshold}%\` : 'Normal'}
-      </p>
-      <p>Alerts: {alertCount} | {lastAlert}</p>
-      <input type="range" min={50} max={100}
-        value={threshold}
-        onChange={e => setThreshold(+e.target.value)} />
-    </div>
-  );
-}`;
-
-const VUE_CODE = `<script setup>
-import { ref, computed, watch } from 'vue'
-
-const cpu = ref(25)
-const cpuAvg = ref(25)
-const threshold = ref(80)
-const alertCount = ref(0)
-const lastAlert = ref('')
-
-const cpuHigh = computed(() => cpuAvg.value > threshold.value)
-
-let prevHigh = false
-watch(cpuHigh, (isHigh) => {
+const SOLID_SNIPPET = `let prevHigh = false;
+createEffect(() => {
+  const isHigh = cpuAvg() > threshold();
   if (isHigh && !prevHigh) {
-    alertCount.value++
-    lastAlert.value = \`CPU crossed \${threshold.value}%\`
+    setAlertCount(c => c + 1);
+    setLastAlert(\`CPU crossed \${threshold()}%\`);
   }
   if (!isHigh && prevHigh) {
-    lastAlert.value = \`CPU recovered below \${threshold.value}%\`
+    setLastAlert(\`CPU recovered below \${threshold()}%\`);
   }
-  prevHigh = isHigh
-})
-</script>
-
-<template>
-  <div class="monitor">
-    <div>CPU: {{ Math.round(cpu) }}% avg: {{ Math.round(cpuAvg) }}%</div>
-    <p :class="cpuHigh ? 'alert' : 'ok'">
-      {{ cpuHigh ? \`ALERT: CPU above \${threshold}%\` : 'Normal' }}
-    </p>
-    <p>Alerts: {{ alertCount }} | {{ lastAlert }}</p>
-    <input type="range" :min="50" :max="100"
-      v-model="threshold" />
-  </div>
-</template>`;
-
-const SVELTE_CODE = `<script>
-  let cpu = $state(25);
-  let cpuAvg = $state(25);
-  let threshold = $state(80);
-  let alertCount = $state(0);
-  let lastAlert = $state('');
-
-  let cpuHigh = $derived(cpuAvg > threshold);
-
-  let prevHigh = false;
-  $effect(() => {
-    if (cpuHigh && !prevHigh) {
-      alertCount++;
-      lastAlert = \`CPU crossed \${threshold}%\`;
-    }
-    if (!cpuHigh && prevHigh) {
-      lastAlert = \`CPU recovered below \${threshold}%\`;
-    }
-    prevHigh = cpuHigh;
-  });
-</script>
-
-<div class="monitor">
-  <div>CPU: {Math.round(cpu)}% avg: {Math.round(cpuAvg)}%</div>
-  <p class={cpuHigh ? 'alert' : 'ok'}>
-    {cpuHigh ? \`ALERT: CPU above \${threshold}%\` : 'Normal'}
-  </p>
-  <p>Alerts: {alertCount} | {lastAlert}</p>
-  <input type="range" min={50} max={100} bind:value={threshold} />
-</div>`;
-
-const SOLID_CODE = `function Monitor() {
-  const [cpu, setCpu] = createSignal(25);
-  const [cpuAvg, setCpuAvg] = createSignal(25);
-  const [threshold, setThreshold] = createSignal(80);
-  const [alertCount, setAlertCount] = createSignal(0);
-  const [lastAlert, setLastAlert] = createSignal('');
-
-  const cpuHigh = () => cpuAvg() > threshold();
-
-  let prevHigh = false;
-  createEffect(() => {
-    const isHigh = cpuHigh();
-    if (isHigh && !prevHigh) {
-      setAlertCount(c => c + 1);
-      setLastAlert(\`CPU crossed \${threshold()}%\`);
-    }
-    if (!isHigh && prevHigh) {
-      setLastAlert(\`CPU recovered below \${threshold()}%\`);
-    }
-    prevHigh = isHigh;
-  });
-
-  return (
-    <div class="monitor">
-      <div>CPU: {Math.round(cpu())}% avg: {Math.round(cpuAvg())}%</div>
-      <p class={cpuHigh() ? 'alert' : 'ok'}>
-        {cpuHigh() ? \`ALERT: CPU above \${threshold()}%\` : 'Normal'}
-      </p>
-      <p>Alerts: {alertCount()} | {lastAlert()}</p>
-      <input type="range" min={50} max={100}
-        value={threshold()}
-        onInput={e => setThreshold(+e.target.value)} />
-    </div>
-  );
-}`;
+  prevHigh = isHigh;
+});`;
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -208,98 +68,61 @@ function createLanding(): HTMLElement {
       <p class="hero-subtitle">A compiled UI framework where your reactive dependencies are visible, verified, and debuggable.</p>
     </section>
 
-    <section class="live-preview-section">
-      <div class="live-preview-header">This is real &mdash; a compiled .comb module running live</div>
-      <div id="live-preview" class="live-preview-container"></div>
-      <div style="display:flex; gap:1rem; justify-content:center; margin-top:1rem; flex-wrap:wrap;">
-        <a href="#monitor" class="hero-cta" style="display:inline-block; font-size:0.85rem; padding:0.5rem 1.5rem;">See circuit graph + waveform &rarr;</a>
-        <a href="/playground.html" class="hero-cta" style="display:inline-block; font-size:0.85rem; padding:0.5rem 1.5rem; background:transparent; border:1px solid #7b8cff;">Edit in Playground &rarr;</a>
-      </div>
+    <section class="live-demo-section">
+      <div id="live-preview" class="live-demo-container"></div>
     </section>
 
-    <section class="showcase-section">
-      <h2 class="section-title">Why Comb?</h2>
-      <p style="text-align:center; color:#aaa; max-width:700px; margin:0 auto 2rem; line-height:1.6;">
-        Every framework makes you hand-track state transitions. Want to fire an alert <strong>once</strong> when a value crosses a threshold? Here's what that looks like:
-      </p>
-      <div class="showcase-tabs">
+    <section class="code-editor-section">
+      <div class="showcase-tabs" id="framework-tabs">
+        <button class="tab active" data-tab="comb">Comb</button>
         <button class="tab" data-tab="react">React</button>
         <button class="tab" data-tab="svelte">Svelte</button>
         <button class="tab" data-tab="solid">Solid</button>
-        <button class="tab active" data-tab="comb">Comb</button>
       </div>
-      <div class="showcase-panels">
+      <div class="showcase-panels" id="framework-panels">
+        <div class="panel active" data-panel="comb">
+          <textarea id="comb-editor" class="comb-editor" spellcheck="false">${escapeHtml(COMB_SNIPPET)}</textarea>
+          <div id="comb-errors" class="comb-errors"></div>
+        </div>
         <div class="panel" data-panel="react">
-          <pre><code>const prevHigh = useRef(false);
-
-useEffect(() => {
-  const isHigh = cpuAvg > threshold;
-  if (isHigh && !prevHigh.current) {
-    setAlertCount(c => c + 1);              // posedge
-    setLastAlert(\`CPU crossed \${threshold}%\`);
-  }
-  if (!isHigh && prevHigh.current) {
-    setLastAlert(\`CPU recovered\`);           // negedge
-  }
-  prevHigh.current = isHigh;
-}, [cpuAvg, threshold]);</code></pre>
-          <div class="panel-footer">
-            <span class="panel-note panel-note-warn">13 lines. Manual ref. Easy to forget a dep. Fires every render if you get the array wrong.</span>
-          </div>
+          <pre><code>${escapeHtml(REACT_SNIPPET)}</code></pre>
         </div>
         <div class="panel" data-panel="svelte">
-          <pre><code>let prevHigh = false;
-$effect(() => {
-  if (cpuHigh && !prevHigh) {
-    alertCount++;
-    lastAlert = \`CPU crossed \${threshold}%\`;
-  }
-  if (!cpuHigh && prevHigh) {
-    lastAlert = \`CPU recovered\`;
-  }
-  prevHigh = cpuHigh;
-});</code></pre>
-          <div class="panel-footer">
-            <span class="panel-note panel-note-warn">10 lines. Manual flag. No compiler help if you forget to update prevHigh.</span>
-          </div>
+          <pre><code>${escapeHtml(SVELTE_SNIPPET)}</code></pre>
         </div>
         <div class="panel" data-panel="solid">
-          <pre><code>let prevHigh = false;
-createEffect(() => {
-  const isHigh = cpuAvg() > threshold();
-  if (isHigh && !prevHigh) {
-    setAlertCount(c => c + 1);
-    setLastAlert(\`CPU crossed \${threshold()}%\`);
-  }
-  if (!isHigh && prevHigh) {
-    setLastAlert(\`CPU recovered\`);
-  }
-  prevHigh = isHigh;
-});</code></pre>
-          <div class="panel-footer">
-            <span class="panel-note panel-note-warn">12 lines. Manual tracking. Conditional reads can lose reactivity.</span>
-          </div>
+          <pre><code>${escapeHtml(SOLID_SNIPPET)}</code></pre>
         </div>
-        <div class="panel active" data-panel="comb">
-          <pre><code>always @(posedge cpuHigh) {
-  alertCount <= alertCount + 1;
-  lastAlert <= "CPU crossed " + threshDisplay;
-}
+      </div>
+    </section>
 
-always @(negedge cpuHigh) {
-  lastAlert <= "CPU recovered below " + threshDisplay;
-}</code></pre>
-          <div class="panel-footer">
-            <span class="panel-note panel-note-ok">7 lines. No manual tracking. Compiler-verified. Visualized in the circuit graph.</span>
-          </div>
+    <section class="circuit-graph-section">
+      <div id="circuit-graph" class="circuit-graph-container"></div>
+    </section>
+
+    <section class="waveform-section">
+      <div id="waveform-container" class="waveform-landing-container"></div>
+    </section>
+
+    <section class="autotest-section">
+      <h2 class="section-title">Auto-Test Matrix</h2>
+      <p class="autotest-desc">Test cpuHigh = (cpuAvg &gt; cpuThreshold) across all input combinations.</p>
+      <div class="matrix-wrapper">
+        <div class="matrix-header">
+          <span class="matrix-corner">cpuThreshold \\ cpuAvg</span>
+          ${[0,10,20,30,40,50,60,70,80,90,100].map(v => `<span class="matrix-col-label">${v}</span>`).join('')}
         </div>
+        <div id="matrix-grid" class="matrix-grid"></div>
+      </div>
+      <div class="matrix-controls">
+        <button id="run-autotest" class="auto-test-btn">Run Auto-Test</button>
+        <span id="autotest-result" class="autotest-result"></span>
       </div>
     </section>
 
     <section class="features-section">
       <h2 class="section-title">What you get</h2>
       <div class="feature-cards">
-
         <div class="feature-card">
           <h3 class="feature-card-title">Edge-Triggered Sensitivity</h3>
           <code class="feature-code">@(posedge x)</code>
@@ -309,7 +132,6 @@ always @(negedge cpuHigh) {
             a compiled language construct.
           </p>
         </div>
-
         <div class="feature-card feature-card-prominent">
           <h3 class="feature-card-title">Auto-Derived Testing</h3>
           <code class="feature-code">__test()</code>
@@ -319,7 +141,6 @@ always @(negedge cpuHigh) {
             dependencies &mdash; it auto-generates what to test.
           </p>
         </div>
-
         <div class="feature-card">
           <h3 class="feature-card-title">Static Circuit Graph</h3>
           <code class="feature-code">__graph</code>
@@ -328,7 +149,6 @@ always @(negedge cpuHigh) {
             diff it between versions, run CI checks on it. No other framework does this.
           </p>
         </div>
-
         <div class="feature-card">
           <h3 class="feature-card-title">Temporal Assertions</h3>
           <code class="feature-code">assert temporal @(posedge submit) eventually(showResult) within 5s;</code>
@@ -337,7 +157,6 @@ always @(negedge cpuHigh) {
             appears within 5 seconds, the assertion fails. Try expressing that in React.
           </p>
         </div>
-
         <div class="feature-card">
           <h3 class="feature-card-title">DES Execution Model</h3>
           <code class="feature-code">batch(() =&gt; { a.set(1); b.set(2); })</code>
@@ -347,7 +166,6 @@ always @(negedge cpuHigh) {
             No glitch frames, ever.
           </p>
         </div>
-
       </div>
     </section>
 
@@ -425,9 +243,15 @@ let currentView: string = '';
 
 let livePreviewDispose: (() => void) | null = null;
 
+// Track disposables for circuit graph and waveform to re-render on recompile
+let circuitGraphDispose: (() => void) | null = null;
+let waveformDispose: (() => void) | null = null;
+
 function showLanding() {
   if (currentDispose) { currentDispose(); currentDispose = null; }
   if (livePreviewDispose) { livePreviewDispose(); livePreviewDispose = null; }
+  if (circuitGraphDispose) { circuitGraphDispose(); circuitGraphDispose = null; }
+  if (waveformDispose) { waveformDispose(); waveformDispose = null; }
   circuit.reset();
   content.innerHTML = '';
   content.removeAttribute('style');
@@ -440,7 +264,7 @@ function showLanding() {
     el.classList.toggle('active', (el as HTMLElement).dataset.demo === 'home');
   });
 
-  // Wire up tab switching
+  // Wire up framework tab switching
   landingEl.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', () => {
       landingEl.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -450,71 +274,86 @@ function showLanding() {
     });
   });
 
-  // Mount live monitor preview
+  // Build auto-test matrix grid
+  const matrixGrid = document.getElementById('matrix-grid')!;
+  const threshValues = [0, 20, 40, 60, 80, 100];
+  const avgValues = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+  const matrixCells: HTMLDivElement[][] = [];
+
+  for (let ti = 0; ti < threshValues.length; ti++) {
+    const row: HTMLDivElement[] = [];
+    const rowEl = document.createElement('div');
+    rowEl.className = 'matrix-row';
+    const labelEl = document.createElement('span');
+    labelEl.className = 'matrix-row-label';
+    labelEl.textContent = String(threshValues[ti]);
+    rowEl.appendChild(labelEl);
+
+    for (let ai = 0; ai < avgValues.length; ai++) {
+      const cell = document.createElement('div');
+      cell.className = 'matrix-cell';
+      cell.title = `cpuAvg=${avgValues[ai]}, cpuThreshold=${threshValues[ti]}`;
+      row.push(cell);
+      rowEl.appendChild(cell);
+    }
+    matrixCells.push(row);
+    matrixGrid.appendChild(rowEl);
+  }
+
+  // Auto-test button handler
+  document.getElementById('run-autotest')?.addEventListener('click', async () => {
+    const btn = document.getElementById('run-autotest') as HTMLButtonElement;
+    const resultEl = document.getElementById('autotest-result')!;
+    btn.disabled = true;
+    btn.textContent = 'Running...';
+
+    const { __test } = await import('./generated/monitor.js');
+    let pass = 0;
+    let fail = 0;
+
+    for (let ti = 0; ti < threshValues.length; ti++) {
+      for (let ai = 0; ai < avgValues.length; ai++) {
+        const t = __test();
+        const avg = avgValues[ai];
+        const thresh = threshValues[ti];
+        batch(() => {
+          t.signals.cpuAvg.set(avg);
+          t.signals.cpuThreshold.set(thresh);
+        });
+        const roundedAvg = Math.round(avg * 10) / 10;
+        const roundedThresh = Math.round(thresh * 10) / 10;
+        const expected = roundedAvg > roundedThresh;
+        const actual = t.combs.cpuHigh();
+        const correct = actual === expected;
+        matrixCells[ti][ai].className = `matrix-cell ${correct ? 'pass' : 'fail'}`;
+        matrixCells[ti][ai].textContent = actual ? 'H' : 'L';
+        if (correct) pass++; else fail++;
+        t.dispose();
+      }
+    }
+
+    resultEl.style.color = fail === 0 ? '#44ff44' : '#ff4444';
+    resultEl.textContent = `${pass}/${pass + fail} passed` + (fail > 0 ? ` (${fail} failed)` : '');
+    btn.textContent = 'Run Again';
+    btn.disabled = false;
+  });
+
+  // Mount live monitor preview + circuit graph + waveform
   setTimeout(async () => {
     const previewEl = document.getElementById('live-preview');
     if (!previewEl) return;
 
-    const { Monitor } = await import('./generated/monitor.js');
+    const { Monitor, __graph } = await import('./generated/monitor.js');
 
-    // App + auto-test panel
-    const appPane = document.createElement('div');
-    appPane.className = 'live-preview-app';
-    previewEl.appendChild(appPane);
+    const component = Monitor(previewEl);
 
-    const component = Monitor(appPane);
-
-    // Auto-test panel
-    const { __test } = await import('./generated/monitor.js');
-    const testPanel = document.createElement('div');
-    testPanel.className = 'auto-test-panel';
-    testPanel.innerHTML = `
-      <h4 style="margin:0 0 0.5rem; color:#7b8cff; font-size:0.85rem;">Auto-Testing &mdash; combs ARE specs</h4>
-      <p style="color:#888; font-size:0.8rem; margin:0 0 0.5rem;">__test() gives headless access to all signals. Fuzz 1000 random inputs, verify all combs.</p>
-      <button class="auto-test-btn" id="landing-autotest">Run Auto-Test (1000 inputs)</button>
-      <div id="autotest-result" style="font-family:monospace; font-size:0.8rem; color:#44ff44; margin-top:0.5rem;"></div>
-    `;
-    previewEl.appendChild(testPanel);
-
-    document.getElementById('landing-autotest')?.addEventListener('click', () => {
-      const btn = document.getElementById('landing-autotest') as HTMLButtonElement;
-      const result = document.getElementById('autotest-result')!;
-      btn.disabled = true;
-      btn.textContent = 'Running...';
-      setTimeout(() => {
-        const t = __test();
-        let pass = 0;
-        let fail = 0;
-        for (let i = 0; i < 1000; i++) {
-          const cpu = Math.random() * 100;
-          const avg = Math.random() * 100;
-          const thresh = Math.random() * 100;
-          batch(() => {
-            t.signals.cpu.set(Math.round(cpu * 10) / 10);
-            t.signals.cpuAvg.set(Math.round(avg * 10) / 10);
-            t.signals.cpuThreshold.set(Math.round(thresh * 10) / 10);
-          });
-          // Verify: cpuHigh should be (avg > thresh)
-          const expected = avg > thresh;
-          if (t.combs.cpuHigh() === expected) pass++;
-          else fail++;
-        }
-        t.dispose();
-        result.style.color = fail === 0 ? '#44ff44' : '#ff4444';
-        result.textContent = fail === 0
-          ? pass + '/1000 passed — cpuHigh = (cpuAvg > cpuThreshold) verified'
-          : fail + '/1000 failed';
-        btn.textContent = 'Run Again';
-        btn.disabled = false;
-      }, 50);
-    });
     const M = 'Monitor';
     const set = (name: string, v: any) => circuit.getNode(`${M}.${name}`)?.setValue?.(v);
 
-    // Start threshold at 40% so alerts fire quickly and visibly
+    // Start threshold at 40 so alerts fire quickly
     set('cpuThreshold', 40);
 
-    // Simulation — spike early (tick 5-12) so users see an alert fast
+    // Simulation - spike early so users see an alert fast
     const cpuHist: number[] = [];
     let tick = 0;
     const iv = setInterval(() => {
@@ -532,16 +371,154 @@ function showLanding() {
       });
     }, 500);
 
+    // Render circuit graph
+    const circuitGraphEl = document.getElementById('circuit-graph');
+    if (circuitGraphEl) {
+      const cgResult = renderCircuitGraph(circuitGraphEl, __graph as any, circuit);
+      circuitGraphDispose = cgResult.dispose;
+    }
+
+    // Render waveform
+    const waveformEl = document.getElementById('waveform-container');
+    if (waveformEl) {
+      const wfResult = renderWaveform(waveformEl, circuit, [
+        `${M}.cpu`,
+        `${M}.cpuAvg`,
+        `${M}.cpuHigh`,
+      ]);
+      waveformDispose = wfResult.dispose;
+    }
+
+    // Set up live recompilation from the Comb editor
+    setupLiveCompilation(previewEl, iv, component);
+
     livePreviewDispose = () => {
       clearInterval(iv);
       component.dispose();
+      if (circuitGraphDispose) { circuitGraphDispose(); circuitGraphDispose = null; }
+      if (waveformDispose) { waveformDispose(); waveformDispose = null; }
     };
   }, 100);
+}
+
+async function setupLiveCompilation(
+  previewEl: HTMLElement,
+  simulationInterval: ReturnType<typeof setInterval>,
+  initialComponent: { dispose: () => void },
+) {
+  const { compile } = await import('./core/compiler.js');
+  const editor = document.getElementById('comb-editor') as HTMLTextAreaElement | null;
+  const errorsEl = document.getElementById('comb-errors');
+  if (!editor || !errorsEl) return;
+
+  // Replace the snippet with the full source for editing
+  editor.value = monitorSrc;
+
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let currentComponent = initialComponent;
+  let currentInterval = simulationInterval;
+
+  editor.addEventListener('input', () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => recompile(), 300);
+  });
+
+  async function recompile() {
+    const source = editor!.value;
+    const result = compile(source);
+
+    if (result.errors.length > 0) {
+      errorsEl!.textContent = result.errors.map(e => `Line ${e.line}:${e.column} - ${e.message}`).join('\n');
+      errorsEl!.style.display = 'block';
+      return;
+    }
+
+    errorsEl!.style.display = 'none';
+
+    try {
+      // Dispose old component
+      clearInterval(currentInterval);
+      currentComponent.dispose();
+      if (circuitGraphDispose) { circuitGraphDispose(); circuitGraphDispose = null; }
+      if (waveformDispose) { waveformDispose(); waveformDispose = null; }
+      circuit.reset();
+
+      // Eval the new module
+      const js = result.js!;
+      const blob = new Blob([js], { type: 'text/javascript' });
+      const url = URL.createObjectURL(blob);
+      const mod = await import(/* @vite-ignore */ url);
+      URL.revokeObjectURL(url);
+
+      // Find the module factory (first exported function that isn't __test or __graph)
+      const factoryName = Object.keys(mod).find(k => typeof mod[k] === 'function' && k !== '__test');
+      if (!factoryName) return;
+
+      previewEl.innerHTML = '';
+      const component = mod[factoryName](previewEl);
+      currentComponent = component;
+
+      const moduleName = factoryName;
+      const set = (name: string, v: any) => circuit.getNode(`${moduleName}.${name}`)?.setValue?.(v);
+
+      // Restart simulation
+      set('cpuThreshold', 40);
+      const cpuHist: number[] = [];
+      let tick = 0;
+      currentInterval = setInterval(() => {
+        tick++;
+        const spike = (tick % 20 > 4 && tick % 20 < 12);
+        const cpu = spike ? 40 + Math.random() * 30 : 15 + Math.random() * 20;
+        const mem = 40 + 20 * Math.sin(tick / 40) + Math.random() * 10;
+        cpuHist.push(cpu);
+        if (cpuHist.length > 10) cpuHist.shift();
+        const avg = cpuHist.reduce((a, b) => a + b) / cpuHist.length;
+        batch(() => {
+          set('cpu', Math.round(cpu * 10) / 10);
+          set('mem', Math.round(mem * 10) / 10);
+          set('cpuAvg', Math.round(avg * 10) / 10);
+        });
+      }, 500);
+
+      // Re-render circuit graph
+      const circuitGraphEl = document.getElementById('circuit-graph');
+      if (circuitGraphEl && mod.__graph) {
+        circuitGraphEl.innerHTML = '';
+        const cgResult = renderCircuitGraph(circuitGraphEl, mod.__graph as any, circuit);
+        circuitGraphDispose = cgResult.dispose;
+      }
+
+      // Re-render waveform
+      const waveformEl = document.getElementById('waveform-container');
+      if (waveformEl) {
+        waveformEl.innerHTML = '';
+        const wfResult = renderWaveform(waveformEl, circuit, [
+          `${moduleName}.cpu`,
+          `${moduleName}.cpuAvg`,
+          `${moduleName}.cpuHigh`,
+        ]);
+        waveformDispose = wfResult.dispose;
+      }
+
+      // Update the livePreviewDispose to clean up the new resources
+      livePreviewDispose = () => {
+        clearInterval(currentInterval);
+        currentComponent.dispose();
+        if (circuitGraphDispose) { circuitGraphDispose(); circuitGraphDispose = null; }
+        if (waveformDispose) { waveformDispose(); waveformDispose = null; }
+      };
+    } catch (err: any) {
+      errorsEl!.textContent = `Runtime error: ${err.message}`;
+      errorsEl!.style.display = 'block';
+    }
+  }
 }
 
 function loadDemo(name: string) {
   if (currentDispose) { currentDispose(); currentDispose = null; }
   if (livePreviewDispose) { livePreviewDispose(); livePreviewDispose = null; }
+  if (circuitGraphDispose) { circuitGraphDispose(); circuitGraphDispose = null; }
+  if (waveformDispose) { waveformDispose(); waveformDispose = null; }
   circuit.reset();
   content.innerHTML = '';
   content.removeAttribute('style');
