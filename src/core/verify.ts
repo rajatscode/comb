@@ -248,9 +248,9 @@ function buildGraph(mod: Module, symbols: Map<string, SymbolKind>): StaticGraph 
       for (const w of decl.writes) {
         edges.push({ from: eventId, to: w, type: 'write' });
       }
-      for (const r of decl.reads) {
-        edges.push({ from: r, to: eventId, type: 'data' });
-      }
+      // Don't create data edges from signals/combs TO events — events are
+      // user-triggered, not signal-triggered. The reads inside an always
+      // block are implementation details, not dataflow.
     }
     if (decl.kind === 'view') {
       const viewBindings = new Set<string>();

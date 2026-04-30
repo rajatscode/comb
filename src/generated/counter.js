@@ -55,19 +55,9 @@ export const __graph = {
       "type": "write"
     },
     {
-      "from": "count",
-      "to": "event:increment",
-      "type": "data"
-    },
-    {
       "from": "event:decrement",
       "to": "count",
       "type": "write"
-    },
-    {
-      "from": "count",
-      "to": "event:decrement",
-      "type": "data"
     },
     {
       "from": "event:reset",
