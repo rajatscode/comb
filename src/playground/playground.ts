@@ -88,6 +88,16 @@ function runCompile() {
 
   // Render preview via iframe with import map
   const moduleName = result.ast?.name ?? 'App';
+  // For multi-module output: strip exports, deduplicate imports
+  const seenImports = new Set<string>();
+  const previewJs = lastJs.split('\n').filter(line => {
+    if (line.startsWith('import ')) {
+      if (seenImports.has(line)) return false;
+      seenImports.add(line);
+      return true;
+    }
+    return true;
+  }).join('\n').replace(/^export /gm, '');
   const previewHtml = `<!DOCTYPE html>
 <html>
 <head>
@@ -116,6 +126,13 @@ function runCompile() {
   .slider-group h3 { font-size: 0.75rem; color: #888; margin: 0 0 0.4rem; text-transform: uppercase; }
   .slider-group label { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
   .slider-group input[type="range"] { flex: 1; }
+  .dashboard { display: flex; flex-direction: column; gap: 0.8rem; }
+  .source, .display { padding: 0.6rem; border: 1px solid #3a3a5a; border-radius: 6px; }
+  .source span { margin-right: 0.5rem; }
+  .display h3 { margin: 0 0 0.3rem; font-size: 0.95rem; }
+  .display p { margin: 0.2rem 0; }
+  .high { color: #ff6b6b; font-weight: 600; }
+  .normal { color: #4ae04a; }
 </style>
 <script type="importmap">
 { "imports": { "../runtime/index.js": "/src/runtime/index.ts", "../runtime/color.js": "/src/runtime/color.ts" } }
@@ -124,7 +141,7 @@ function runCompile() {
 <body>
 <div id="root"></div>
 <script type="module">
-${lastJs}
+${previewJs}
 
 // Boot: find the module factory and call it
 if (typeof ${moduleName} === 'function') {
