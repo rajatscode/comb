@@ -562,19 +562,19 @@ module TempConverter {
   assert(js.includes("convert:0"), 'Should name first clause convert:0');
   assert(js.includes("convert:1"), 'Should name second clause convert:1');
 
-  // Graph should have cell and constraint nodes
+  // Graph should have cell and constraint nodes (per-clause)
   const graph = result.graph!;
   const cellNodes = graph.nodes.filter(n => n.type === 'cell');
   assert(cellNodes.length === 2, `Expected 2 cell nodes, got ${cellNodes.length}`);
   const constraintNodes = graph.nodes.filter(n => n.type === 'constraint');
-  assert(constraintNodes.length === 1, `Expected 1 constraint node, got ${constraintNodes.length}`);
+  assert(constraintNodes.length === 2, `Expected 2 constraint nodes (one per clause), got ${constraintNodes.length}`);
 
-  // Bidirectional edges
+  // Per-clause edges: clause 0 (celsius → fahrenheit), clause 1 (fahrenheit → celsius)
   const edges = graph.edges;
-  assert(edges.some(e => e.from === 'celsius' && e.to === 'constraint:convert'), 'Edge celsius→constraint');
-  assert(edges.some(e => e.from === 'constraint:convert' && e.to === 'celsius'), 'Edge constraint→celsius');
-  assert(edges.some(e => e.from === 'fahrenheit' && e.to === 'constraint:convert'), 'Edge fahrenheit→constraint');
-  assert(edges.some(e => e.from === 'constraint:convert' && e.to === 'fahrenheit'), 'Edge constraint→fahrenheit');
+  assert(edges.some(e => e.from === 'celsius' && e.to === 'constraint:convert:0'), 'Edge celsius→constraint:convert:0');
+  assert(edges.some(e => e.from === 'constraint:convert:0' && e.to === 'fahrenheit'), 'Edge constraint:convert:0→fahrenheit');
+  assert(edges.some(e => e.from === 'fahrenheit' && e.to === 'constraint:convert:1'), 'Edge fahrenheit→constraint:convert:1');
+  assert(edges.some(e => e.from === 'constraint:convert:1' && e.to === 'celsius'), 'Edge constraint:convert:1→celsius');
 });
 
 // --- Test 27: Constraint — reading non-input cell produces error ---
@@ -676,6 +676,220 @@ module Simple {
   const js = result.js!;
   assert(!js.includes('createCell'), 'Should not import createCell when no cells');
   assert(!js.includes('createPropagator'), 'Should not import createPropagator when no constraints');
+});
+
+// --- Test 32: Parsing @(posedge x) always block ---
+test('posedge always block — clean compile', () => {
+  const source = `
+module EdgeTest {
+  signal clk: bool = false;
+  signal count: int = 0;
+
+  always @(posedge clk) {
+    count <= count + 1;
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+  assert(result.js !== undefined, 'Expected JS output');
+
+  const ast = result.ast!;
+  const always = ast.body.find(d => d.kind === 'always') as any;
+  assert(always !== undefined, 'Expected always block');
+  assert(always.triggerKind === 'posedge', `Expected posedge trigger, got ${always.triggerKind}`);
+  assert(always.edgeExpr !== undefined, 'Expected edge expression');
+  assert(always.edgeExpr.kind === 'identifier' && always.edgeExpr.name === 'clk', 'Edge expr should be clk');
+});
+
+// --- Test 33: Parsing assert temporal ---
+test('temporal assertion — clean parse and compile', () => {
+  const source = `
+module TemporalTest {
+  signal x: bool = false;
+  signal y: bool = false;
+
+  assert temporal @(posedge x) eventually(y) within 5000;
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+  assert(result.js !== undefined, 'Expected JS output');
+
+  const ast = result.ast!;
+  const temporal = ast.body.find(d => d.kind === 'temporal_assert') as any;
+  assert(temporal !== undefined, 'Expected temporal_assert declaration');
+  assert(temporal.operator === 'eventually', `Expected eventually operator, got ${temporal.operator}`);
+  assert(temporal.triggerEdge === 'posedge', `Expected posedge edge, got ${temporal.triggerEdge}`);
+  assert(temporal.duration === 5000, `Expected duration 5000, got ${temporal.duration}`);
+  assert(temporal.trigger.kind === 'identifier' && temporal.trigger.name === 'x', 'Trigger should be x');
+  assert(temporal.property.kind === 'identifier' && temporal.property.name === 'y', 'Property should be y');
+});
+
+// --- Test 34: Parsing range types int(0..255) ---
+test('range type int(0..255) — parsed correctly', () => {
+  const source = `
+module RangeTest {
+  signal r: int(0..255) = 128;
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const ast = result.ast!;
+  const sig = ast.body.find(d => d.kind === 'signal') as any;
+  assert(sig.type.kind === 'range', `Expected range type, got ${sig.type.kind}`);
+  assert(sig.type.min === 0, `Expected min 0, got ${sig.type.min}`);
+  assert(sig.type.max === 255, `Expected max 255, got ${sig.type.max}`);
+  assert(sig.type.base.name === 'int', `Expected base int, got ${sig.type.base.name}`);
+});
+
+// --- Test 35: Parsing union types X | string ---
+test('union type X | string — parsed correctly', () => {
+  const source = `
+module UnionTest {
+  signal status: X | string = "loading";
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const ast = result.ast!;
+  const sig = ast.body.find(d => d.kind === 'signal') as any;
+  assert(sig.type.kind === 'union', `Expected union type, got ${sig.type.kind}`);
+  assert(sig.type.members.length === 2, `Expected 2 union members, got ${sig.type.members.length}`);
+  assert(sig.type.hasX === true, 'Expected hasX to be true');
+});
+
+// --- Test 36: Type checking — type mismatch produces warning ---
+test('type mismatch produces warning', () => {
+  const source = `
+module TypeTest {
+  signal x: int = "hello";
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no compile errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+  assert(result.warnings.length > 0, `Expected warnings for type mismatch, got ${result.warnings.length}`);
+  assert(result.warnings.some(w => w.message.includes('Type mismatch')), `Expected type mismatch warning, got: ${result.warnings.map(w => w.message)}`);
+});
+
+// --- Test 37: Edge-triggered codegen output ---
+test('posedge codegen — emits createEdgeEffect', () => {
+  const source = `
+module EdgeCodegen {
+  signal clk: bool = false;
+  signal count: int = 0;
+
+  always @(posedge clk) {
+    count <= count + 1;
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('createEdgeEffect'), 'Should emit createEdgeEffect');
+  assert(js.includes("'posedge'"), 'Should include posedge string');
+  assert(js.includes('posedge_clk'), 'Should name effect posedge_clk');
+});
+
+// --- Test 38: Temporal assertion codegen output ---
+test('temporal assertion codegen — emits createTemporalAssert', () => {
+  const source = `
+module TemporalCodegen {
+  signal trigger: bool = false;
+  signal prop: bool = false;
+
+  assert temporal @(trigger) eventually(prop) within 3000;
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('createTemporalAssert'), 'Should emit createTemporalAssert');
+  assert(js.includes("'eventually'"), 'Should include eventually operator');
+  assert(js.includes('duration: 3000'), 'Should include duration');
+  assert(js.includes("'temporal:0'"), 'Should name assertion temporal:0');
+});
+
+// --- Test 39: Negedge always block ---
+test('negedge always block — clean compile', () => {
+  const source = `
+module NegedgeTest {
+  signal enable: bool = true;
+  signal count: int = 0;
+
+  always @(negedge enable) {
+    count <= 0;
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('createEdgeEffect'), 'Should emit createEdgeEffect');
+  assert(js.includes("'negedge'"), 'Should include negedge string');
+});
+
+// --- Test 40: New builtins — floor, round, min, max, abs, reduce, slice ---
+test('new builtins — floor, round, min, max, abs compile', () => {
+  const source = `
+module BuiltinTest {
+  signal x: float = 3.7;
+  signal y: float = 2.1;
+  comb floored = floor(x);
+  comb rounded = round(x);
+  comb minimum = min(x, y);
+  comb maximum = max(x, y);
+  comb absolute = abs(x);
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('Math.floor'), 'Should emit Math.floor');
+  assert(js.includes('Math.round'), 'Should emit Math.round');
+  assert(js.includes('Math.min'), 'Should emit Math.min');
+  assert(js.includes('Math.max'), 'Should emit Math.max');
+  assert(js.includes('Math.abs'), 'Should emit Math.abs');
+});
+
+// --- Test 41: Constraint hardening — constraint locals used in body ---
+test('constraint hardening — locals used in body expressions', () => {
+  const source = `
+module ConstraintLocals {
+  cell a: int = 10;
+  cell b: int = 20;
+
+  constraint sync {
+    (a) => {
+      b <= a * 2;
+    }
+    (b) => {
+      a <= b / 2;
+    }
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  // The constraint body should use __a and __b (locals) instead of a() and b()
+  assert(js.includes('const __a = a()'), 'Should read a into __a');
+  assert(js.includes('const __b = b()'), 'Should read b into __b');
+  // Inside clause body, reads of input cells should use locals
+  assert(js.includes('setB((__a * 2))'), 'Clause body should use __a local');
+  assert(js.includes('setA((__b / 2))'), 'Clause body should use __b local');
+  // Should include writes metadata
+  assert(js.includes("writes: ['b']"), 'First clause should declare writes: b');
+  assert(js.includes("writes: ['a']"), 'Second clause should declare writes: a');
+});
+
+// --- Test 42: Type compatible — int compatible with float ---
+test('type compatibility — int assigned to float produces no warning', () => {
+  const source = `
+module TypeCompat {
+  signal x: float = 42;
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors`);
+  assert(result.warnings.length === 0, `Expected no warnings for int→float widening, got: ${result.warnings.map(w => w.message)}`);
 });
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

@@ -21,6 +21,12 @@ export enum TokenType {
   In = 'in',
   True = 'true',
   False = 'false',
+  Posedge = 'posedge',
+  Negedge = 'negedge',
+  Temporal = 'temporal',
+  Eventually = 'eventually',
+  Within = 'within',
+  X = 'X',
 
   // Directives
   AtIf = '@if',
@@ -102,6 +108,12 @@ const KEYWORDS: Record<string, TokenType> = {
   in: TokenType.In,
   true: TokenType.True,
   false: TokenType.False,
+  posedge: TokenType.Posedge,
+  negedge: TokenType.Negedge,
+  temporal: TokenType.Temporal,
+  eventually: TokenType.Eventually,
+  within: TokenType.Within,
+  X: TokenType.X,
 };
 
 export function tokenize(source: string): Token[] {

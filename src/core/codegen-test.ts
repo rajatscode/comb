@@ -150,5 +150,97 @@ module ReadTest {
   assert(js.includes('doubled()'), 'Comb should be read as doubled()');
 });
 
+// Test 6: Edge-triggered always block codegen
+test('posedge always block — generates createEdgeEffect', () => {
+  const source = `
+module EdgeGen {
+  signal clk: bool = false;
+  signal out: int = 0;
+
+  always @(posedge clk) {
+    out <= out + 1;
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Errors: ${result.errors.map(e => e.message)}`);
+  const js = result.js!;
+
+  assert(js.includes('createEdgeEffect'), 'Missing createEdgeEffect import/call');
+  assert(js.includes("'posedge'"), 'Missing posedge type');
+  assert(js.includes('batch('), 'Body should be wrapped in batch');
+  assert(js.includes('setOut'), 'Should call setter');
+});
+
+// Test 7: Temporal assertion codegen
+test('temporal assertion — generates createTemporalAssert', () => {
+  const source = `
+module TempAssert {
+  signal x: bool = false;
+  signal y: bool = false;
+
+  assert temporal @(x) eventually(y) within 2000;
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Errors: ${result.errors.map(e => e.message)}`);
+  const js = result.js!;
+
+  assert(js.includes('createTemporalAssert'), 'Missing createTemporalAssert');
+  assert(js.includes("'eventually'"), 'Missing operator');
+  assert(js.includes('duration: 2000'), 'Missing duration');
+});
+
+// Test 8: New builtins in codegen
+test('new builtins — generate correct JS', () => {
+  const source = `
+module Builtins {
+  signal arr: int[] = [1, 2, 3];
+  signal x: float = 3.14;
+  comb f = floor(x);
+  comb r = round(x);
+  comb mx = max(x, 0);
+  comb mn = min(x, 10);
+  comb ab = abs(x);
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Errors: ${result.errors.map(e => e.message)}`);
+  const js = result.js!;
+
+  assert(js.includes('Math.floor('), 'floor should emit Math.floor');
+  assert(js.includes('Math.round('), 'round should emit Math.round');
+  assert(js.includes('Math.max('), 'max should emit Math.max');
+  assert(js.includes('Math.min('), 'min should emit Math.min');
+  assert(js.includes('Math.abs('), 'abs should emit Math.abs');
+});
+
+// Test 9: Constraint locals codegen
+test('constraint — uses locals in body', () => {
+  const source = `
+module ConstraintTest {
+  cell celsius: float = 0.0;
+  cell fahrenheit: float = 32.0;
+
+  constraint convert {
+    (celsius) => {
+      fahrenheit <= celsius * 9.0 / 5.0 + 32.0;
+    }
+    (fahrenheit) => {
+      celsius <= (fahrenheit - 32.0) * 5.0 / 9.0;
+    }
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Errors: ${result.errors.map(e => e.message)}`);
+  const js = result.js!;
+
+  // Body should use __celsius and __fahrenheit locals
+  assert(js.includes('const __celsius = celsius()'), 'Should read celsius into local');
+  assert(js.includes('const __fahrenheit = fahrenheit()'), 'Should read fahrenheit into local');
+  // Body expressions should use locals not signal calls
+  assert(js.includes('__celsius'), 'Body should reference __celsius');
+  assert(js.includes('__fahrenheit'), 'Body should reference __fahrenheit');
+  // Should include writes metadata
+  assert(js.includes("writes:"), 'Should include writes metadata');
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

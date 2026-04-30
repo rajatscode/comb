@@ -4,11 +4,11 @@ import { Token, TokenType } from './lexer.js';
 import type {
   Module, Param, Declaration, InputDecl, OutputDecl, SignalDecl, TokenDecl, CellDecl,
   CombDecl, ConstraintDecl, ConstraintClause,
-  AlwaysBlock, ViewBlock, StyleBlock, EnumDecl, AssertDecl, EventTrigger, Statement,
+  AlwaysBlock, ViewBlock, StyleBlock, EnumDecl, AssertDecl, TemporalAssertDecl, EventTrigger, Statement,
   SignalAssign, IfStatement, ExprStatement, VNode, VElement, VText, VExpr, VIf, VFor,
   VComponent, VAttr, Expr, Literal, Identifier, BinaryExpr, UnaryExpr,
   TernaryExpr, CallExpr, MemberExpr, IndexExpr, ArrayExpr, ObjectExpr,
-  SpreadExpr, LambdaExpr, RangeExpr, TypeExpr, ObjectType, SourceLoc,
+  SpreadExpr, LambdaExpr, RangeExpr, TypeExpr, ObjectType, RangeType, UnionType, SourceLoc,
 } from './ast.js';
 
 export class ParseError extends Error {
@@ -113,14 +113,52 @@ class Parser {
     let type: TypeExpr;
     if (this.check(TokenType.LBrace)) {
       type = this.parseObjectType();
+    } else if (this.check(TokenType.X)) {
+      // X (unknown) type
+      this.advance();
+      type = { kind: 'simple', name: 'X' };
     } else {
-      type = { kind: 'simple', name: this.expect(TokenType.Identifier, 'type name').value };
+      const baseType: TypeExpr = { kind: 'simple', name: this.expect(TokenType.Identifier, 'type name').value };
+      // Check for range type: int(0..255)
+      if (this.check(TokenType.LParen)) {
+        this.advance();
+        const minVal = this.parseConstantNumber();
+        this.expect(TokenType.DotDot, 'range separator');
+        const maxVal = this.parseConstantNumber();
+        this.expect(TokenType.RParen, 'range type end');
+        type = { kind: 'range', base: baseType as any, min: minVal, max: maxVal };
+      } else {
+        type = baseType;
+      }
     }
+    // Array suffix: type[]
     while (this.check(TokenType.LBracket) && this.peekAt(1).type === TokenType.RBracket) {
       this.advance(); this.advance();
       type = { kind: 'array', element: type };
     }
+    // Union type: type | type2 | ...
+    if (this.check(TokenType.Pipe)) {
+      const members: TypeExpr[] = [type];
+      let hasX = type.kind === 'simple' && (type as any).name === 'X';
+      while (this.match(TokenType.Pipe)) {
+        const member = this.parseType();
+        members.push(member);
+        if (member.kind === 'simple' && (member as any).name === 'X') hasX = true;
+      }
+      type = { kind: 'union', members, hasX };
+    }
     return type;
+  }
+
+  private parseConstantNumber(): number {
+    let negative = false;
+    if (this.check(TokenType.Minus)) {
+      this.advance();
+      negative = true;
+    }
+    const tok = this.expect(TokenType.Number, 'constant number');
+    const val = tok.value.includes('.') ? parseFloat(tok.value) : parseInt(tok.value, 10);
+    return negative ? -val : val;
   }
 
   private parseObjectType(): ObjectType {
@@ -273,6 +311,24 @@ class Parser {
     this.expect(TokenType.Always);
     this.expect(TokenType.At, 'always trigger');
     this.expect(TokenType.LParen, 'always trigger');
+
+    // Check for posedge/negedge
+    if (this.check(TokenType.Posedge) || this.check(TokenType.Negedge)) {
+      const edgeKind = this.advance().type === TokenType.Posedge ? 'posedge' : 'negedge';
+      const edgeExpr = this.parseExpr();
+      this.expect(TokenType.RParen, 'edge trigger');
+      this.expect(TokenType.LBrace, 'always body');
+      const body: Statement[] = [];
+      while (!this.check(TokenType.RBrace) && !this.check(TokenType.EOF)) {
+        body.push(this.parseStatement());
+      }
+      this.expect(TokenType.RBrace, 'always body end');
+      // Extract a name from the edge expression for trigger naming
+      const edgeName = edgeExpr.kind === 'identifier' ? edgeExpr.name : 'expr';
+      const triggerKind = edgeKind as 'posedge' | 'negedge';
+      return { kind: 'always', triggerKind, trigger: { name: `${edgeKind}_${edgeName}`, params: [], signals: [edgeName] }, edgeExpr, body, reads: [], writes: [], loc };
+    }
+
     const firstName = this.expect(TokenType.Identifier, 'event/signal name').value;
 
     // Detect sensitivity list: @(sig1, sig2, ...) — comma after first identifier
@@ -347,9 +403,49 @@ class Parser {
     return { kind: 'enum', name, variants, loc };
   }
 
-  private parseAssertDecl(): AssertDecl {
+  private parseAssertDecl(): AssertDecl | TemporalAssertDecl {
     const loc = this.loc();
     this.expect(TokenType.Assert);
+
+    // Check for temporal assertion: assert temporal @(...) eventually(...) within N;
+    if (this.check(TokenType.Temporal)) {
+      this.advance();
+      this.expect(TokenType.At, 'temporal trigger');
+      this.expect(TokenType.LParen, 'temporal trigger');
+
+      let triggerEdge: 'posedge' | 'negedge' | undefined;
+      if (this.check(TokenType.Posedge)) { this.advance(); triggerEdge = 'posedge'; }
+      else if (this.check(TokenType.Negedge)) { this.advance(); triggerEdge = 'negedge'; }
+
+      const trigger = this.parseExpr();
+      this.expect(TokenType.RParen, 'temporal trigger end');
+
+      // Parse temporal operator
+      let operator: 'eventually' | 'always' | 'next';
+      if (this.check(TokenType.Eventually)) { this.advance(); operator = 'eventually'; }
+      else if (this.check(TokenType.Always)) { this.advance(); operator = 'always'; }
+      else {
+        // Check for 'next' as identifier
+        const tok = this.peek();
+        if (tok.type === TokenType.Identifier && tok.value === 'next') { this.advance(); operator = 'next'; }
+        else { this.error(`Expected temporal operator (eventually, always, next), got '${tok.value}'`); }
+      }
+
+      this.expect(TokenType.LParen, 'temporal property');
+      const property = this.parseExpr();
+      this.expect(TokenType.RParen, 'temporal property end');
+
+      let duration: number | undefined;
+      if (this.check(TokenType.Within)) {
+        this.advance();
+        const durTok = this.expect(TokenType.Number, 'temporal duration');
+        duration = durTok.value.includes('.') ? parseFloat(durTok.value) : parseInt(durTok.value, 10);
+      }
+
+      this.expect(TokenType.Semicolon, 'temporal assert declaration');
+      return { kind: 'temporal_assert', trigger, triggerEdge, operator, property, duration, deps: [], loc };
+    }
+
     let mode: 'always' | 'once' = 'once';
     if (this.check(TokenType.Always)) {
       this.advance();
@@ -679,6 +775,8 @@ class Parser {
     if (t.type === TokenType.Spread) { this.advance(); return { kind: 'spread', expr: this.parseExpr(12), loc }; }
     if (t.type === TokenType.Pipe) return this.parseLambda();
     if (t.type === TokenType.Identifier) { this.advance(); return { kind: 'identifier', name: t.value, loc }; }
+    // Allow keywords that can appear as identifiers in expressions
+    if (t.type === TokenType.X) { this.advance(); return { kind: 'identifier', name: 'X', loc }; }
 
     this.error(`Unexpected token '${t.value}' (${t.type}) in expression`);
   }
