@@ -3,7 +3,7 @@
 
 import type {
   Module, Declaration, InputDecl, OutputDecl, SignalDecl, TokenDecl, CombDecl, CellDecl,
-  ConstraintDecl, AlwaysBlock, ViewBlock, StyleBlock, EnumDecl, AssertDecl, Statement,
+  ConstraintDecl, AlwaysBlock, ViewBlock, StyleBlock, EnumDecl, AssertDecl, TemporalAssertDecl, Statement,
   SignalAssign, IfStatement, ExprStatement, VNode, VElement, VText, VExpr, VIf, VFor,
   VComponent, VAttr, Expr,
 } from './ast.js';
@@ -22,8 +22,10 @@ interface GenContext {
   elCount: number;
   txtCount: number;
   assertCount: number;
+  temporalCount: number;
   scopeHash: string;
   hasStyle: boolean;
+  constraintLocals?: Map<string, string>;
 }
 
 function simpleHash(str: string): string {
@@ -48,6 +50,7 @@ function createContext(mod: Module): GenContext {
     elCount: 0,
     txtCount: 0,
     assertCount: 0,
+    temporalCount: 0,
     scopeHash: simpleHash(mod.name),
     hasStyle: mod.body.some(d => d.kind === 'style'),
   };
@@ -78,9 +81,13 @@ export function generate(mod: Module, graph: StaticGraph): string {
   // Imports
   const hasCells = mod.body.some(d => d.kind === 'cell');
   const hasConstraints = mod.body.some(d => d.kind === 'constraint');
+  const hasEdgeTriggers = mod.body.some(d => d.kind === 'always' && (d.triggerKind === 'posedge' || d.triggerKind === 'negedge'));
+  const hasTemporalAsserts = mod.body.some(d => d.kind === 'temporal_assert');
   const importParts = ['createSignal', 'createComb', 'createEffect', 'batch', 'createScope', 'circuit'];
   if (hasCells) importParts.push('createCell');
   if (hasConstraints) importParts.push('createPropagator');
+  if (hasEdgeTriggers) importParts.push('createEdgeEffect');
+  if (hasTemporalAsserts) importParts.push('createTemporalAssert');
   lines.push(`import { ${importParts.join(', ')} } from '../runtime/index.js';`);
 
   // Conditional color utility import
@@ -147,7 +154,7 @@ export function generate(mod: Module, graph: StaticGraph): string {
   const testCtx = { ...ctx, indent: 1, elCount: 0, txtCount: 0, assertCount: 0 };
 
   for (const decl of mod.body) {
-    if (decl.kind === 'input' || decl.kind === 'output' || decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'comb' || decl.kind === 'cell' || decl.kind === 'constraint' || decl.kind === 'enum' || decl.kind === 'assert') {
+    if (decl.kind === 'input' || decl.kind === 'output' || decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'comb' || decl.kind === 'cell' || decl.kind === 'constraint' || decl.kind === 'enum' || decl.kind === 'assert' || decl.kind === 'temporal_assert') {
       lines.push(...emitDecl(decl, testCtx));
       lines.push('');
       if (decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'input' || decl.kind === 'output' || decl.kind === 'cell') signalNames.push(decl.name);
@@ -184,6 +191,7 @@ function emitDecl(decl: Declaration, ctx: GenContext): string[] {
     case 'cell': return emitCell(decl, ctx);
     case 'constraint': return emitConstraint(decl, ctx);
     case 'assert': return emitAssert(decl, ctx);
+    case 'temporal_assert': return emitTemporalAssert(decl, ctx);
   }
 }
 
@@ -248,7 +256,19 @@ function emitConstraint(decl: ConstraintDecl, ctx: GenContext): string[] {
   const lines: string[] = [];
   for (let ci = 0; ci < decl.clauses.length; ci++) {
     const clause = decl.clauses[ci];
-    const inputReads = clause.inputs.map(inp => `${inp}()`).join('; ');
+    // Build constraint locals map: input name → local variable name
+    const constraintLocals = new Map<string, string>();
+    for (const inp of clause.inputs) {
+      constraintLocals.set(inp, `__${inp}`);
+    }
+
+    // Extract writes from clause body
+    const clauseWrites = new Set<string>();
+    for (const stmt of clause.body) {
+      collectStmtWrites(stmt, clauseWrites);
+    }
+    const writesArr = [...clauseWrites];
+
     lines.push(`${i}createPropagator(() => {`);
     lines.push(`${i}  // Read inputs: ${clause.inputs.join(', ')}`);
     for (const inp of clause.inputs) {
@@ -256,13 +276,27 @@ function emitConstraint(decl: ConstraintDecl, ctx: GenContext): string[] {
     }
     lines.push(`${i}  batch(() => {`);
     const savedIndent = ctx.indent;
+    const savedLocals = ctx.constraintLocals;
     ctx.indent += 2;
+    ctx.constraintLocals = constraintLocals;
     for (const stmt of clause.body) lines.push(...emitStmt(stmt, ctx));
+    ctx.constraintLocals = savedLocals;
     ctx.indent = savedIndent;
     lines.push(`${i}  });`);
-    lines.push(`${i}}, { name: '${decl.name}:${ci}', module: $m, deps: [${clause.inputs.map(inp => `'${inp}'`).join(', ')}] });`);
+    const writesStr = writesArr.length > 0 ? `, writes: [${writesArr.map(w => `'${w}'`).join(', ')}]` : '';
+    lines.push(`${i}}, { name: '${decl.name}:${ci}', module: $m, deps: [${clause.inputs.map(inp => `'${inp}'`).join(', ')}]${writesStr} });`);
   }
   return lines;
+}
+
+function collectStmtWrites(stmt: Statement, writes: Set<string>): void {
+  if (stmt.kind === 'assign' && stmt.target.kind === 'identifier') {
+    writes.add(stmt.target.name);
+  }
+  if (stmt.kind === 'if') {
+    for (const s of stmt.then) collectStmtWrites(s, writes);
+    if (stmt.else_) for (const s of stmt.else_) collectStmtWrites(s, writes);
+  }
 }
 
 function emitEnum(decl: EnumDecl, ctx: GenContext): string[] {
@@ -277,6 +311,22 @@ function emitEnum(decl: EnumDecl, ctx: GenContext): string[] {
 
 function emitAlways(decl: AlwaysBlock, ctx: GenContext): string[] {
   const i = ind(ctx);
+
+  // Edge-triggered: compile to createEdgeEffect
+  if ((decl.triggerKind === 'posedge' || decl.triggerKind === 'negedge') && decl.edgeExpr) {
+    const edgeName = decl.edgeExpr.kind === 'identifier' ? decl.edgeExpr.name : 'expr';
+    const exprCode = emitExpr(decl.edgeExpr, ctx);
+    const lines = [
+      `${i}createEdgeEffect(() => ${exprCode}, '${decl.triggerKind}', () => {`,
+      `${i}  batch(() => {`,
+    ];
+    ctx.indent += 2;
+    for (const stmt of decl.body) lines.push(...emitStmt(stmt, ctx));
+    ctx.indent -= 2;
+    lines.push(`${i}  });`);
+    lines.push(`${i}}, { name: '${decl.triggerKind}_${edgeName}', module: $m });`);
+    return lines;
+  }
 
   // Sensitivity-triggered: compile to createEffect
   if (decl.triggerKind === 'sensitivity' && decl.trigger.signals) {
@@ -332,6 +382,23 @@ function emitAssert(decl: AssertDecl, ctx: GenContext): string[] {
     `${i}    });`,
     `${i}  }`,
     `${i}}, { name: '${assertId}', module: $m });`,
+  ];
+}
+
+function emitTemporalAssert(decl: TemporalAssertDecl, ctx: GenContext): string[] {
+  const i = ind(ctx);
+  const idx = ctx.temporalCount++;
+  const temporalId = `temporal:${idx}`;
+  const triggerExpr = emitExpr(decl.trigger, ctx);
+  const propertyExpr = emitExpr(decl.property, ctx);
+  const durationStr = decl.duration !== undefined ? `, duration: ${decl.duration}` : '';
+  return [
+    `${i}createTemporalAssert(`,
+    `${i}  () => ${triggerExpr},`,
+    `${i}  '${decl.operator}',`,
+    `${i}  () => ${propertyExpr},`,
+    `${i}  { name: '${temporalId}', module: $m${durationStr} }`,
+    `${i});`,
   ];
 }
 
@@ -703,6 +770,10 @@ function emitExpr(expr: Expr, ctx: GenContext): string {
       if (expr.type === 'string') return JSON.stringify(expr.value);
       return String(expr.value);
     case 'identifier':
+      // Check constraint locals first — use pre-read local variable
+      if (ctx.constraintLocals && ctx.constraintLocals.has(expr.name)) {
+        return ctx.constraintLocals.get(expr.name)!;
+      }
       if (ctx.signals.has(expr.name) || ctx.combs.has(expr.name)) return `${expr.name}()`;
       return expr.name;
     case 'binary': {
@@ -749,6 +820,13 @@ function emitCall(expr: Expr & { kind: 'call' }, ctx: GenContext): string {
     if (name === 'len' && expr.args.length === 1) return `${emitExpr(expr.args[0], ctx)}.length`;
     if (name === 'contains' && expr.args.length === 2) return `${emitExpr(expr.args[0], ctx)}.includes(${emitExpr(expr.args[1], ctx)})`;
     if (name === 'append' && expr.args.length === 2) return `[...${emitExpr(expr.args[0], ctx)}, ${emitExpr(expr.args[1], ctx)}]`;
+    if (name === 'reduce' && expr.args.length === 3) return `${emitExpr(expr.args[0], ctx)}.reduce(${emitExpr(expr.args[1], ctx)}, ${emitExpr(expr.args[2], ctx)})`;
+    if (name === 'slice' && expr.args.length >= 2) return `${emitExpr(expr.args[0], ctx)}.slice(${expr.args.slice(1).map(a => emitExpr(a, ctx)).join(', ')})`;
+    if (name === 'floor' && expr.args.length === 1) return `Math.floor(${emitExpr(expr.args[0], ctx)})`;
+    if (name === 'round' && expr.args.length === 1) return `Math.round(${emitExpr(expr.args[0], ctx)})`;
+    if (name === 'min' && expr.args.length === 2) return `Math.min(${emitExpr(expr.args[0], ctx)}, ${emitExpr(expr.args[1], ctx)})`;
+    if (name === 'max' && expr.args.length === 2) return `Math.max(${emitExpr(expr.args[0], ctx)}, ${emitExpr(expr.args[1], ctx)})`;
+    if (name === 'abs' && expr.args.length === 1) return `Math.abs(${emitExpr(expr.args[0], ctx)})`;
     return `${emitExpr(expr.callee, ctx)}(${args})`;
   }
   if (expr.callee.kind === 'member') {

@@ -34,7 +34,8 @@ export type Declaration =
   | ViewBlock
   | StyleBlock
   | EnumDecl
-  | AssertDecl;
+  | AssertDecl
+  | TemporalAssertDecl;
 
 export interface InputDecl {
   kind: 'input';
@@ -98,8 +99,9 @@ export interface ConstraintClause {
 
 export interface AlwaysBlock {
   kind: 'always';
-  triggerKind: 'event' | 'sensitivity';
+  triggerKind: 'event' | 'sensitivity' | 'posedge' | 'negedge';
   trigger: EventTrigger;
+  edgeExpr?: Expr;
   body: Statement[];
   reads: string[];  // filled by verification pass
   writes: string[]; // filled by verification pass
@@ -130,6 +132,17 @@ export interface AssertDecl {
   mode: 'always' | 'once';
   expr: Expr;
   deps: string[]; // filled by verification pass
+  loc: SourceLoc;
+}
+
+export interface TemporalAssertDecl {
+  kind: 'temporal_assert';
+  trigger: Expr;
+  triggerEdge?: 'posedge' | 'negedge';
+  operator: 'eventually' | 'always' | 'next';
+  property: Expr;
+  duration?: number;
+  deps: string[];
   loc: SourceLoc;
 }
 
@@ -351,7 +364,9 @@ export interface TemplateExpr {
 export type TypeExpr =
   | SimpleType
   | ArrayType
-  | ObjectType;
+  | ObjectType
+  | RangeType
+  | UnionType;
 
 export interface SimpleType {
   kind: 'simple';
@@ -366,4 +381,17 @@ export interface ArrayType {
 export interface ObjectType {
   kind: 'object';
   fields: { name: string; type: TypeExpr }[];
+}
+
+export interface RangeType {
+  kind: 'range';
+  base: SimpleType;
+  min: number;
+  max: number;
+}
+
+export interface UnionType {
+  kind: 'union';
+  members: TypeExpr[];
+  hasX?: boolean;
 }

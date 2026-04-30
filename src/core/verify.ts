@@ -1,6 +1,6 @@
-// verify.ts — Verification pass: dependency extraction, resolution, cycle detection
+// verify.ts — Verification pass: dependency extraction, resolution, cycle detection, type checking
 
-import type { Module, Declaration, CombDecl, AlwaysBlock, AssertDecl, ConstraintDecl, Expr, Statement, VNode } from './ast.js';
+import type { Module, Declaration, CombDecl, AlwaysBlock, AssertDecl, TemporalAssertDecl, ConstraintDecl, Expr, Statement, VNode, TypeExpr } from './ast.js';
 import type { StaticGraph, GraphNode, GraphEdge } from './graph.js';
 
 export interface CompileError {
@@ -23,12 +23,154 @@ export interface VerifyResult {
 
 type SymbolKind = 'signal' | 'comb' | 'enum' | 'input' | 'output' | 'cell';
 
+// Internal type representation for type checking
+type CombType =
+  | { kind: 'int' } | { kind: 'float' } | { kind: 'string' } | { kind: 'bool' }
+  | { kind: 'color' } | { kind: 'length' }
+  | { kind: 'enum'; name: string; variants: string[] }
+  | { kind: 'array'; element: CombType }
+  | { kind: 'range'; base: 'int' | 'float'; min: number; max: number }
+  | { kind: 'union'; members: CombType[]; hasX: boolean }
+  | { kind: 'any' } | { kind: 'X' };
+
+function resolveType(typeExpr: TypeExpr, enumDefs: Map<string, string[]>): CombType {
+  switch (typeExpr.kind) {
+    case 'simple': {
+      const name = typeExpr.name;
+      if (name === 'int') return { kind: 'int' };
+      if (name === 'float') return { kind: 'float' };
+      if (name === 'string') return { kind: 'string' };
+      if (name === 'bool') return { kind: 'bool' };
+      if (name === 'color') return { kind: 'color' };
+      if (name === 'length') return { kind: 'length' };
+      if (name === 'X') return { kind: 'X' };
+      if (enumDefs.has(name)) return { kind: 'enum', name, variants: enumDefs.get(name)! };
+      return { kind: 'any' };
+    }
+    case 'array':
+      return { kind: 'array', element: resolveType(typeExpr.element, enumDefs) };
+    case 'range':
+      return { kind: 'range', base: typeExpr.base.name === 'float' ? 'float' : 'int', min: typeExpr.min, max: typeExpr.max };
+    case 'union': {
+      const members = typeExpr.members.map(m => resolveType(m, enumDefs));
+      const hasX = typeExpr.hasX || members.some(m => m.kind === 'X');
+      return { kind: 'union', members, hasX };
+    }
+    case 'object':
+      return { kind: 'any' };
+  }
+}
+
+function inferExprType(expr: Expr, env: Map<string, CombType>, enumDefs: Map<string, string[]>): CombType {
+  switch (expr.kind) {
+    case 'literal': {
+      if (expr.type === 'number') {
+        return typeof expr.value === 'number' && Number.isInteger(expr.value) ? { kind: 'int' } : { kind: 'float' };
+      }
+      if (expr.type === 'string') return { kind: 'string' };
+      if (expr.type === 'boolean') return { kind: 'bool' };
+      return { kind: 'any' };
+    }
+    case 'identifier': {
+      if (env.has(expr.name)) return env.get(expr.name)!;
+      // Check if it's an enum member like Phase.Red
+      return { kind: 'any' };
+    }
+    case 'binary': {
+      const left = inferExprType(expr.left, env, enumDefs);
+      const right = inferExprType(expr.right, env, enumDefs);
+      if (expr.op === '+' && (left.kind === 'string' || right.kind === 'string')) return { kind: 'string' };
+      if (['+', '-', '*', '/', '%'].includes(expr.op)) {
+        if (left.kind === 'float' || right.kind === 'float') return { kind: 'float' };
+        if (left.kind === 'int' && right.kind === 'int') return { kind: 'int' };
+        return { kind: 'float' };
+      }
+      if (['==', '!=', '<', '>', '<=', '>='].includes(expr.op)) return { kind: 'bool' };
+      if (['&&', '||'].includes(expr.op)) return { kind: 'bool' };
+      return { kind: 'any' };
+    }
+    case 'unary': {
+      if (expr.op === '!') return { kind: 'bool' };
+      if (expr.op === '-') return inferExprType(expr.operand, env, enumDefs);
+      return { kind: 'any' };
+    }
+    case 'ternary': {
+      const thenType = inferExprType(expr.then, env, enumDefs);
+      const elseType = inferExprType(expr.else_, env, enumDefs);
+      if (thenType.kind === elseType.kind) return thenType;
+      return { kind: 'any' };
+    }
+    case 'call': {
+      if (expr.callee.kind === 'identifier') {
+        const name = expr.callee.name;
+        if (name === 'str') return { kind: 'string' };
+        if (name === 'int' || name === 'parseInt') return { kind: 'int' };
+        if (name === 'float' || name === 'parseFloat') return { kind: 'float' };
+        if (name === 'len') return { kind: 'int' };
+        if (name === 'contains') return { kind: 'bool' };
+        if (name === 'floor' || name === 'round' || name === 'abs') return { kind: 'int' };
+        if (name === 'min' || name === 'max') return { kind: 'float' };
+      }
+      return { kind: 'any' };
+    }
+    case 'member': {
+      // Enum member: Phase.Red → enum type
+      if (expr.object.kind === 'identifier' && enumDefs.has(expr.object.name)) {
+        return { kind: 'enum', name: expr.object.name, variants: enumDefs.get(expr.object.name)! };
+      }
+      // .length → int
+      if (expr.property === 'length') return { kind: 'int' };
+      return { kind: 'any' };
+    }
+    case 'index': return { kind: 'any' };
+    case 'array': {
+      if (expr.elements.length > 0) {
+        const elemType = inferExprType(expr.elements[0], env, enumDefs);
+        return { kind: 'array', element: elemType };
+      }
+      return { kind: 'array', element: { kind: 'any' } };
+    }
+    case 'object': return { kind: 'any' };
+    case 'range': return { kind: 'array', element: { kind: 'int' } };
+    default: return { kind: 'any' };
+  }
+}
+
+function typeCompatible(declared: CombType, actual: CombType): boolean {
+  if (declared.kind === 'any' || actual.kind === 'any') return true;
+  if (declared.kind === 'X' || actual.kind === 'X') return true;
+  if (declared.kind === actual.kind) return true;
+  // int widening to float
+  if (declared.kind === 'float' && actual.kind === 'int') return true;
+  // range base compatible
+  if (declared.kind === 'range') return typeCompatible({ kind: declared.base }, actual);
+  if (actual.kind === 'range') return typeCompatible(declared, { kind: actual.base });
+  // union — any member compatible
+  if (declared.kind === 'union') return declared.members.some(m => typeCompatible(m, actual));
+  if (actual.kind === 'union') return actual.members.some(m => typeCompatible(declared, m));
+  // color/length can accept string
+  if ((declared.kind === 'color' || declared.kind === 'length') && actual.kind === 'string') return true;
+  return false;
+}
+
+function typeName(t: CombType): string {
+  switch (t.kind) {
+    case 'int': case 'float': case 'string': case 'bool': case 'color': case 'length': case 'any': case 'X':
+      return t.kind;
+    case 'enum': return t.name;
+    case 'array': return `${typeName(t.element)}[]`;
+    case 'range': return `${t.base}(${t.min}..${t.max})`;
+    case 'union': return t.members.map(typeName).join(' | ');
+  }
+}
+
 export function verify(mod: Module, moduleRegistry?: Map<string, Module>): VerifyResult {
   const errors: CompileError[] = [];
   const warnings: CompileWarning[] = [];
   const symbols = new Map<string, SymbolKind>();
   const enumValues = new Set<string>(); // e.g. "Phase.Red"
-  const builtins = new Set(['str', 'int', 'float', 'len', 'contains', 'append', 'push', 'pop', 'slice', 'map', 'filter', 'concat', 'Math', 'JSON', 'console', 'parseInt', 'parseFloat', 'toString', 'rgbToHsv', 'hsvToRgb', 'rgbToHex']);
+  const enumDefs = new Map<string, string[]>();
+  const builtins = new Set(['str', 'int', 'float', 'len', 'contains', 'append', 'push', 'pop', 'slice', 'map', 'filter', 'concat', 'Math', 'JSON', 'console', 'parseInt', 'parseFloat', 'toString', 'rgbToHsv', 'hsvToRgb', 'rgbToHex', 'reduce', 'floor', 'round', 'min', 'max', 'abs']);
 
   // 1. Build symbol table
   for (const decl of mod.body) {
@@ -40,6 +182,7 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
     if (decl.kind === 'cell') symbols.set(decl.name, 'cell');
     if (decl.kind === 'enum') {
       symbols.set(decl.name, 'enum');
+      enumDefs.set(decl.name, decl.variants);
       for (const v of decl.variants) enumValues.add(`${decl.name}.${v}`);
     }
   }
@@ -55,6 +198,36 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
 
   function isKnownIdentifier(name: string, localScope?: Set<string>): boolean {
     return symbols.has(name) || builtins.has(name) || enumValues.has(name) || (localScope?.has(name) ?? false);
+  }
+
+  // --- Type checking (warnings only) ---
+  const typeEnv = new Map<string, CombType>();
+  for (const decl of mod.body) {
+    if (decl.kind === 'input' || decl.kind === 'output' || decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'cell') {
+      const declaredType = resolveType(decl.type, enumDefs);
+      typeEnv.set(decl.name, declaredType);
+      if (decl.initial || ('initial' in decl && (decl as any).initial)) {
+        const init = (decl as any).initial as Expr | undefined;
+        if (init) {
+          const actualType = inferExprType(init, typeEnv, enumDefs);
+          if (!typeCompatible(declaredType, actualType)) {
+            warnings.push({
+              message: `Type mismatch: '${decl.name}' declared as ${typeName(declaredType)} but initialized with ${typeName(actualType)}`,
+              line: decl.loc.line,
+              column: decl.loc.column,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Infer comb types
+  for (const decl of mod.body) {
+    if (decl.kind === 'comb') {
+      const inferredType = inferExprType(decl.expr, typeEnv, enumDefs);
+      typeEnv.set(decl.name, inferredType);
+    }
   }
 
   // 2. Extract comb dependencies
@@ -92,7 +265,22 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
     }
   }
 
-  // 2c. Auto-detect single-signal sensitivity blocks:
+  // 2c. Extract temporal assert dependencies
+  for (const decl of mod.body) {
+    if (decl.kind === 'temporal_assert') {
+      const deps = new Set<string>();
+      collectDeps(decl.trigger, deps, symbols, builtins, enumValues);
+      collectDeps(decl.property, deps, symbols, builtins, enumValues);
+      decl.deps = [...deps];
+
+      // Validate duration
+      if (decl.duration !== undefined && decl.duration <= 0) {
+        errors.push({ message: `Temporal assertion duration must be positive, got ${decl.duration}`, line: decl.loc.line, column: decl.loc.column });
+      }
+    }
+  }
+
+  // 2d. Auto-detect single-signal sensitivity blocks:
   // always @(sigName) where sigName is a signal/comb → promote to sensitivity
   for (const decl of mod.body) {
     if (decl.kind === 'always' && decl.triggerKind === 'event' && decl.trigger.params.length === 0) {
@@ -111,6 +299,16 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
       const reads = new Set<string>();
       const writes = new Set<string>();
       const localScope = eventParams.get(decl) ?? new Set();
+
+      // For posedge/negedge, also collect deps from the edge expression
+      if ((decl.triggerKind === 'posedge' || decl.triggerKind === 'negedge') && decl.edgeExpr) {
+        walkExpr(decl.edgeExpr, e => {
+          if (e.kind === 'identifier' && symbols.has(e.name) && isReactiveKind(symbols.get(e.name)!)) {
+            reads.add(e.name);
+          }
+        });
+      }
+
       collectAlwaysReadsWrites(decl.body, reads, writes, symbols, localScope);
       decl.reads = [...reads];
       decl.writes = [...writes];
@@ -162,6 +360,15 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
         for (const w of writes) {
           if (sensList.has(w)) {
             errors.push({ message: `Cannot write to '${w}' — it appears in its own sensitivity list (would self-trigger)`, line: decl.loc.line, column: decl.loc.column });
+          }
+        }
+      }
+
+      // Posedge/negedge validation — similar to sensitivity
+      if ((decl.triggerKind === 'posedge' || decl.triggerKind === 'negedge') && decl.trigger.signals) {
+        for (const sig of decl.trigger.signals) {
+          if (sig !== 'expr' && !symbols.has(sig)) {
+            errors.push({ message: `Undefined signal '${sig}' in ${decl.triggerKind} trigger`, line: decl.loc.line, column: decl.loc.column });
           }
         }
       }
@@ -349,6 +556,7 @@ function buildGraph(mod: Module, symbols: Map<string, SymbolKind>): StaticGraph 
   const nodes: GraphNode[] = [];
   const edges: GraphEdge[] = [];
   let assertIdx = 0;
+  let temporalIdx = 0;
 
   for (const decl of mod.body) {
     if (decl.kind === 'input') {
@@ -370,7 +578,19 @@ function buildGraph(mod: Module, symbols: Map<string, SymbolKind>): StaticGraph 
       }
     }
     if (decl.kind === 'always') {
-      if (decl.triggerKind === 'sensitivity' && decl.trigger.signals) {
+      if ((decl.triggerKind === 'posedge' || decl.triggerKind === 'negedge') && decl.trigger.signals) {
+        // Edge-triggered: similar to sensitivity
+        const edgeId = `${decl.triggerKind}:${decl.trigger.signals.join(',')}`;
+        nodes.push({ id: edgeId, name: `${decl.triggerKind}(${decl.trigger.signals.join(', ')})`, type: 'sensitivity' });
+        for (const sig of decl.trigger.signals) {
+          if (sig !== 'expr' && symbols.has(sig)) {
+            edges.push({ from: sig, to: edgeId, type: 'data' });
+          }
+        }
+        for (const w of decl.writes) {
+          edges.push({ from: edgeId, to: w, type: 'write' });
+        }
+      } else if (decl.triggerKind === 'sensitivity' && decl.trigger.signals) {
         // Sensitivity block: signals → sensitivity node → written signals
         const sensId = `sense:${decl.trigger.signals.join(',')}`;
         nodes.push({ id: sensId, name: decl.trigger.signals.join(', '), type: 'sensitivity' });
@@ -395,23 +615,34 @@ function buildGraph(mod: Module, symbols: Map<string, SymbolKind>): StaticGraph 
         edges.push({ from: dep, to: assertId, type: 'data' });
       }
     }
+    if (decl.kind === 'temporal_assert') {
+      const tempId = `temporal:${temporalIdx++}`;
+      nodes.push({ id: tempId, name: tempId, type: 'assert' });
+      for (const dep of decl.deps) {
+        edges.push({ from: dep, to: tempId, type: 'data' });
+      }
+    }
     if (decl.kind === 'cell') {
       nodes.push({ id: decl.name, name: decl.name, type: 'cell' });
     }
     if (decl.kind === 'constraint') {
-      const constraintId = `constraint:${decl.name}`;
-      nodes.push({ id: constraintId, name: decl.name, type: 'constraint' });
-      // Bidirectional edges: collect all cells referenced across all clauses
-      const allCells = new Set<string>();
-      for (const clause of decl.clauses) {
-        for (const inp of clause.inputs) allCells.add(inp);
-        const writes = new Set<string>();
-        collectAlwaysReadsWrites(clause.body, new Set(), writes, symbols, new Set());
-        for (const w of writes) allCells.add(w);
-      }
-      for (const cell of allCells) {
-        edges.push({ from: cell, to: constraintId, type: 'data' });
-        edges.push({ from: constraintId, to: cell, type: 'write' });
+      // Per-clause subnodes for constraint hardening
+      for (let ci = 0; ci < decl.clauses.length; ci++) {
+        const clause = decl.clauses[ci];
+        const clauseId = `constraint:${decl.name}:${ci}`;
+        nodes.push({ id: clauseId, name: `${decl.name}[${ci}]`, type: 'constraint' });
+
+        // Input edges: from clause inputs to clause subnode
+        for (const inp of clause.inputs) {
+          edges.push({ from: inp, to: clauseId, type: 'data' });
+        }
+
+        // Write edges: from clause subnode to written cells
+        const clauseWrites = new Set<string>();
+        collectAlwaysReadsWrites(clause.body, new Set(), clauseWrites, symbols, new Set());
+        for (const w of clauseWrites) {
+          edges.push({ from: clauseId, to: w, type: 'write' });
+        }
       }
     }
     if (decl.kind === 'view') {
