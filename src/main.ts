@@ -10,21 +10,103 @@ function createLanding(): HTMLElement {
   landing.className = 'landing';
   landing.innerHTML = `
     <section class="landing-hero">
-      <h1 class="hero-title">Comb</h1>
-      <p class="hero-subtitle">Write circuits. Ship apps.</p>
+      <h1 class="hero-title">Stop hand-tracking your reactive dependencies.</h1>
+      <p class="hero-subtitle">Comb is a compiled reactive framework with edge-triggered sensitivity, temporal assertions, and a static circuit graph.</p>
+
+      <p class="hero-problem-label">The problem: fire an alert <strong>once</strong> when a value crosses a threshold.</p>
+
+      <div class="code-comparison">
+        <div class="code-panel">
+          <div class="code-panel-header">React</div>
+          <pre><code><span class="hl-keyword">const</span> [val, setVal] = <span class="hl-type">useState</span>(0);
+<span class="hl-keyword">const</span> prev = <span class="hl-type">useRef</span>(<span class="hl-keyword">false</span>);
+
+<span class="hl-type">useEffect</span>(() =&gt; {
+  <span class="hl-keyword">const</span> isHigh = val &gt; threshold;
+  <span class="hl-keyword">if</span> (isHigh &amp;&amp; !prev.current) {
+    fireAlert();  <span class="hl-comment">// posedge</span>
+  }
+  prev.current = isHigh;
+}, [val, threshold]);</code></pre>
+        </div>
+        <div class="code-panel">
+          <div class="code-panel-header">Svelte</div>
+          <pre><code><span class="hl-keyword">let</span> prev = <span class="hl-keyword">false</span>;
+$: isHigh = val &gt; threshold;
+$: {
+  <span class="hl-keyword">if</span> (isHigh &amp;&amp; !prev) fireAlert();
+  prev = isHigh;
+}</code></pre>
+        </div>
+        <div class="code-panel code-panel-comb">
+          <div class="code-panel-header">Comb</div>
+          <pre><code><span class="hl-keyword">always</span> @(<span class="hl-type">posedge</span> val &gt; threshold) {
+  fireAlert();
+}</code></pre>
+        </div>
+      </div>
+
       <p class="hero-desc">
-        A reactive UI framework where the compiler sees your entire dependency
-        graph, verifies it's correct, and lets you visualize, debug, diff,
-        and test it — all from one data structure.
+        Comb eliminates entire classes of bugs that plague React, Svelte, Vue, and SolidJS.
+        Edge triggers, temporal assertions, and a compiler-emitted dependency graph
+        mean you stop guessing and start proving.
       </p>
-      <a href="#demos-section" class="hero-cta" onclick="document.querySelector('.pipeline-section').scrollIntoView({behavior:'smooth'});return false;">Try the Demos &#8595;</a>
+      <a href="#demos-section" class="hero-cta" onclick="document.getElementById('demos-section').scrollIntoView({behavior:'smooth'});return false;">Try the Demos &#8595;</a>
     </section>
 
-    <section class="usecases-section">
-      <h2 class="section-title">Why Comb?</h2>
-      <p class="why-comb-text">Every reactive framework has a dirty secret: your dependency graph is invisible. You write <code>useMemo(() =&gt; a + b, [a, b])</code> and React trusts you got the array right. Svelte infers deps at compile time &mdash; but throws that information away. The wiring between your signals, derived values, and effects exists only as an emergent property of execution.</p>
-      <p class="why-comb-text">Comb's compiler does something no other framework does: it extracts the reactive dependency graph and exports it as data. Every signal, every derived value, every event handler, every view binding &mdash; the compiler maps the connections and embeds the result as a JSON graph in the compiled output. This isn't a DevTools feature. It's a build artifact, like a type declaration file.</p>
-      <p class="why-comb-text">This one decision unlocks things that are structurally impossible in other frameworks: diffing the dependency graph between versions, verifying at compile time that a derived value doesn't read a signal it shouldn't, wiring <code>assert always (count &gt;= 0)</code> as a continuous invariant in the graph. The insight comes from hardware design &mdash; chip designers don't debug by stepping through execution, they look at schematics and diff netlists.</p>
+    <section class="features-section">
+      <h2 class="section-title">What you get</h2>
+      <div class="feature-cards">
+
+        <div class="feature-card">
+          <h3 class="feature-card-title">Edge-Triggered Sensitivity</h3>
+          <code class="feature-code">@(posedge x)</code>
+          <p class="feature-card-desc">
+            Fires once when <code>x</code> transitions false&rarr;true. Not every render.
+            Not while true. Once. The mechanism exists in MobX/RxJS &mdash; Comb makes it
+            a compiled language construct.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <h3 class="feature-card-title">Auto-Derived Testing</h3>
+          <code class="feature-code">__test()</code>
+          <p class="feature-card-desc">
+            Every <code>comb</code> declaration IS a testable spec. <code>__test()</code>
+            gives headless access to all signals and combs. The compiler knows your
+            dependencies &mdash; it auto-generates what to test.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <h3 class="feature-card-title">Static Circuit Graph</h3>
+          <code class="feature-code">__graph</code>
+          <p class="feature-card-desc">
+            The compiler emits a JSON dependency graph alongside your JS. Visualize it,
+            diff it between versions, run CI checks on it. No other framework does this.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <h3 class="feature-card-title">Temporal Assertions</h3>
+          <code class="feature-code">assert temporal @(posedge submit) eventually(showResult) within 5s;</code>
+          <p class="feature-card-desc">
+            Embedded time-bounded invariants. If <code>submit</code> fires but no result
+            appears within 5 seconds, the assertion fails. Try expressing that in React.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <h3 class="feature-card-title">DES Execution Model</h3>
+          <code class="feature-code">batch(() =&gt; { a.set(1); b.set(2); })</code>
+          <p class="feature-card-desc">
+            Delta cycles guarantee your UI never shows inconsistent state. Combs settle
+            before DOM updates. Multiple signal writes in one handler are atomic.
+            No glitch frames, ever.
+          </p>
+        </div>
+
+      </div>
     </section>
 
     <section class="pipeline-section">
@@ -46,70 +128,13 @@ function createLanding(): HTMLElement {
       </div>
     </section>
 
-    <section class="comparison-section">
-      <h2 class="section-title">Why Comb</h2>
-      <div class="comparison-table-wrap">
-        <table class="comparison-table">
-          <thead>
-            <tr>
-              <th></th>
-              <th>React</th>
-              <th>SolidJS</th>
-              <th>Svelte 5</th>
-              <th class="comb-col">Comb</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td class="row-label">Dep tracking</td>
-              <td>Manual arrays</td>
-              <td>Auto (implicit)</td>
-              <td>Compiler (invisible)</td>
-              <td class="comb-col"><strong>Compiler-verified (visible)</strong></td>
-            </tr>
-            <tr>
-              <td class="row-label">Reactive graph</td>
-              <td>Hidden</td>
-              <td>Hidden</td>
-              <td>Hidden</td>
-              <td class="comb-col"><strong>First-class __graph artifact</strong></td>
-            </tr>
-            <tr>
-              <td class="row-label">Circuit visualization</td>
-              <td>No</td>
-              <td>DevTools addon</td>
-              <td>No</td>
-              <td class="comb-col"><strong>Built-in, from compile-time</strong></td>
-            </tr>
-            <tr>
-              <td class="row-label">Topology diffing</td>
-              <td>No</td>
-              <td>No</td>
-              <td>No</td>
-              <td class="comb-col"><strong>Yes — diff two __graphs</strong></td>
-            </tr>
-            <tr>
-              <td class="row-label">Auto-derived testing</td>
-              <td>No</td>
-              <td>No</td>
-              <td>No</td>
-              <td class="comb-col"><strong>Yes — combs ARE specs</strong></td>
-            </tr>
-            <tr>
-              <td class="row-label">Bidirectional constraints</td>
-              <td>No</td>
-              <td>No</td>
-              <td>No</td>
-              <td class="comb-col"><strong>Propagator networks</strong></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
     <section class="demos-section" id="demos-section">
       <h2 class="section-title">Demos</h2>
       <div class="demo-cards">
+        <a href="#monitor" class="demo-card">
+          <h3>System Monitor</h3>
+          <p>Edge-triggered alerts with @(posedge) and @(negedge). Fires once on threshold crossing, not every tick.</p>
+        </a>
         <a href="#registration" class="demo-card">
           <h3>Dependency Debugger</h3>
           <p>Compiler-verified deps, live circuit diagram, auto-test with 16/16 coverage in &lt;1s</p>
@@ -159,6 +184,7 @@ const nav = document.createElement('nav');
 nav.className = 'demo-nav';
 nav.innerHTML = `
   <a href="#" class="nav-link nav-home" data-demo="home">Comb</a>
+  <a href="#monitor" class="nav-link" data-demo="monitor">System Monitor</a>
   <a href="#registration" class="nav-link" data-demo="registration">Dependency Debugger</a>
   <a href="#ticker" class="nav-link" data-demo="ticker">Waveform Debugger</a>
   <a href="#diff" class="nav-link" data-demo="diff">Circuit Diff</a>
@@ -212,7 +238,9 @@ function loadDemo(name: string) {
     el.classList.toggle('active', (el as HTMLElement).dataset.demo === name);
   });
 
-  if (name === 'registration') {
+  if (name === 'monitor') {
+    loadMonitor(demoWrap);
+  } else if (name === 'registration') {
     loadRegistration(demoWrap);
   } else if (name === 'ticker') {
     loadTicker(demoWrap);
@@ -223,6 +251,12 @@ function loadDemo(name: string) {
   } else if (name === 'layout') {
     loadLayout(demoWrap);
   }
+}
+
+async function loadMonitor(container: HTMLElement) {
+  const { mountMonitor } = await import('./demos/monitor-mount.js');
+  const result = mountMonitor(container);
+  currentDispose = result.dispose;
 }
 
 async function loadRegistration(container: HTMLElement) {

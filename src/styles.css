@@ -604,14 +604,16 @@ a:hover { text-decoration: underline; }
 /* Hero */
 .landing-hero {
   text-align: center;
-  padding: 6rem 0 4rem;
+  padding: 5rem 0 3rem;
 }
 
 .hero-title {
-  font-size: 3.5rem;
+  font-size: 2.4rem;
   font-weight: 800;
-  letter-spacing: -1px;
-  margin: 0;
+  letter-spacing: -0.5px;
+  margin: 0 auto;
+  max-width: 700px;
+  line-height: 1.2;
   background: linear-gradient(135deg, #4a9eff, #c084fc);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -619,19 +621,86 @@ a:hover { text-decoration: underline; }
 }
 
 .hero-subtitle {
-  font-size: 1.5rem;
-  font-weight: 600;
+  font-size: 1.05rem;
+  font-weight: 400;
+  color: #999;
+  margin: 1rem auto 0;
+  max-width: 640px;
+  line-height: 1.6;
+}
+
+.hero-problem-label {
+  font-size: 0.95rem;
+  color: #bbb;
+  margin: 2.5rem 0 1rem;
+  text-align: center;
+}
+.hero-problem-label strong {
+  color: #e8915a;
+}
+
+/* Code comparison grid */
+.code-comparison {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1px;
+  background: #2a2a4a;
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 0 auto 2rem;
+  max-width: 860px;
+  text-align: left;
+}
+
+.code-panel {
+  background: #12121e;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.code-panel-header {
+  padding: 0.5rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #666;
+  background: #1a1a30;
+  border-bottom: 1px solid #2a2a4a;
+}
+
+.code-panel pre {
+  margin: 0;
+  padding: 1rem;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.78rem;
+  line-height: 1.6;
   color: #ccc;
-  margin: 0.5rem 0 1.5rem;
-  letter-spacing: 0.5px;
+  overflow-x: auto;
+  flex: 1;
+}
+
+.code-panel pre code {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.code-panel-comb {
+  background: rgba(74, 158, 255, 0.06);
+}
+.code-panel-comb .code-panel-header {
+  color: var(--accent);
+  background: rgba(74, 158, 255, 0.08);
 }
 
 .hero-desc {
-  font-size: 1.05rem;
+  font-size: 1rem;
   color: #999;
-  max-width: 560px;
+  max-width: 640px;
   margin: 0 auto 2rem;
   line-height: 1.6;
+  text-align: center;
 }
 
 .hero-cta {
@@ -648,6 +717,70 @@ a:hover { text-decoration: underline; }
 }
 .hero-cta:hover { background: #3a3a5e; border-color: var(--accent); text-decoration: none; }
 
+/* Feature tour cards */
+.features-section {
+  padding: 3rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.feature-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.feature-card {
+  background: #1e1e35;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  transition: border-color 0.2s;
+}
+.feature-card:hover {
+  border-color: #4a4a6a;
+}
+
+/* Let the last card span full width when there's an odd count */
+.feature-card:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+.feature-card-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 0.5rem;
+}
+
+.feature-card > code.feature-code {
+  display: block;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.8rem;
+  color: var(--accent);
+  background: rgba(74, 158, 255, 0.08);
+  padding: 0.4rem 0.7rem;
+  border-radius: 4px;
+  margin-bottom: 0.75rem;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.feature-card-desc {
+  font-size: 0.85rem;
+  color: #888;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.feature-card-desc code {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.8rem;
+  color: #bbb;
+  background: #2a2a40;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+}
+
 /* Section titles */
 .section-title {
   font-size: 1.3rem;
@@ -657,23 +790,7 @@ a:hover { text-decoration: underline; }
   text-align: center;
 }
 
-/* Use cases */
-.usecases-section {
-  padding: 3rem 0;
-  border-top: 1px solid var(--border);
-}
-.usecase-card {
-  padding: var(--space-md) var(--space-lg);
-  border-left: 3px solid var(--accent);
-  margin-bottom: var(--space-md);
-  background: var(--bg-surface);
-  border-radius: 0 var(--radius) var(--radius) 0;
-}
-.usecase-title { color: var(--text); font-weight: 600; margin-bottom: var(--space-xs); font-size: 0.95rem; }
-.usecase-desc { color: var(--text-muted); font-size: 0.85rem; line-height: 1.5; margin-bottom: var(--space-xs); }
-.usecase-link { color: var(--accent); font-size: 0.85rem; text-decoration: none; }
-.usecase-link:hover { text-decoration: underline; }
-.why-comb-text { color: var(--text-muted); line-height: 1.7; font-size: 0.95rem; max-width: 700px; margin: 0 auto 1.5rem; }
+/* (usecases-section removed — replaced by features-section) */
 
 /* Pipeline */
 .pipeline-section {
@@ -732,61 +849,7 @@ a:hover { text-decoration: underline; }
   color: #777;
 }
 
-/* Comparison table */
-.comparison-section {
-  padding: 3rem 0;
-  border-top: 1px solid var(--border);
-}
-
-.comparison-table-wrap {
-  overflow-x: auto;
-}
-
-.comparison-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.75rem;
-  table-layout: fixed;
-}
-
-.comparison-table th,
-.comparison-table td {
-  padding: 0.45rem 0.5rem;
-  text-align: left;
-  border-bottom: 1px solid var(--border);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.comparison-table thead th {
-  color: #888;
-  font-weight: 600;
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 2px solid #2a2a4a;
-}
-
-.comparison-table td {
-  color: #999;
-}
-
-.comparison-table .row-label {
-  color: #bbb;
-  font-weight: 600;
-  white-space: nowrap;
-  width: 140px;
-}
-
-.comparison-table .comb-col {
-  color: var(--accent);
-  background: rgba(74, 158, 255, 0.05);
-}
-
-.comparison-table thead .comb-col {
-  color: var(--accent);
-  font-weight: 700;
-}
+/* (comparison-table removed — replaced by code-comparison in hero) */
 
 /* Demo cards */
 .demos-section {
@@ -907,7 +970,10 @@ a:hover { text-decoration: underline; }
 }
 
 @media (max-width: 640px) {
-  .hero-title { font-size: 3rem; }
+  .hero-title { font-size: 1.6rem; }
+  .code-comparison { grid-template-columns: 1fr; }
+  .feature-cards { grid-template-columns: 1fr; }
+  .feature-card:last-child:nth-child(odd) { grid-column: auto; }
   .demo-cards { grid-template-columns: 1fr; }
   .pipeline-diagram { flex-direction: column; align-items: center; }
   .pipeline-arrow { transform: rotate(90deg); line-height: 1; }
