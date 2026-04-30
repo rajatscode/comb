@@ -261,7 +261,9 @@ Prior art for unknown state: Solid's `createResource` handles async `T | undefin
 
 ---
 
-## Built-in Functions
+## Functions
+
+### Built-in Functions
 
 | Function | Description |
 |---|---|
@@ -270,6 +272,148 @@ Prior art for unknown state: Solid's `createResource` handles async `T | undefin
 | `len(x)` | Length of string or array |
 | `contains(s, sub)` | Check if string contains substring |
 | `append(arr, item)` | Append item to array |
+| `floor(x)` | Round down (`Math.floor`) |
+| `round(x)` | Round to nearest (`Math.round`) |
+| `min(a, b)` | Minimum of two values |
+| `max(a, b)` | Maximum of two values |
+| `abs(x)` | Absolute value |
+
+Browser globals are also available: `fetch`, `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, `console.log`, `JSON.parse`, `JSON.stringify`, `Object.keys`, `Object.values`, `Math.random`.
+
+### Custom Functions
+
+```sv
+fn clamp(value: int, min: int, max: int) -> int {
+  value < min ? min : value > max ? max : value;
+}
+
+fn formatPrice(amount: float) -> string {
+  "$" + str(round(amount * 100) / 100);
+}
+```
+
+Functions are defined with `fn name(params) -> returnType { body }`. The return type is optional. The last expression in the body is the implicit return value (like Rust). Explicit `return expr;` is also supported.
+
+### Method Calls
+
+Array and string methods work as method calls:
+
+```sv
+comb names = users.map(|u| u.name);
+comb active = users.filter(|u| u.active);
+comb found = items.find(|item| item.id == targetId);
+comb csv = names.join(", ");
+comb hasAdmin = users.some(|u| u.role == "admin");
+```
+
+Supported methods include: `map`, `filter`, `find`, `findIndex`, `some`, `every`, `includes`, `indexOf`, `join`, `flat`, `sort`, `reverse`, `push`, `pop`, `trim`, `split`, `replace`, `startsWith`, `endsWith`, `toUpperCase`, `toLowerCase`, `substring`, `charAt`.
+
+---
+
+## String Templates
+
+```sv
+comb greeting = `Hello, ${name}! You have ${count} items.`;
+comb statusMsg = `Price: $${str(round(price * 100) / 100)}`;
+```
+
+Backtick strings with `${expr}` interpolation, compiled to JS template literals.
+
+---
+
+## Destructuring
+
+```sv
+always @(processData) {
+  const { name, email } = userData;
+  const [first, ...rest] = items;
+  displayName <= name;
+}
+```
+
+Object and array destructuring with `const`. Supports aliases (`{ key: alias }`) and rest patterns (`...rest`).
+
+---
+
+## Try/Catch
+
+```sv
+always @(submit) {
+  try {
+    result <= processForm(data);
+  } catch (e) {
+    error <= "Something went wrong";
+  }
+}
+```
+
+---
+
+## Async Blocks
+
+```sv
+always @(loadUsers) {
+  loading <= true;
+  async {
+    const response = await fetch("/api/users");
+    const data = await response.json();
+    users <= data;
+    loading <= false;
+  } catch {
+    error <= "Failed to load";
+    loading <= false;
+  }
+}
+```
+
+`async { }` blocks run asynchronously — the always block returns immediately and the async body executes in the background. Signal writes inside async blocks trigger new simulation cycles when they resolve. `await` is only valid inside async blocks.
+
+---
+
+## Component Children / Slots
+
+```sv
+module Card {
+  input title: string = "";
+  view {
+    <div class="card">
+      <h3>{title}</h3>
+      <div class="card-body">
+        <slot />
+      </div>
+    </div>
+  }
+}
+
+module App {
+  view {
+    <Card title="My Card">
+      <p>Child content goes here</p>
+    </Card>
+  }
+}
+```
+
+Components accept child content via `<slot />`. Parent content between `<Component>` tags is passed to the child and rendered at the slot position.
+
+---
+
+## Form Elements
+
+All form elements support `@bind` for two-way binding:
+
+```sv
+<input @bind=name />
+<textarea @bind=description></textarea>
+<select @bind=category>
+  <option value="a">Option A</option>
+  <option value="b">Option B</option>
+</select>
+<input type="checkbox" @bind=agreed />
+<input type="radio" name="size" value="small" @bind=selectedSize />
+```
+
+The compiler detects the element type and uses the appropriate property (`value` vs `checked`) and event (`input` vs `change`).
 
 ---
 
