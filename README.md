@@ -1,20 +1,21 @@
 # Comb
 
-**Write circuits. Ship apps.**
+**A discrete event simulator for user interfaces.**
 
-The first framework where compiler, runtime, devtools, and testing share one data structure — the circuit graph (`__graph`). You write `.comb` files, the compiler extracts a static dependency graph, and everything else — visualization, diffing, coverage testing, live debugging — falls out of that single artifact.
+Comb is an experimental UI framework whose runtime is a discrete event simulation kernel — not a virtual DOM diffing engine, not a microtask-based signal graph, but a simulator with formal time, delta cycles, and edge-triggered sensitivity. You write `.comb` files; the compiler extracts a static circuit topology (`__graph`) and emits JavaScript targeting the simulation runtime.
 
-React asks: *what should the UI look like after state changes?*
-Comb asks: *what signals exist, what logic derives from them, and what events clock state forward?*
+The question Comb asks is not "what should the UI look like?" but **"what are the signals, what are the dependencies between them, and what events drive state transitions?"** — the same question a chip designer asks about a circuit.
+
+> **Status:** Research prototype. The compiler and runtime work. The DES execution model, edge-triggered sensitivity, type system, and temporal assertions are in active development. See [Roadmap](#roadmap) for what's implemented vs planned.
 
 ## Quick Start
 
 ```bash
 npm install
-npm run dev        # Landing page + 5 demos at localhost:3000
+npm run dev        # Landing page + demos at localhost:3000
 ```
 
-Playground at [localhost:3000/playground.html](http://localhost:3000/playground.html).
+Playground at [localhost:3000/playground.html](http://localhost:3000/playground.html) — compiles `.comb` in the browser, no server round-trips.
 
 ## The Language
 
@@ -47,194 +48,198 @@ module Counter {
 }
 ```
 
-### Key Concepts
+### SystemVerilog Heritage
 
-| Comb | SystemVerilog | Meaning |
-|------|---------------|---------|
+The syntax borrows from SystemVerilog intentionally — not as decoration, but because the HDL execution model maps onto UI problems in ways that standard reactive frameworks don't.
+
+| Comb | SystemVerilog | What it means |
+|------|---------------|---------------|
 | `signal` | `reg` | Mutable state that persists across events |
 | `comb` | `always_comb` / `assign` | Derived value — pure function of signals, auto-recomputes |
 | `always @(event)` | `always_ff @(posedge clk)` | Event-triggered state transition |
-| `<=` | Non-blocking assignment | Signal assignment (batched, glitch-free) |
-| `cell` | Latch | Merge-semantic reactive value for propagator networks |
-| `constraint` | Bidirectional wire | Propagator clause: inputs → outputs |
-| `view { }` | Module ports / IO | DOM output — reactive, fine-grained updates |
-| `token` | Parameter | Design token → CSS custom property in the circuit graph |
-| `input` / `output` | Port | Directional module composition ports |
+| `<=` | Non-blocking assign | Scheduled for end of current delta — batched, deterministic |
+| `cell` | Latch | Merge-semantic value for propagator networks |
+| `constraint` | Bidirectional wire | Propagator clause: information flows in any direction |
+| `view { }` | Module ports | DOM output with fine-grained reactive bindings |
+| `input` / `output` | Port | Directional module composition |
 
-## Features
+### Planned syntax (not yet implemented)
 
-- **Compiler-verified dependency lists** — wrong deps = compile error, not a subtle runtime bug
-- **Static `__graph` artifact** — circuit schematic extracted at compile time, before runtime
-- **Auto-derived testing** — combs ARE specs; `__test()` gives headless signal/comb access
-- **Propagator networks** — bidirectional constraints via cells + propagators (RGB↔HSV in 6 lines)
-- **Design tokens as signals** — CSS custom properties wired into the circuit graph
-- **Module composition** — directional ports (`input`/`output`) with type-checked wiring
+```sv
+// Edge-triggered sensitivity — fires on transition, not on value
+always @(posedge loading) { showSpinner(); }
+always @(negedge loading) { fadeInContent(); }
+
+// Temporal assertions — SVA-inspired invariants over time
+assert temporal @(posedge submitted)
+  eventually(showSuccess || showError) within 5s;
+
+// Unknown state — signal starts unresolved, compiler forces handling
+signal data: X | User;
+```
+
+## What's Genuinely Novel
+
+We did the research. Here's what holds up, what doesn't, and what we're building toward.
+
+### Novel (no prior art found)
+
+**Discrete event simulation as UI execution model.** No web framework uses a formal DES loop with delta cycles and simulation time. DES libraries exist (SIM.JS, SimScript) but for simulation workloads, not UI rendering. Jane Street's Bonsai is the most sophisticated graph-based reactive UI engine, but it's incremental computation, not DES. This is the core thesis.
+
+**Static `__graph` artifact as compile output.** The compiler emits a JSON dependency graph alongside the JS. No framework does this. Marko does cross-file reactive analysis internally but doesn't expose it. Svelte builds an internal dep graph but doesn't emit it. Angular's Signal Graph is runtime-only. The `__graph` enables topology diffing, static analysis, and CI integration that runtime-only graphs can't.
+
+### Novel in formulation (prior art for mechanism, not for DSL integration)
+
+**Edge-triggered sensitivity as language syntax.** The mechanism exists — MobX's `when()` fires once when a predicate becomes true, RxJS's `pairwise()` detects transitions, Vue's `watch()` gives `(newValue, oldValue)`. But no framework offers `@(posedge x)` / `@(negedge x)` as a first-class compiled language construct. The value is in making edge detection declarative and compiler-verified, not in inventing edge detection.
+
+**Propagator networks compiled from DSL.** David Thompson (Spritely project) built a working propagator-based FRP for web UI, presented at FOSDEM 2026. Sussman and Radul's 2009 work is the theoretical foundation. Cassowary.js handles layout constraints. What doesn't exist: a framework that compiles `constraint { }` blocks from a DSL into propagator networks with static analysis and graph artifact integration.
+
+**Temporal assertions embedded in component model.** Quickstrom (Wickstrom, PLDI 2022) applies LTL to web application testing — it's real, published, peer-reviewed. The difference: Quickstrom is an external testing tool that observes the DOM from outside. Comb's temporal assertions would live inside the component as graph nodes, running as development-time invariants — closer to SystemVerilog Assertions (SVA) than to property-based testing.
+
+**Universal unknown state with propagation.** Solid's `createResource` returns `T | undefined` until resolved. Leptos uses `Option<T>`. React Suspense makes loading implicit. What's different: applying X-state to *all* signals (not just async resources) with HDL-style propagation semantics — if any input is unknown, the output is unknown, and the compiler forces you to handle it.
+
+### Not novel (stop claiming these)
+
+- **Fine-grained reactivity** — SolidJS, Preact Signals
+- **Compiler-verified dependencies** — Svelte, React Compiler, Marko
+- **Reactive graph visualization** — Angular DevTools Signal Graph, SolidJS devtools, NoFlo
+- **Directional ports** — Angular `@Input`/`@Output` since 2016, Elm ports
+- **Waveform debugging** — Redux DevTools with a different skin
+
+## The DES Execution Model
+
+> **Status: Planned.** The current runtime uses standard microtask-based signal propagation. The DES model described here is the target architecture.
+
+When an event fires (user click, fetch response, timer), the simulator runs a deterministic loop:
+
+```
+Event enters → Delta 0: combinational logic (combs) settles
+             → Delta 1: non-blocking assignments (<=) applied
+             → Delta 2: if new combinational changes, settle again
+             → ...repeat until quiescent...
+             → DOM commit: only after full stabilization
+```
+
+This gives formal guarantees that microtask-based frameworks can't:
+- **Combs always see consistent state** — no reading a half-updated signal graph
+- **Concurrent always blocks execute deterministically** — no surprises from effect ordering
+- **DOM updates only after stabilization** — no partial renders, no glitch frames
+
+The practical difference from topological sorting (what Solid/Preact do): topological sort is a single pass. Delta cycles allow multi-pass stabilization where sequential logic (`<=`) creates new combinational dependencies that need another settle pass. Whether real-world UI needs multi-pass is an open research question we intend to answer.
+
+## Features (Implemented)
+
+- **Static `__graph` artifact** — circuit topology extracted at compile time
+- **Circuit topology diffing** — diff two `__graph`s to see what changed between versions
+- **Auto-derived testing** — `__test()` export gives headless signal/comb access
+- **Propagator networks** — bidirectional constraints via cells + propagators
+- **Compiler-verified sensitivity lists** — wrong deps = compile error
+- **Assertions as graph nodes** — `assert valid: condition;` visible in circuit
+- **Design tokens** — `token accent: color = "#4a9eff"` → CSS custom property in the graph
+- **Module composition** — directional ports with `input`/`output`
 - **Scoped styles** — per-module CSS with auto-generated scope hashes
-- **Assertions** — `assert valid: condition;` checked at runtime
-- **Sensitivity-triggered blocks** — `always @(sig1, sig2) { ... }` for multi-signal effects
-- **Constraint-based layout** — Kiwi.js Cassowary solver integration via cells
+- **Browser-portable compiler** — runs entirely in the browser for the playground
+- **Readable generated code** — inspect exactly what your `.comb` compiles to
 
-## The Pipeline
+## Roadmap
 
-```
-.comb → Compiler → __graph → Circuit Visualizer
-                            → Waveform Debugger
-                            → Circuit Diff
-                            → Coverage Testing
-                            → Runtime (signals, combs, effects, cells, propagators)
-```
+### Implemented
+- [x] Compiler pipeline (lexer, parser, verifier, codegen)
+- [x] Reactive runtime (signals, combs, effects, cells, propagators)
+- [x] Static `__graph` artifact + circuit visualization
+- [x] Circuit topology diffing
+- [x] Module composition with directional ports
+- [x] Assertions as graph nodes
+- [x] Design tokens as reactive CSS custom properties
+- [x] Live playground with in-browser compilation
+- [x] `__test()` auto-derived testing export
 
-Other frameworks bolt devtools on separately. In Comb, the compiler emits the `__graph` alongside the runtime code, and every tool reads from the same structure. The visualizer doesn't scrape the DOM or instrument the runtime — it reads `__graph` directly.
+### In Progress
+- [ ] All demos must compile from `.comb` (some currently hand-written against runtime API)
+- [ ] `constraint` blocks compile end-to-end through the compiler
+- [ ] Type checking (annotations are parsed but currently ignored)
 
-## Demos
-
-### 1. Dependency Debugger
-Form validation with compiler-verified deps. Live circuit diagram shows signal flow. 16-cell coverage heatmap auto-tests 1000 random inputs and hits all boolean combinations in <1s.
-
-### 2. Waveform Debugger
-Stock ticker with moving average, threshold alerts, and signal traces plotted over time — like a hardware logic analyzer for your UI.
-
-### 3. Circuit Diff
-Side-by-side topology comparison across refactors. Highlights added, removed, and changed nodes/edges. Zero prior art in web frameworks.
-
-### 4. Color Picker
-Bidirectional RGB↔HSV via propagator networks. 6 cells, 2 constraints, compiled from `color-picker.comb`. Drag any slider — all others update through the constraint solver.
-
-### 5. Constraint Layout
-Resizable three-pane dashboard (sidebar + main + inspector) with Kiwi.js Cassowary solver enforcing min/max width constraints. Drag dividers — the solver maintains invariants.
-
-## Comb vs. Everything Else
-
-| | React | SolidJS | Svelte 5 | **Comb** |
-|---|---|---|---|---|
-| Dep tracking | Manual arrays | Auto (implicit) | Compiler (invisible) | **Compiler-verified (visible)** |
-| Reactive graph | Hidden | Hidden | Hidden | **First-class `__graph` artifact** |
-| Circuit visualization | No | DevTools addon | No | **Built-in, from compile-time** |
-| Topology diffing | No | No | No | **Yes — diff two `__graph`s** |
-| Auto-derived testing | No | No | No | **Yes — combs ARE specs** |
-| Bidirectional constraints | No | No | No | **Propagator networks** |
+### Planned
+- [ ] Edge-triggered sensitivity: `@(posedge x)`, `@(negedge x)`
+- [ ] DES execution model with delta cycles (replace microtask-based runtime)
+- [ ] Type system: range types, port compatibility, exhaustive enum matching
+- [ ] X-value / unknown signal state with propagation semantics
+- [ ] Temporal assertions (SVA-lite): `assert temporal @(event) eventually(condition) within duration`
+- [ ] Source maps
 
 ## Architecture
 
 ### Compiler (`src/core/`)
 
-Pure TypeScript, zero dependencies, runs in the browser. `compile(source) → { js, graph, errors }` — no IO, no side effects. This enables the live playground.
+Pure TypeScript, zero dependencies, runs in the browser. `compile(source) → { js, graph, errors }`.
 
 - **Lexer** — Hand-written tokenizer with JSX-mode switching for `view {}` blocks
-- **Parser** — Recursive descent + Pratt expression parsing. Context-sensitive `<=` (assignment in statements, comparison in expressions)
-- **Verify** — Builds symbol table, checks undefined references, validates constraint inputs are cells, detects circular deps
-- **CodeGen** — Emits readable JS targeting the runtime API. Conditional imports (`createCell`, `createPropagator`, color utilities) only when used
-- **Graph Builder** — Extracts `__graph` with fine-grained view-effect nodes, viewTarget metadata, and bidirectional constraint edges
+- **Parser** — Recursive descent + Pratt expression parsing. Context-sensitive `<=`
+- **Verify** — Symbol table, undefined reference detection, circular dep detection, sensitivity list validation
+- **CodeGen** — Emits readable JS targeting the runtime API
+- **Graph Builder** — Extracts `__graph` with typed nodes, edges, and view-effect metadata
 
 ### Runtime (`src/runtime/`)
 
-Fine-grained reactive runtime with an introspectable circuit graph.
-
-- **Signals** — Push-pull reactivity with automatic dependency tracking
-- **Combs** — Lazy, glitch-free derived values (topological ordering prevents diamond-problem glitches)
-- **Cells** — Merge-semantic values for propagator networks (converge via `Object.is`)
-- **Propagators** — Directional constraint clauses that read cells and write cells
+- **Signals** — Push-pull reactivity (signals push dirty flags, combs pull on read)
+- **Cells** — Merge-semantic values for propagator networks
+- **Propagators** — Directional constraint clauses
+- **CircuitGraph** — Queryable data structure. Static graph loaded from `__graph`, runtime overlays live values
 - **Effects** — Auto-tracking side effects for DOM updates
-- **Batch** — Multiple signal writes → single atomic update (non-blocking assignment)
-- **CircuitGraph** — First-class queryable data structure. Every signal, comb, cell, propagator, and view binding registers itself
-- **FSM** — State machines with guards, transitions, onEnter/onExit
-- **Clocks** — Interval, animationFrame, and idle timing domains
-- **DOM** — Fine-grained DOM helpers — no virtual DOM, effects directly patch nodes
-- **Color** — `rgbToHsv`, `hsvToRgb`, `rgbToHex` utilities for propagator demos
+- **Batch** — Non-blocking assignment scheduling
+- **DOM** — Fine-grained patching, no virtual DOM
 
-## The Playground
+### The `__graph` Pipeline
 
-Three-pane live editor at `/playground.html`:
-- **Left**: Editable `.comb` source (counter, registration form, color picker, blank template)
-- **Center**: Live running app (iframe sandbox, recompiles on keystroke)
-- **Right**: Circuit visualizer showing the `__graph` with animated wire pulses
-- **Bottom**: Compiled JS output and error panel
-- **Collapsible syntax reference** with all 15 language constructs
-
-The compiler runs entirely in the browser — no server round-trips.
-
-## Testing
-
-```bash
-npm run typecheck                                    # TypeScript strict mode
-npx tsx src/core/compiler-test.ts                    # 31 compiler tests
-npx tsx src/cli/cli.ts examples/color-picker.comb    # Compile a .comb file
-npm run dev                                          # Visual testing in browser
+```
+.comb → Compiler → __graph (JSON) → Circuit Visualizer
+                                   → Topology Differ
+                                   → Test Harness
+                                   → Runtime (merges static + live values)
 ```
 
-The `__test()` export gives headless access to signals and combs:
+The `__graph` is the single data structure that every tool shares. The visualizer doesn't scrape the DOM — it reads `__graph`. The differ doesn't compare JS output — it compares `__graph`s. The test harness walks the `__graph` to find signals and combs.
 
-```js
-const t = __test();
-t.signals.username.set("alice");
-assert(t.combs.usernameValid() === true);
-t.dispose();
-```
+## Theoretical Foundations
+
+- **SystemVerilog** — Execution model and mental model: signals, combinational logic, non-blocking assignment, sensitivity lists, assertions
+- **Sussman & Radul (2009)** — Propagator networks: cells + propagators = bidirectional constraint solving
+- **SolidJS** — Fine-grained signal primitives and dependency tracking
+- **Bonsai (Jane Street)** — Two-phase architecture: static graph construction + runtime execution
+- **Svelte** — Compiler-based reactivity: shift work from runtime to build time
+- **Esterel** — Synchronous reactive language proving the same model targets both UI and hardware
+- **Quickstrom (PLDI 2022)** — LTL applied to web application testing (prior art for temporal assertions)
+- **dthompson / Spritely (FOSDEM 2026)** — Propagator-based FRP for web UI (prior art for propagator UI)
+
+## Known Limitations
+
+- Type annotations are parsed but not checked (type system is planned)
+- Some demos bypass the compiler and use the runtime API directly (being fixed)
+- No source maps
+- List rendering in `@for` uses full re-render (no keyed reconciliation)
+- No SSR
+- DES execution model not yet implemented (runtime uses standard microtask propagation)
+- Temporal assertions not yet implemented
 
 ## Project Structure
 
 ```
 comb/
 ├── src/
-│   ├── core/           # Browser-portable compiler (lexer, parser, verify, codegen)
-│   ├── runtime/        # Reactive runtime (signals, cells, propagators, circuit, DOM, FSM, clocks)
-│   ├── demos/          # 5 interactive demos (stock-ticker, circuit-diff, color-picker, resizable-layout)
-│   ├── playground/     # Live editor app
+│   ├── core/           # Browser-portable compiler
+│   ├── runtime/        # Reactive runtime + circuit graph
+│   ├── demos/          # Interactive demos
+│   ├── playground/     # Live editor
 │   ├── cli/            # Node.js CLI wrapper
-│   ├── generated/      # Compiled .comb → .js output (counter, registration, color-picker)
-│   ├── styles.css      # Design system with CSS custom properties
-│   ├── main.ts         # Landing page + demo router + HMR
-│   ├── visualizer.ts   # Canvas circuit graph renderer with pulse animations
-│   ├── waveform.ts     # Signal waveform debugger
-│   └── demo-shell.ts   # Shared layout shell (split/stacked)
+│   ├── generated/      # Compiled .comb → .js output
+│   ├── visualizer.ts   # Canvas circuit graph renderer
+│   └── waveform.ts     # Signal waveform debugger
 ├── examples/           # .comb source files
-│   ├── counter.comb
-│   ├── registration.comb
-│   └── color-picker.comb
-├── playground.html     # Playground entry point
-├── index.html          # App entry point
-└── vite.config.ts      # Vite + HMR plugin for .comb files
+├── docs/
+│   ├── language.md     # Language reference
+│   └── research/       # Prior art, architecture, specs
+└── playground.html     # Playground entry point
 ```
-
-## npm Scripts
-
-| Script | Description |
-|--------|-------------|
-| `npm run dev` | Vite dev server with .comb HMR |
-| `npm run compile` | Compile a single .comb file |
-| `npm run compile:all` | Compile all examples |
-| `npm run typecheck` | TypeScript strict check |
-| `npm run build` | Production build |
-
-## What Makes Comb Different
-
-Not individual features — the unified pipeline.
-
-1. **One data structure powers everything.** The compiler emits `__graph`. The visualizer reads it. The differ compares two of them. The test harness walks it. The runtime executes it. They're all the same thing.
-
-2. **The compiler catches real bugs.** Misspell a dependency? Reference a signal that doesn't exist? Write to a comb? The compiler tells you at build time, not at 2am in production.
-
-3. **Propagators are first-class.** Not a library pattern — a language construct. `constraint { (r,g,b) => { h <= f(r,g,b).h; } }` compiles to a convergent propagator network.
-
-4. **Generated code is readable.** You can inspect exactly what your `.comb` compiles to. No magic transforms, no hidden framework internals.
-
-5. **The mental model is a circuit.** Signals are wires. Combs are gates. Events are clock edges. Constraints are bidirectional buses. This isn't a metaphor — it's the architecture.
-
-## Theoretical Foundations
-
-- **SolidJS** — Fine-grained signal primitives and dependency tracking
-- **Bonsai (Jane Street)** — Two-phase architecture: static graph construction + runtime execution
-- **Svelte 5** — Compiler-based reactivity: shift work to build time
-- **Sussman's Propagators** — Cells + propagators = the theoretical foundation for bidirectional constraints
-- **Esterel** — Proved the same synchronous reactive language can target both UI and hardware
-- **SystemVerilog** — The syntax and mental model: signals, combinational logic, clocked state transitions
-
-## Known Limitations
-
-- No type checking beyond parsing (types are syntactic only)
-- No source maps
-- List rendering in `@for` uses full re-render (no keyed reconciliation)
-- No SSR / server-side rendering
 
 ## License
 

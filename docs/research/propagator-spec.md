@@ -1,6 +1,15 @@
-# Propagator Networks — Technical Spec
+# Propagator Networks — Technical Spec (Revised 2026-04-30)
 
-## Two New Primitives
+## Prior Art
+
+This is not a novel concept. Acknowledge and cite:
+- **Sussman & Radul (2009)** — "Revised Report on the Propagator Model." Theoretical foundation. Includes UI example (RGB/HSV color widget).
+- **dthompson / Spritely (FOSDEM 2026)** — Working propagator-based FRP for web UI in Scheme/WASM. Handles cyclic deps without glitches. Direct prior art.
+- **Cassowary.js** — Constraint solver for layout (linear arithmetic only, not general reactive).
+
+**What Comb adds:** Compiling `constraint { }` blocks from a DSL with static analysis, `__graph` integration, and compiler verification of well-formedness. Not the concept — the engineering into a practical compiled framework.
+
+## Two Primitives
 
 ### Cell — signal with merge semantics
 Can be written by multiple sources. Merge function suppresses writes that don't change the value → convergence.
@@ -9,13 +18,13 @@ createCell<T>(initial: T, meta: { name, module, merge? }): [() => T, (v: T) => v
 ```
 
 ### Propagator — multi-directional effect
-Watches cells, writes to cells. Both reads AND writes.
+Watches cells, writes to cells. Both reads AND writes are declared.
 ```typescript
 createPropagator(fn: () => void, meta: { name, module, deps, writes }): void
 ```
 
 ## Convergence
-Integer arithmetic roundtrips exactly. Object.is catches no-change. Safety: propagation depth limit (100).
+Integer arithmetic roundtrips exactly. `Object.is` catches no-change. Safety: propagation depth limit (100).
 
 ## .comb Syntax
 ```sv
@@ -26,10 +35,15 @@ constraint rgbHsv {
 }
 ```
 
+## Status
+- Runtime (`createCell`, `createPropagator`): **Implemented and working.**
+- Compiler syntax (`cell`, `constraint` keywords): **Parsed and partially compiled.**
+- End-to-end compilation: **Being hardened.** The color picker demo currently uses the runtime API directly — it needs to compile from `color-picker.comb` through the compiler.
+
 ## Build Order
-1. Runtime: createCell + createPropagator + depth limit (~30 lines)
-2. Builtins: rgbToHsv, hsvToRgb, rgbToHex (~40 lines)
-3. Hand-written color picker demo (~150 lines) — prove runtime works
-4. Compiler: cell/constraint syntax (~100 lines)
-5. Compiled .comb version
-6. Visualizer: constraint nodes as diamonds, bidirectional edges (~30 lines)
+1. ~~Runtime: createCell + createPropagator + depth limit~~ Done
+2. ~~Builtins: rgbToHsv, hsvToRgb, rgbToHex~~ Done
+3. ~~Hand-written color picker demo~~ Done — but needs to be replaced with compiled version
+4. ~~Compiler: cell/constraint syntax~~ Partial
+5. **Next:** Compiled .comb version replaces hand-written demo
+6. **Next:** Visualizer: constraint nodes as diamonds, bidirectional edges

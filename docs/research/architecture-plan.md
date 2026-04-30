@@ -1,51 +1,60 @@
-# Comb Architecture Plan
+# Comb Architecture Plan (Revised 2026-04-30)
 
 ## Core Paradigm
-UI is a circuit. Dependencies are explicit and compiler-verified. The reactive graph is first-class and inspectable. Wrong deps = compile error, not lint warning.
+UI is a discrete event simulation. The runtime is a DES kernel with delta cycles, edge-triggered sensitivity, and formal stabilization. Dependencies are explicit and compiler-verified. The reactive graph is first-class and inspectable — emitted as a static `__graph` artifact at compile time.
 
-## 4 Primitives
+## Primitives
 1. **signal** — mutable state, typed, named, registered in CircuitGraph
 2. **comb** — compiler-verified derived value, static union semantics (all branches tracked)
-3. **always @(event)** — atomic state transition, batched writes via <=
-4. **view** — reactive DOM output, fine-grained, no VDOM
+3. **always @(event)** — event-triggered state transition, batched via non-blocking `<=`
+4. **always @(signal, ...)** — sensitivity-triggered block, compiler-verified dep list
+5. **always @(posedge/negedge)** *(planned)* — edge-triggered block, fires on transitions not values
+6. **cell** — merge-semantic value for propagator networks
+7. **constraint** — propagator clause, bidirectional dataflow
+8. **view** — reactive DOM output, fine-grained, no VDOM
+9. **assert** — runtime invariant, registered as graph node
+10. **assert temporal** *(planned)* — SVA-style temporal property over time
+
+## DES Execution Model *(target architecture)*
+
+Current runtime: microtask-based signal propagation (standard, like SolidJS).
+Target: discrete event simulation kernel.
+
+```
+Event → Delta 0: combinational (combs) settle
+      → Delta 1: non-blocking (<=) apply
+      → Delta 2: if new combinational changes, re-settle
+      → ...until quiescent...
+      → DOM commit
+```
+
+Key difference from topological sorting (Solid/Preact): topo sort is single-pass. Delta cycles are multi-pass — sequential logic can create new combinational dependencies that need another settle pass.
 
 ## CircuitGraph
-Compiler produces the schematic (static topology: nodes + edges). Runtime animates it (topology + live values + event stream). Runtime hydrates from compile-time artifact.
+Compiler produces the schematic (static topology: nodes + edges as `__graph` JSON artifact). Runtime hydrates from compile-time artifact and overlays live values. No other framework emits this as a build artifact (see honest-prior-art.md).
 
 ## Verification Pass
 For each comb: walk AST → collect all signal/comb identifier reads → store as verified deps → wrong deps = compile error.
 Static union for conditionals: walk ALL branches, union deps. Conservative but correct.
 Cycle detection via topological sort.
+Sensitivity list verification: reads inside always @(...) blocks must match declared list.
 
-## What to Steal from Existing Code
-- Lexer JSX mode-switching pattern
-- Parser Pratt expression parsing
-- Context-sensitive <= handling
-- Discriminated union AST types
-- Push-pull reactivity with currentComputation tracking
-- batch() with depth counting
+## Type System *(planned)*
+Currently: annotations parsed but not checked.
+Target:
+1. Enforce parsed types (signal type mismatches)
+2. Port compatibility (input/output types across modules)
+3. Range types: `signal x: int(0..255)`
+4. X-state: `signal data: X | User` with propagation semantics
+5. Exhaustive enum matching
 
-## What to Throw Away
-- codegen.ts (no dep metadata)
-- compiler.ts (no verification)
-- circuit.ts (runtime-only, not compile-time hydrated)
-- dom.ts (fragile, leaks)
-- fsm.ts / clocks.ts (scope cut)
-
-## Implementation Steps
-1. Compiler with verification pass — parse, verify deps, emit errors/static graph
-2. Codegen using verified deps — emit with dep arrays + __graph export
-3. Runtime with compile-time graph — signals/combs/effects register with CircuitGraph from compiler metadata
-4. View rendering + DOM — reactive bindings, @if/@for/@bind, event wiring
-5. CircuitGraph visualizer — SVG from graph, wire animation, value display
-6. Demo: Dependency Debugger — form validation + live circuit + compiler errors
-7. Demo: Waveform Debugger — per-signal history + time-series traces
-8. Demo: Circuit Diff — compile two sources, diff topologies
-
-## Clarifications
-- Compile-time graph = static topology (nodes + edges, no values). Runtime graph = live (topology + values + events). Two structures, runtime hydrates from compile-time.
-- Per-signal ring buffers needed for waveform viewer (not just 256-event global buffer).
-- Static union means combs may re-evaluate when conditionally-irrelevant deps change, but memoization prevents downstream propagation. Document as deliberate.
+## Implementation Priorities
+1. Fix foundation: all demos through compiler, constraint end-to-end, type-check parsed annotations
+2. Edge-triggered sensitivity: `@(posedge x)` / `@(negedge x)` in lexer/parser/codegen/runtime
+3. Delta cycle execution model: refactor runtime from microtask to simulation loop
+4. Constraint compilation: `.comb` constraint blocks → propagator networks with static analysis
+5. Type system: enforce parsed types, range types, X-state, port compatibility
+6. Temporal assertions: SVA-lite syntax, runtime temporal logic evaluator
 
 ## Scope Cuts
-No router, SSR, VDOM, plugin system, TS integration, ecosystem, bidirectional constraints, clock domain crossing, FSMs, clocks.
+No router, SSR, VDOM, plugin system, TS integration, ecosystem.

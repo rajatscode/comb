@@ -1,4 +1,6 @@
-# Comb Research — Interim Findings
+# Comb Research — Interim Findings (Revised 2026-04-30)
+
+Updated with corrections from systematic prior art research.
 
 ## 1. Bonsai (Jane Street) — Key Architecture
 
@@ -11,9 +13,9 @@ Two-phase architecture:
 
 Key insight: Bonsai components produce *arbitrary values*, not just views. More than half don't touch DOM — they're pure computation nodes.
 
-Maps to Comb: compile step = graph construction, browser = runtime execution. We're already Bonsai-shaped.
+Maps to Comb: compile step = graph construction, browser = runtime execution. Note: Bonsai is incremental computation (single-pass propagation). Comb's DES model targets multi-pass delta cycles — a fundamentally different execution strategy.
 
-## 2. Sensitivity List Thesis — The Core Differentiator
+## 2. Sensitivity List Thesis
 
 Three approaches to reactive dependencies exist:
 
@@ -27,39 +29,44 @@ Three approaches to reactive dependencies exist:
 - `always @(a, b)` — explicit, compiler-verified
 - `always_comb` — auto-inferred but VISIBLE, synthesis warns on unexpected reads
 
-**Comb opportunity — combine both:**
+**Comb combines both:**
 - Explicit sensitivity: `always @(count, name) { }` — compiler VERIFIES only those signals are read
 - Auto-inferred: `comb derived = count * 2 + offset` — compiler statically knows deps `[count, offset]`
 - Dependencies are VISIBLE in the circuit diagram
 
-Why fundamentally superior:
-1. Explicit > implicit
-2. Compiler-verified > lint-enforced
-3. Static > runtime
-4. Visible > hidden
+**Revised assessment:** The "no existing framework does all four (explicit, verified, static, visible)" claim is weaker than originally stated. Svelte and Marko do compile-time dep analysis; Angular Signal Graph provides visibility. The sensitivity list verification IS valuable but it's not the primary differentiator. The **DES execution model** (delta cycles, edge sensitivity) is the real differentiator — see full-report.md.
 
-No existing framework does all four simultaneously.
+## 3. Gap Analysis (Corrected)
 
-## 3. Gap Analysis
+### Genuinely novel gaps:
+- **DES execution model** — no web framework uses discrete event simulation with delta cycles
+- **Static `__graph` artifact** — nobody emits reactive dep graph as build artifact
+- **Circuit topology diffing** — nobody diffs reactive wiring between versions
 
-- **Introspectable Reactive Graph**: Nobody has a first-class, queryable, subscribable graph as runtime data structure
-- **Compile-Time Dependency Verification**: Nobody treats dependency mismatches as compile errors
-- **Waveform/Time-Travel Debugging**: Nobody has VCD-style signal waveform viewer
-- **HDL Mental Model for UI**: Zero prior art found
+### Novel in formulation (mechanism exists, not as compiled DSL):
+- **Edge-triggered sensitivity** — MobX `when()`, RxJS `pairwise()` exist; `@(posedge x)` as compiled syntax doesn't
+- **Propagator networks from DSL** — dthompson/Spritely exists; compiled from DSL with static analysis doesn't
 
-## 4. Early Recommendations (ranked by novelty x impact)
+### ~~Previously claimed novel, now corrected:~~
+- ~~Introspectable Reactive Graph~~ → Angular Signal Graph (runtime), SolidJS devtools
+- ~~Compile-Time Dep Verification~~ → Svelte, React Compiler, Marko do forms of this
+- ~~Waveform Debugging~~ → Redux DevTools with different skin
+- ~~HDL Mental Model~~ → HipHop.js is academic precedent (control flow, not dataflow)
 
-1. Compiler-verified sensitivity lists
-2. Static graph extraction + visualization before runtime
-3. Non-view computations as first-class (from Bonsai)
-4. Clock domain crossing primitives
-5. Formal property checking (`assert always (count >= 0)`)
+## 4. Recommendations (Updated)
+
+Ranked by genuine novelty × impact:
+
+1. **DES execution model** — the core thesis, the thing nobody else has
+2. **Edge-triggered sensitivity** — small compiler change, large differentiation
+3. **All demos through compiler** — credibility fix
+4. **Constraint compilation end-to-end** — compile `constraint { }` to propagator networks
+5. **Type checking** — enforce parsed annotations, add range types, X-state
+6. **Temporal assertions** — SVA-lite syntax, cite Quickstrom as prior art
 
 ## 5. Codebase Analysis
 
-- `signals.ts`: Clean push-pull. Deps discovered at runtime (SolidJS-style), not declared. **This is the thing to change.**
-- `circuit.ts`: CircuitGraph — gold. No other framework has this.
-- `compiler.ts`: `extractGraphMetadata()` already 80% of compile-time dep verification
-- `codegen.ts`: `isReactive()` = dependency analysis, needs to be first-class
-- `fsm.ts`: First-class state machines — unique among web frameworks
-- `clocks.ts`: Timing domains — unique. Missing: clock domain crossing
+- `signals.ts`: Clean push-pull. Standard SolidJS-style reactivity. Target: refactor to DES simulation loop.
+- `circuit.ts`: Static/runtime graph unification. `loadStaticGraph()` + `verifyGraph()`. Solid engineering.
+- `verify.ts`: Sensitivity list verification, circular dep detection. Working.
+- `codegen.ts`: Emits readable JS with `__graph` export. Working.

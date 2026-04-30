@@ -1,6 +1,6 @@
 # Comb Roadmap — Status
 
-## All Items Complete
+## Phase 1: Foundation (Complete)
 
 1. ~~Compiler with verification pass~~ ✅ (31 tests)
 2. ~~Codegen with __graph export~~ ✅
@@ -30,9 +30,35 @@
 26. ~~README update~~ ✅
 27. ~~Color picker compiled from .comb~~ ✅
 28. ~~UI cleanup pass~~ ✅
-29. ~~Practical value prop ("What Can You Build?")~~ ✅
+29. ~~Practical value prop~~ ✅
 
-## Stats
+## Phase 2: Fix Foundation (In Progress)
+
+30. All demos compile from `.comb` — no hand-written runtime bypasses
+31. `constraint` blocks compile end-to-end through the compiler
+32. Type-check parsed annotations (signal types, port compatibility)
+
+## Phase 3: DES Execution Model (Planned)
+
+33. Edge-triggered sensitivity: `@(posedge x)` / `@(negedge x)` in lexer/parser/codegen/runtime
+34. Delta cycle execution model: refactor runtime from microtask to simulation loop
+35. Non-blocking assignment gets real scheduling semantics (end of delta, not immediate)
+
+## Phase 4: Type System (Planned)
+
+36. Enforce parsed type annotations (signal type mismatches = compile error)
+37. Port compatibility checking across modules
+38. Range types: `signal x: int(0..255)`
+39. X-value / unknown signal state with propagation semantics
+40. Exhaustive enum matching
+
+## Phase 5: Temporal Assertions (Planned)
+
+41. SVA-lite syntax: `assert temporal @(event) eventually(condition) within duration`
+42. Runtime temporal logic evaluator over event stream
+43. Temporal assertion nodes in `__graph`
+
+## Phase 1 Stats
 - 45 commits since clean rewrite
 - ~15,000 lines added
 - 60 tests (31 compiler + 17 runtime + 12 circuit)
