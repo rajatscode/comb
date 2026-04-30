@@ -446,10 +446,12 @@ async function setupLiveCompilation(
       circuit.reset();
 
       // Eval the new module — fix import paths for Blob URL context
+      // Blob URLs can't resolve relative or absolute paths, need full origin URLs
       let js = result.js!;
-      js = js.replace(/from\s+['"]\.\.\/runtime\/index\.js['"]/g, `from '/src/runtime/index.ts'`);
-      js = js.replace(/from\s+['"]\.\.\/runtime\/circuit\.js['"]/g, `from '/src/runtime/circuit.ts'`);
-      js = js.replace(/from\s+['"]\.\.\/runtime\/color\.js['"]/g, `from '/src/runtime/color.ts'`);
+      const origin = window.location.origin;
+      js = js.replace(/from\s+['"]\.\.\/runtime\/index\.js['"]/g, `from '${origin}/src/runtime/index.ts'`);
+      js = js.replace(/from\s+['"]\.\.\/runtime\/circuit\.js['"]/g, `from '${origin}/src/runtime/circuit.ts'`);
+      js = js.replace(/from\s+['"]\.\.\/runtime\/color\.js['"]/g, `from '${origin}/src/runtime/color.ts'`);
       const blob = new Blob([js], { type: 'text/javascript' });
       const url = URL.createObjectURL(blob);
       const mod = await import(/* @vite-ignore */ url);
