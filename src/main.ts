@@ -332,6 +332,44 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function highlightJS(code: string): string {
+  let html = escapeHtml(code);
+  // strings (backtick, double, single)
+  html = html.replace(/(`[^`]*`|"[^"]*"|'[^']*')/g, '<span class="hl-str">$1</span>');
+  // keywords
+  const kw = /\b(const|let|var|function|return|if|else|import|from|export|default|new|typeof|true|false|null|undefined)\b/g;
+  html = html.replace(kw, '<span class="hl-kw">$1</span>');
+  // framework-specific
+  const fw = /\b(useState|useRef|useEffect|useMemo|createSignal|createEffect|createMemo|\$state|\$derived|\$effect|\$props)\b/g;
+  html = html.replace(fw, '<span class="hl-fn">$1</span>');
+  // JSX tags
+  html = html.replace(/(&lt;\/?)([\w.]+)/g, '$1<span class="hl-tag">$2</span>');
+  // comments
+  html = html.replace(/(\/\/.*)/g, '<span class="hl-cmt">$1</span>');
+  return html;
+}
+
+function highlightComb(code: string): string {
+  let html = escapeHtml(code);
+  // strings
+  html = html.replace(/("[^"]*")/g, '<span class="hl-str">$1</span>');
+  // keywords
+  const kw = /\b(module|signal|comb|always|view|input|output|cell|constraint|enum|assert|token|style|fn|return|try|catch|async|await)\b/g;
+  html = html.replace(kw, '<span class="hl-kw">$1</span>');
+  // types
+  const types = /\b(int|float|string|bool|color|length)\b/g;
+  html = html.replace(types, '<span class="hl-type">$1</span>');
+  // edge triggers
+  html = html.replace(/@\((posedge|negedge)\s/g, '@(<span class="hl-edge">$1</span> ');
+  // operators
+  html = html.replace(/&lt;=/g, '<span class="hl-op">&lt;=</span>');
+  // tags in view
+  html = html.replace(/(&lt;\/?)([\w.-]+)/g, '$1<span class="hl-tag">$2</span>');
+  // @directives
+  html = html.replace(/@(click|bind|if|else|for)\b/g, '<span class="hl-dir">@$1</span>');
+  return html;
+}
+
 // --- Landing page HTML ---
 function createLanding(): HTMLElement {
   const landing = document.createElement('div');
@@ -361,13 +399,13 @@ function createLanding(): HTMLElement {
           </div>
           <div class="showcase-panels" id="framework-panels">
             <div class="panel active" data-panel="react">
-              <pre><code>${escapeHtml(REACT_SNIPPET)}</code></pre>
+              <pre><code>${highlightJS(REACT_SNIPPET)}</code></pre>
             </div>
             <div class="panel" data-panel="svelte">
-              <pre><code>${escapeHtml(SVELTE_SNIPPET)}</code></pre>
+              <pre><code>${highlightJS(SVELTE_SNIPPET)}</code></pre>
             </div>
             <div class="panel" data-panel="solid">
-              <pre><code>${escapeHtml(SOLID_SNIPPET)}</code></pre>
+              <pre><code>${highlightJS(SOLID_SNIPPET)}</code></pre>
             </div>
           </div>
         </div>
