@@ -32,6 +32,8 @@ export class CircuitGraph {
   private edges: GraphEdge[] = [];
   private events: GraphEvent[] = [];
   private listeners = new Set<(event: GraphEvent) => void>();
+  private recording = false;
+  private waveforms = new Map<string, Array<{ t: number; v: any }>>();
 
   registerNode(info: { name: string; module: string; type: NodeType; deps?: string[]; valueType?: string }): string {
     const id = `${info.module}.${info.name}`;
@@ -67,6 +69,7 @@ export class CircuitGraph {
     const event: GraphEvent = { type: eventType, nodeId, timestamp: Date.now(), oldValue, newValue };
     if (this.events.length >= EVENT_BUFFER_SIZE) this.events.shift();
     this.events.push(event);
+    if (this.recording) this.recordWaveform(nodeId, newValue);
     for (const listener of this.listeners) listener(event);
   }
 
@@ -106,11 +109,33 @@ export class CircuitGraph {
     };
   }
 
+  startRecording(): void {
+    this.recording = true;
+    this.waveforms.clear();
+  }
+
+  stopRecording(): void {
+    this.recording = false;
+  }
+
+  getWaveformData(): Map<string, Array<{ t: number; v: any }>> {
+    return new Map(this.waveforms);
+  }
+
+  private recordWaveform(nodeId: string, value: any): void {
+    let buf = this.waveforms.get(nodeId);
+    if (!buf) { buf = []; this.waveforms.set(nodeId, buf); }
+    buf.push({ t: Date.now(), v: value });
+    if (buf.length > 2000) buf.splice(0, buf.length - 2000);
+  }
+
   reset(): void {
     this.nodes.clear();
     this.edges = [];
     this.events = [];
     this.listeners.clear();
+    this.recording = false;
+    this.waveforms.clear();
   }
 }
 

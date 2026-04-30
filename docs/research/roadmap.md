@@ -5,16 +5,20 @@
 2. ~~Codegen with __graph export~~ — 5 tests
 3. ~~Runtime with CircuitGraph~~ — 13 tests
 
+## Completed
+4. ~~View/DOM wiring (counter in browser)~~
+5. ~~CircuitGraph Visualizer (DOM nodes + canvas edges, pulse animations)~~
+6. ~~Demo 1: Dependency Debugger (registration form + live circuit + compiler errors)~~
+
 ## In Progress
-4. View/DOM wiring (counter in browser)
+7. Demo 2: Waveform Debugger (stock ticker + canvas waveform traces)
 
 ## Upcoming
-5. CircuitGraph Visualizer (SVG from __graph, view binding nodes)
-6. Demo 1: Dependency Debugger (form validation + live circuit + compiler error showcase)
-7. Sensitivity-triggered always blocks (closes thesis gap: always @(count, name) with compiler-verified reads)
-8. Demo 2: Waveform Debugger (signal history + time-series traces + assertions)
-9. Demo 3: Circuit Diff (topology comparison across refactors)
-10. Propagator Networks (bidirectional constraints, RGB/HSV color picker demo)
+8. loadStaticGraph unification (static→runtime graph, drift detection)
+9. Sensitivity-triggered always blocks (closes thesis gap)
+10. Demo 3: Circuit Diff (topology comparison across refactors)
+11. Propagator Networks (bidirectional constraints, RGB/HSV color picker)
+12. Full framework features: HMR, module composition, lifecycle hooks, scoped styles, event modifiers
 
 ## Novelty Scorecard (from researcher)
 - Static graph export (__graph): 10/10 — no framework does this

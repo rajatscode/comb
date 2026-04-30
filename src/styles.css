@@ -10,10 +10,42 @@ body {
 
 #app {
   display: flex;
+  flex-direction: column;
   height: 100vh;
   width: 100vw;
 }
 
+/* Demo navigation */
+.demo-nav {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 0;
+  background: #16162a;
+  border-bottom: 1px solid #2a2a4a;
+  padding: 0 1rem;
+}
+
+.nav-link {
+  padding: 0.6rem 1.2rem;
+  color: #888;
+  text-decoration: none;
+  font-size: 0.85rem;
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.nav-link:hover { color: #ccc; }
+.nav-link.active { color: #4a9eff; border-bottom-color: #4a9eff; }
+
+/* Demo content area */
+#demo-content {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Pane layout (registration form) */
 .pane {
   display: flex;
   align-items: flex-start;
@@ -41,28 +73,11 @@ body {
 }
 
 /* Registration form */
-.reg-form {
-  width: 100%;
-}
+.reg-form { width: 100%; }
+.reg-form h2 { margin-top: 0; margin-bottom: 1.2rem; font-size: 1.4rem; }
 
-.reg-form h2 {
-  margin-top: 0;
-  margin-bottom: 1.2rem;
-  font-size: 1.4rem;
-}
-
-.field {
-  margin-bottom: 1rem;
-}
-
-.field label {
-  display: block;
-  font-size: 0.8rem;
-  color: #aaa;
-  margin-bottom: 0.3rem;
-  display: inline;
-}
-
+.field { margin-bottom: 1rem; }
+.field label { display: inline; font-size: 0.8rem; color: #aaa; margin-bottom: 0.3rem; }
 .field input {
   display: block;
   width: 100%;
@@ -76,17 +91,8 @@ body {
   transition: border-color 0.2s;
   margin-top: 0.2rem;
 }
-
-.field input:focus {
-  border-color: #4a9eff;
-}
-
-.field span {
-  display: inline-block;
-  font-size: 0.75rem;
-  margin-top: 0.25rem;
-  font-weight: 600;
-}
+.field input:focus { border-color: #4a9eff; }
+.field span { display: inline-block; font-size: 0.75rem; margin-top: 0.25rem; font-weight: 600; }
 
 .valid { color: #4ae04a; }
 .invalid { color: #ff6b6b; }
@@ -103,44 +109,89 @@ body {
   transition: background 0.15s;
   margin-top: 0.5rem;
 }
-
 .reg-form button:hover { background: #3a3a6e; }
 
 /* Compiler error examples */
-.error-examples {
-  margin-top: 2rem;
-  border-top: 1px solid #2a2a4a;
-  padding-top: 1rem;
+.error-examples { margin-top: 2rem; border-top: 1px solid #2a2a4a; padding-top: 1rem; }
+.error-examples h3 { font-size: 0.85rem; color: #888; margin: 0 0 0.8rem; text-transform: uppercase; letter-spacing: 1px; }
+.error-example { margin-bottom: 0.8rem; padding: 0.5rem; background: #1e1e35; border-radius: 4px; border-left: 3px solid #ff6b6b; }
+.error-example code { display: block; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.7rem; color: #ccc; margin-bottom: 0.3rem; word-break: break-all; }
+.error-msg { font-size: 0.7rem; color: #ff6b6b; }
+
+/* Stock ticker demo */
+.stock-ticker {
+  text-align: center;
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid #2a2a4a;
 }
 
-.error-examples h3 {
-  font-size: 0.85rem;
-  color: #888;
-  margin: 0 0 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
+.stock-ticker h2 { margin: 0 0 0.8rem; font-size: 1.3rem; }
 
-.error-example {
-  margin-bottom: 0.8rem;
-  padding: 0.5rem;
-  background: #1e1e35;
-  border-radius: 4px;
-  border-left: 3px solid #ff6b6b;
-}
-
-.error-example code {
-  display: block;
+.price-display {
+  font-size: 2.5rem;
+  font-weight: bold;
   font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 0.7rem;
-  color: #ccc;
-  margin-bottom: 0.3rem;
-  word-break: break-all;
+  color: #5b9bd5;
+  margin: 0.5rem 0;
 }
 
-.error-msg {
+.avg-display {
+  font-size: 0.95rem;
+  color: #6bc46d;
+  margin-bottom: 0.5rem;
+}
+
+.status {
+  font-size: 0.85rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  display: inline-block;
+  margin-bottom: 0.8rem;
+  font-weight: 600;
+}
+
+.status.normal { background: rgba(74, 224, 74, 0.15); color: #4ae04a; }
+.status.alert { background: rgba(255, 107, 107, 0.15); color: #ff6b6b; }
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8rem;
+  margin-top: 0.5rem;
+}
+
+.slider-row label { font-size: 0.8rem; color: #aaa; white-space: nowrap; }
+
+.threshold-slider {
+  width: 200px;
+  accent-color: #e8915a;
+}
+
+/* Stock ticker circuit section */
+.stock-circuit {
+  height: 300px;
+  border-bottom: 1px solid #2a2a4a;
+  position: relative;
+}
+
+/* Waveform */
+.waveform-container {
+  position: relative;
+  border-top: 1px solid #2a2a4a;
+}
+
+.waveform-tooltip {
+  position: absolute;
+  background: rgba(30, 30, 50, 0.9);
+  color: #ccc;
   font-size: 0.7rem;
-  color: #ff6b6b;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  padding: 3px 8px;
+  border-radius: 3px;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 10;
 }
 
 /* Counter styles */
@@ -174,9 +225,7 @@ body {
   z-index: 1;
 }
 
-.circuit-node.active {
-  box-shadow: 0 0 12px currentColor;
-}
+.circuit-node.active { box-shadow: 0 0 12px currentColor; }
 
 .circuit-node-name {
   font-size: 10px;
