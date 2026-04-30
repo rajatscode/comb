@@ -80,12 +80,14 @@ export const __graph = {
     {
       "id": "assert:0",
       "name": "assert:0",
-      "type": "assert"
+      "type": "assert",
+      "expr": "anyAlert == cpuHigh || memHigh || diskHigh"
     },
     {
       "id": "assert:1",
       "name": "assert:1",
-      "type": "assert"
+      "type": "assert",
+      "expr": "cpuHigh == cpuAvg > cpuThreshold"
     },
     {
       "id": "posedge:cpuHigh",

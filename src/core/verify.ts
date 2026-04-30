@@ -681,6 +681,17 @@ function detectCycles(deps: Map<string, string[]>): string | null {
 }
 
 // Build the static graph from verified module
+function exprToString(expr: any): string {
+  if (expr.kind === 'literal') return String(expr.value);
+  if (expr.kind === 'identifier') return expr.name;
+  if (expr.kind === 'binary') return `${exprToString(expr.left)} ${expr.op} ${exprToString(expr.right)}`;
+  if (expr.kind === 'unary') return `${expr.op}${exprToString(expr.operand)}`;
+  if (expr.kind === 'call' && expr.callee.kind === 'identifier') return `${expr.callee.name}(${expr.args.map(exprToString).join(', ')})`;
+  if (expr.kind === 'member') return `${exprToString(expr.object)}.${expr.property}`;
+  if (expr.kind === 'ternary') return `${exprToString(expr.condition)} ? ${exprToString(expr.then)} : ${exprToString(expr.else_)}`;
+  return '...';
+}
+
 function buildGraph(mod: Module, symbols: Map<string, SymbolKind>): StaticGraph {
   const nodes: GraphNode[] = [];
   const edges: GraphEdge[] = [];
@@ -739,7 +750,8 @@ function buildGraph(mod: Module, symbols: Map<string, SymbolKind>): StaticGraph 
     }
     if (decl.kind === 'assert') {
       const assertId = `assert:${assertIdx++}`;
-      nodes.push({ id: assertId, name: assertId, type: 'assert' });
+      const exprText = exprToString(decl.expr);
+      nodes.push({ id: assertId, name: assertId, type: 'assert', expr: exprText });
       for (const dep of decl.deps) {
         edges.push({ from: dep, to: assertId, type: 'data' });
       }

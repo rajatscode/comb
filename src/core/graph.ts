@@ -11,6 +11,7 @@ export interface GraphNode {
   type: 'signal' | 'comb' | 'event' | 'sensitivity' | 'view-binding' | 'view-effect' | 'assert' | 'cell' | 'constraint';
   isToken?: boolean;
   viewTarget?: { element: string; binding: string };
+  expr?: string;
 }
 
 export interface GraphEdge {

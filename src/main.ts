@@ -709,7 +709,7 @@ function showLanding() {
           const failed = failedAsserts.has(node.id);
           return `<div class="inv-row ${failed ? 'inv-fail' : 'inv-pass'}">
             <span class="inv-icon">${failed ? '\u2717' : '\u2713'}</span>
-            <code class="inv-code">${escapeHtml(node.name)}</code>
+            <code class="inv-code">assert ${escapeHtml(node.expr || node.name)}</code>
             <span class="inv-count">${failed ? 'FAILED' : '1000/1000 passed'}</span>
           </div>`;
         }).join('') +
