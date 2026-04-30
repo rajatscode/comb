@@ -169,6 +169,7 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
   const warnings: CompileWarning[] = [];
   const symbols = new Map<string, SymbolKind>();
   const enumValues = new Set<string>(); // e.g. "Phase.Red"
+<<<<<<< HEAD
   const enumDefs = new Map<string, string[]>();
   const builtins = new Set(['str', 'int', 'float', 'len', 'contains', 'append', 'push', 'pop', 'slice', 'map', 'filter', 'concat', 'Math', 'JSON', 'console', 'Object', 'parseInt', 'parseFloat', 'toString', 'rgbToHsv', 'hsvToRgb', 'rgbToHex', 'reduce', 'floor', 'round', 'min', 'max', 'abs', 'fetch', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval']);
 
@@ -185,6 +186,11 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
 
   // Track user-defined functions: name -> param count
   const userFunctions = new Map<string, number>();
+||||||| b68c2e9
+  const builtins = new Set(['str', 'int', 'float', 'len', 'contains', 'append', 'push', 'pop', 'slice', 'map', 'filter', 'concat', 'Math', 'JSON', 'console', 'parseInt', 'parseFloat', 'toString', 'rgbToHsv', 'hsvToRgb', 'rgbToHex']);
+=======
+  const builtins = new Set(['str', 'int', 'float', 'len', 'contains', 'append', 'push', 'pop', 'slice', 'map', 'filter', 'concat', 'Math', 'JSON', 'console', 'parseInt', 'parseFloat', 'toString', 'rgbToHsv', 'hsvToRgb', 'rgbToHex', 'X']);
+>>>>>>> worktree-agent-ae5d93b0
 
   // 1. Build symbol table
   for (const decl of mod.body) {

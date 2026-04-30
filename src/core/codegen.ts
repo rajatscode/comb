@@ -231,6 +231,7 @@ export function generateWithSourceMap(mod: Module, graph: StaticGraph): Generate
   const hasCells = mod.body.some(d => d.kind === 'cell');
   const hasConstraints = mod.body.some(d => d.kind === 'constraint');
 <<<<<<< HEAD
+<<<<<<< HEAD
   const hasEdgeTriggers = mod.body.some(d => d.kind === 'always' && (d.triggerKind === 'posedge' || d.triggerKind === 'negedge'));
   const hasTemporalAsserts = mod.body.some(d => d.kind === 'temporal_assert');
 ||||||| b68c2e9
@@ -238,6 +239,11 @@ export function generateWithSourceMap(mod: Module, graph: StaticGraph): Generate
   const hasKeyedFor = hasKeyedForDirective(mod);
 >>>>>>> worktree-agent-ae75abc4
   const importParts = ['createSignal', 'createComb', 'createEffect', 'batch', 'createScope', 'circuit'];
+||||||| b68c2e9
+  const importParts = ['createSignal', 'createComb', 'createEffect', 'batch', 'createScope', 'circuit'];
+=======
+  const importParts = ['createSignal', 'createComb', 'createEffect', 'batch', 'createScope', 'circuit', 'X'];
+>>>>>>> worktree-agent-ae5d93b0
   if (hasCells) importParts.push('createCell');
   if (hasConstraints) importParts.push('createPropagator');
 <<<<<<< HEAD
@@ -429,6 +435,20 @@ function emitSignal(decl: SignalDecl, ctx: GenContext): string[] {
   const i = ind(ctx);
   const init = emitExpr(decl.initial, ctx);
   const setter = 'set' + capitalize(decl.name);
+
+  if (decl.type.kind === 'range') {
+    const { base, min, max } = decl.type;
+    const meta = `{ name: '${decl.name}', module: $m, type: '${base}' }`;
+    const rawSetter = `__rawSet${capitalize(decl.name)}`;
+    const clamp = base === 'int'
+      ? `(v) => ${rawSetter}(Math.max(${min}, Math.min(${max}, typeof v === 'number' ? Math.round(v) : v)))`
+      : `(v) => ${rawSetter}(Math.max(${min}, Math.min(${max}, v)))`;
+    return [
+      `${i}const [${decl.name}, ${rawSetter}] = createSignal(${init}, ${meta});`,
+      `${i}const ${setter} = ${clamp};`,
+    ];
+  }
+
   const typeName = decl.type.kind === 'simple' ? decl.type.name : undefined;
   const meta = typeName
     ? `{ name: '${decl.name}', module: $m, type: '${typeName}' }`
@@ -1281,10 +1301,15 @@ function emitExpr(expr: Expr, ctx: GenContext): string {
       if (expr.type === 'string') return JSON.stringify(expr.value);
       return String(expr.value);
     case 'identifier':
+<<<<<<< HEAD
       // Check constraint locals first — use pre-read local variable
       if (ctx.constraintLocals && ctx.constraintLocals.has(expr.name)) {
         return ctx.constraintLocals.get(expr.name)!;
       }
+||||||| b68c2e9
+=======
+      if (expr.name === 'X') return 'X';
+>>>>>>> worktree-agent-ae5d93b0
       if (ctx.signals.has(expr.name) || ctx.combs.has(expr.name)) return `${expr.name}()`;
       return expr.name;
     case 'binary': {

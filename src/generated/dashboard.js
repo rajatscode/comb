@@ -1,4 +1,4 @@
-import { createSignal, createComb, createEffect, batch, createScope, circuit } from '../runtime/index.js';
+import { createSignal, createComb, createEffect, batch, createScope, circuit, X } from '../runtime/index.js';
 
 export const __graph = {
   "nodes": [
@@ -109,7 +109,7 @@ export function __test() {
   };
 }
 
-import { createSignal, createComb, createEffect, batch, createScope, circuit } from '../runtime/index.js';
+import { createSignal, createComb, createEffect, batch, createScope, circuit, X } from '../runtime/index.js';
 
 export const __graph = {
   "nodes": [
@@ -321,7 +321,7 @@ export function __test() {
   };
 }
 
-import { createSignal, createComb, createEffect, batch, createScope, circuit } from '../runtime/index.js';
+import { createSignal, createComb, createEffect, batch, createScope, circuit, X } from '../runtime/index.js';
 
 export const __graph = {
   "nodes": [

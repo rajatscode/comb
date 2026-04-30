@@ -3,6 +3,11 @@
 
 import { circuit } from './circuit.js';
 
+// --- X (unknown / uninitialized) sentinel ---
+
+export const X = Symbol.for('comb:X');
+export type XValue = typeof X;
+
 // --- Internal types ---
 
 interface Computation {

@@ -1,4 +1,10 @@
+<<<<<<< HEAD
 import { createSignal, createComb, createEffect, batch, createScope, circuit } from '../runtime/index.js';
+||||||| b68c2e9
+import { createSignal, createComb, createEffect, batch } from '../runtime/signals.js';
+=======
+import { createSignal, createComb, createEffect, batch, createScope, circuit, X } from '../runtime/index.js';
+>>>>>>> worktree-agent-ae5d93b0
 
 export const __graph = {
   "nodes": [
@@ -305,6 +311,7 @@ export function TrafficLight(root) {
   el0.appendChild(el14);
   root.appendChild(el0);
 
+<<<<<<< HEAD
   return { dispose: __scope.dispose };
 }
 
@@ -336,3 +343,37 @@ export function __test() {
   };
 }
 //# sourceMappingURL=traffic-light.js.map
+||||||| b68c2e9
+}
+=======
+  return { dispose: __scope.dispose };
+}
+
+export function __test() {
+  const $m = 'TrafficLight';
+  circuit.loadStaticGraph(__graph);
+  const __scope = createScope();
+
+  const Phase = Object.freeze({
+    Red: 'Phase.Red',
+    Green: 'Phase.Green',
+    Yellow: 'Phase.Yellow',
+  });
+
+  const [phase, setPhase] = createSignal(Phase.Red, { name: 'phase', module: $m, type: 'Phase' });
+
+  const [walk_requested, setWalk_requested] = createSignal(false, { name: 'walk_requested', module: $m, type: 'bool' });
+
+  const [emergency, setEmergency] = createSignal(false, { name: 'emergency', module: $m, type: 'bool' });
+
+  const color = createComb(() => ((phase() == Phase.Red) ? "red" : ((phase() == Phase.Green) ? "green" : "yellow")), { name: 'color', module: $m, deps: ["phase"] });
+
+  const can_walk = createComb(() => ((phase() == Phase.Red) && walk_requested()), { name: 'can_walk', module: $m, deps: ["phase","walk_requested"] });
+
+  return {
+    signals: { phase: { get: phase, set: setPhase }, walk_requested: { get: walk_requested, set: setWalk_requested }, emergency: { get: emergency, set: setEmergency } },
+    combs: { color, can_walk },
+    dispose: __scope.dispose,
+  };
+}
+>>>>>>> worktree-agent-ae5d93b0
