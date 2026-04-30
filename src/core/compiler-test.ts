@@ -139,8 +139,8 @@ module RW {
   assert(always.reads.includes('b'), 'Should read b');
 });
 
-// Test 7: view bindings in graph
-test('view bindings create graph edges', () => {
+// Test 7: view bindings in graph — fine-grained view-effect nodes
+test('view bindings create fine-grained graph nodes', () => {
   const source = `
 module ViewTest {
   signal count: int = 0;
@@ -153,10 +153,15 @@ module ViewTest {
   assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
 
   const graph = result.graph!;
-  const viewNode = graph.nodes.find(n => n.type === 'view-binding');
-  assert(viewNode !== undefined, 'Expected view-binding node');
-  const viewEdges = graph.edges.filter(e => e.to === 'view');
-  assert(viewEdges.some(e => e.from === 'display'), 'Expected edge display → view');
+  const viewEffects = graph.nodes.filter(n => n.type === 'view-effect');
+  assert(viewEffects.length >= 1, `Expected at least 1 view-effect node, got ${viewEffects.length}`);
+  const displayEffect = viewEffects.find(n => n.id === 'view:display');
+  assert(displayEffect !== undefined, 'Expected view:display node');
+  assert(displayEffect!.viewTarget !== undefined, 'Expected viewTarget on view:display');
+  assert(displayEffect!.viewTarget!.element === 'p', `Expected element 'p', got '${displayEffect!.viewTarget!.element}'`);
+  assert(displayEffect!.viewTarget!.binding === 'text', `Expected binding 'text', got '${displayEffect!.viewTarget!.binding}'`);
+  const displayEdge = graph.edges.find(e => e.to === 'view:display' && e.from === 'display');
+  assert(displayEdge !== undefined, 'Expected edge display → view:display');
 });
 
 // Test 8: object literal values tracked as deps
@@ -627,7 +632,39 @@ module Bad {
   assert(result.errors.some(e => e.message.includes("'x'") && e.message.includes('not a cell')), `Error should mention not a cell, got: ${result.errors.map(e => e.message)}`);
 });
 
-// --- Test 30: Cell imports are conditional ---
+// --- Test 30: counter.comb — fine-grained view-effect nodes ---
+test('counter.comb — fine-grained view-effect nodes with viewTarget', () => {
+  const counterSrc = fs.readFileSync(path.resolve('examples/counter.comb'), 'utf-8');
+  const result = compile(counterSrc);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const graph = result.graph!;
+  const viewEffects = graph.nodes.filter(n => n.type === 'view-effect');
+  assert(viewEffects.length >= 2, `Expected at least 2 view-effect nodes, got ${viewEffects.length}`);
+
+  // Should have view:label and view:doubled (or view:count depending on expressions)
+  const labelEffect = viewEffects.find(n => n.id === 'view:label');
+  const doubledEffect = viewEffects.find(n => n.id === 'view:doubled');
+  assert(labelEffect !== undefined, `Expected view:label node, got: ${viewEffects.map(n => n.id)}`);
+  assert(doubledEffect !== undefined, `Expected view:doubled node, got: ${viewEffects.map(n => n.id)}`);
+
+  // viewTarget should have element and binding info
+  assert(labelEffect!.viewTarget !== undefined, 'view:label should have viewTarget');
+  assert(labelEffect!.viewTarget!.binding === 'text', 'view:label binding should be text');
+  assert(doubledEffect!.viewTarget !== undefined, 'view:doubled should have viewTarget');
+  assert(doubledEffect!.viewTarget!.binding === 'text', 'view:doubled binding should be text');
+
+  // Edges should go from specific signals/combs to view nodes
+  assert(graph.edges.some(e => e.from === 'label' && e.to === 'view:label'), 'Edge label→view:label');
+  assert(graph.edges.some(e => e.from === 'doubled' && e.to === 'view:doubled'), 'Edge doubled→view:doubled');
+
+  // Codegen should include viewTarget in effect metadata
+  const js = result.js!;
+  assert(js.includes('viewTarget:'), 'Generated JS should include viewTarget metadata');
+  assert(js.includes("binding: 'text'"), 'Generated JS should include text binding');
+});
+
+// --- Test 31: Cell imports are conditional ---
 test('cell/constraint imports only when used', () => {
   const source = `
 module Simple {

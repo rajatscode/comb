@@ -415,13 +415,12 @@ function buildGraph(mod: Module, symbols: Map<string, SymbolKind>): StaticGraph 
       }
     }
     if (decl.kind === 'view') {
-      const viewBindings = new Set<string>();
-      collectViewBindings(decl.children, viewBindings, symbols);
-      if (viewBindings.size > 0) {
-        const viewId = 'view';
-        nodes.push({ id: viewId, name: 'view', type: 'view-binding' });
-        for (const b of viewBindings) {
-          edges.push({ from: b, to: viewId, type: 'data' });
+      const viewEffects: { id: string; deps: string[]; viewTarget: { element: string; binding: string } }[] = [];
+      collectViewEffects(decl.children, 'root', viewEffects, symbols);
+      for (const eff of viewEffects) {
+        nodes.push({ id: eff.id, name: eff.id, type: 'view-effect', viewTarget: eff.viewTarget });
+        for (const dep of eff.deps) {
+          edges.push({ from: dep, to: eff.id, type: 'data' });
         }
       }
     }
@@ -430,44 +429,95 @@ function buildGraph(mod: Module, symbols: Map<string, SymbolKind>): StaticGraph 
   return { nodes, edges };
 }
 
-function collectViewBindings(vnodes: VNode[], bindings: Set<string>, symbols: Map<string, SymbolKind>): void {
-  for (const vn of vnodes) {
-    if (vn.kind === 'expr') {
-      walkExpr(vn.expr, e => {
-        if (e.kind === 'identifier' && symbols.has(e.name)) bindings.add(e.name);
-      });
+function getElementDesc(vn: VNode): string {
+  if (vn.kind === 'element') {
+    let desc = vn.tag;
+    for (const attr of vn.attrs) {
+      if (attr.name === 'id' && attr.value?.kind === 'literal' && attr.value.type === 'string') {
+        return `${desc}#${attr.value.value}`;
+      }
+      if (attr.name === 'class' && attr.value?.kind === 'literal' && attr.value.type === 'string') {
+        const cls = String(attr.value.value).split(/\s+/)[0];
+        if (cls) desc += `.${cls}`;
+      }
     }
-    if (vn.kind === 'element' || vn.kind === 'component') {
-      const children = vn.kind === 'element' ? vn.children : vn.children;
-      const attrs = vn.kind === 'element' ? vn.attrs : vn.props;
-      for (const attr of attrs) {
-        if (attr.value) {
-          walkExpr(attr.value, e => {
-            if (e.kind === 'identifier' && symbols.has(e.name)) bindings.add(e.name);
-          });
-        }
-        if (attr.eventArgs) {
-          for (const arg of attr.eventArgs) {
-            walkExpr(arg, e => {
-              if (e.kind === 'identifier' && symbols.has(e.name)) bindings.add(e.name);
-            });
+    return desc;
+  }
+  if (vn.kind === 'component') return vn.name;
+  return 'root';
+}
+
+function primaryReactiveName(expr: Expr, symbols: Map<string, SymbolKind>): string {
+  if (expr.kind === 'identifier' && symbols.has(expr.name) && isReactiveKind(symbols.get(expr.name)!)) return expr.name;
+  if (expr.kind === 'call' && expr.callee.kind === 'identifier') return expr.callee.name;
+  if (expr.kind === 'binary') return primaryReactiveName(expr.left, symbols) || primaryReactiveName(expr.right, symbols);
+  if (expr.kind === 'unary') return primaryReactiveName(expr.operand, symbols);
+  if (expr.kind === 'ternary') return primaryReactiveName(expr.condition, symbols);
+  if (expr.kind === 'member') return primaryReactiveName(expr.object, symbols);
+  return '';
+}
+
+function exprHasReactive(expr: Expr, symbols: Map<string, SymbolKind>): boolean {
+  let found = false;
+  walkExpr(expr, e => { if (e.kind === 'identifier' && symbols.has(e.name) && isReactiveKind(symbols.get(e.name)!)) found = true; });
+  return found;
+}
+
+function collectExprDeps(expr: Expr, symbols: Map<string, SymbolKind>): string[] {
+  const deps = new Set<string>();
+  walkExpr(expr, e => { if (e.kind === 'identifier' && symbols.has(e.name) && isReactiveKind(symbols.get(e.name)!)) deps.add(e.name); });
+  return [...deps];
+}
+
+function collectViewEffects(
+  vnodes: VNode[],
+  parentDesc: string,
+  effects: { id: string; deps: string[]; viewTarget: { element: string; binding: string } }[],
+  symbols: Map<string, SymbolKind>,
+): void {
+  for (const vn of vnodes) {
+    if (vn.kind === 'expr' && exprHasReactive(vn.expr, symbols)) {
+      const deps = collectExprDeps(vn.expr, symbols);
+      const name = primaryReactiveName(vn.expr, symbols) || deps[0] || 'expr';
+      effects.push({ id: `view:${name}`, deps, viewTarget: { element: parentDesc, binding: 'text' } });
+    }
+    if (vn.kind === 'element') {
+      const elDesc = getElementDesc(vn);
+      for (const attr of vn.attrs) {
+        if (attr.isBind && attr.value) {
+          const deps = collectExprDeps(attr.value, symbols);
+          if (deps.length > 0) {
+            const name = primaryReactiveName(attr.value, symbols) || deps[0];
+            effects.push({ id: `view:bind:${name}`, deps, viewTarget: { element: elDesc, binding: `bind:${attr.name}` } });
           }
+        } else if (attr.value && !attr.isEvent && exprHasReactive(attr.value, symbols)) {
+          const deps = collectExprDeps(attr.value, symbols);
+          const name = primaryReactiveName(attr.value, symbols) || deps[0];
+          effects.push({ id: `view:attr:${attr.name}`, deps, viewTarget: { element: elDesc, binding: `attr:${attr.name}` } });
         }
       }
-      collectViewBindings(children, bindings, symbols);
+      collectViewEffects(vn.children, elDesc, effects, symbols);
+    }
+    if (vn.kind === 'component') {
+      const compDesc = getElementDesc(vn);
+      collectViewEffects(vn.children, compDesc, effects, symbols);
     }
     if (vn.kind === 'if') {
-      walkExpr(vn.condition, e => {
-        if (e.kind === 'identifier' && symbols.has(e.name)) bindings.add(e.name);
-      });
-      collectViewBindings(vn.then, bindings, symbols);
-      if (vn.else_) collectViewBindings(vn.else_, bindings, symbols);
+      const condDeps = collectExprDeps(vn.condition, symbols);
+      if (condDeps.length > 0) {
+        const name = primaryReactiveName(vn.condition, symbols) || condDeps[0];
+        effects.push({ id: `view:if:${name}`, deps: condDeps, viewTarget: { element: parentDesc, binding: 'if' } });
+      }
+      collectViewEffects(vn.then, parentDesc, effects, symbols);
+      if (vn.else_) collectViewEffects(vn.else_, parentDesc, effects, symbols);
     }
     if (vn.kind === 'for') {
-      walkExpr(vn.iterable, e => {
-        if (e.kind === 'identifier' && symbols.has(e.name)) bindings.add(e.name);
-      });
-      collectViewBindings(vn.body, bindings, symbols);
+      const iterDeps = collectExprDeps(vn.iterable, symbols);
+      if (iterDeps.length > 0) {
+        const name = primaryReactiveName(vn.iterable, symbols) || iterDeps[0];
+        effects.push({ id: `view:for:${name}`, deps: iterDeps, viewTarget: { element: parentDesc, binding: 'for' } });
+      }
+      collectViewEffects(vn.body, parentDesc, effects, symbols);
     }
   }
 }

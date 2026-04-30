@@ -393,8 +393,32 @@ function emitIf(stmt: IfStatement, ctx: GenContext): string[] {
 
 function emitView(decl: ViewBlock, ctx: GenContext): string[] {
   const lines: string[] = [];
-  for (const child of decl.children) lines.push(...emitVNode(child, 'root', ctx));
+  for (const child of decl.children) lines.push(...emitVNode(child, 'root', ctx, 'root'));
   return lines;
+}
+
+function getVElementDesc(node: VElement, ctx: GenContext): string {
+  let desc = node.tag;
+  for (const attr of node.attrs) {
+    if (attr.name === 'id' && attr.value?.kind === 'literal' && attr.value.type === 'string') {
+      return `${desc}#${attr.value.value}`;
+    }
+    if (attr.name === 'class' && attr.value?.kind === 'literal' && attr.value.type === 'string') {
+      const cls = String(attr.value.value).split(/\s+/)[0];
+      if (cls) desc += `.${cls}`;
+    }
+  }
+  return desc;
+}
+
+function primaryReactiveNameFromExpr(expr: Expr, ctx: GenContext): string {
+  if (expr.kind === 'identifier' && (ctx.signals.has(expr.name) || ctx.combs.has(expr.name))) return expr.name;
+  if (expr.kind === 'binary') return primaryReactiveNameFromExpr(expr.left, ctx) || primaryReactiveNameFromExpr(expr.right, ctx);
+  if (expr.kind === 'unary') return primaryReactiveNameFromExpr(expr.operand, ctx);
+  if (expr.kind === 'ternary') return primaryReactiveNameFromExpr(expr.condition, ctx);
+  if (expr.kind === 'member') return primaryReactiveNameFromExpr(expr.object, ctx);
+  if (expr.kind === 'call' && expr.callee.kind === 'identifier') return expr.callee.name;
+  return '';
 }
 
 function emitStyle(decl: StyleBlock, ctx: GenContext): string[] {
@@ -410,28 +434,29 @@ function emitStyle(decl: StyleBlock, ctx: GenContext): string[] {
   ];
 }
 
-function emitVNode(node: VNode, parent: string, ctx: GenContext): string[] {
+function emitVNode(node: VNode, parent: string, ctx: GenContext, parentDesc: string): string[] {
   switch (node.kind) {
-    case 'element': return emitVElement(node, parent, ctx);
-    case 'component': return emitVComponent(node, parent, ctx);
+    case 'element': return emitVElement(node, parent, ctx, parentDesc);
+    case 'component': return emitVComponent(node, parent, ctx, parentDesc);
     case 'text': return emitVText(node, parent, ctx);
-    case 'expr': return emitVExpr(node, parent, ctx);
-    case 'if': return emitVIf(node, parent, ctx);
-    case 'for': return emitVFor(node, parent, ctx);
+    case 'expr': return emitVExpr(node, parent, ctx, parentDesc);
+    case 'if': return emitVIf(node, parent, ctx, parentDesc);
+    case 'for': return emitVFor(node, parent, ctx, parentDesc);
     default: return [];
   }
 }
 
-function emitVElement(node: VElement, parent: string, ctx: GenContext): string[] {
+function emitVElement(node: VElement, parent: string, ctx: GenContext, parentDesc: string): string[] {
   const i = ind(ctx);
   const v = nextEl(ctx);
+  const elDesc = getVElementDesc(node, ctx);
   const lines = [`${i}const ${v} = document.createElement('${node.tag}');`];
 
   for (const attr of node.attrs) {
     if (attr.isEvent) {
       lines.push(...emitEventAttr(attr, v, ctx));
     } else if (attr.isBind) {
-      lines.push(...emitBindAttr(attr, v, ctx));
+      lines.push(...emitBindAttr(attr, v, ctx, elDesc));
     } else if (attr.value) {
       if (attr.value.kind === 'literal' && attr.value.type === 'string') {
         let attrVal = String(attr.value.value);
@@ -440,19 +465,20 @@ function emitVElement(node: VElement, parent: string, ctx: GenContext): string[]
         }
         lines.push(`${i}${v}.setAttribute('${attr.name}', '${escapeStr(attrVal)}');`);
       } else if (isReactive(attr.value, ctx)) {
-        lines.push(`${i}createEffect(() => { ${v}.setAttribute('${attr.name}', ${emitExpr(attr.value, ctx)}); }, { name: 'attr:${attr.name}', module: $m });`);
+        const viewName = primaryReactiveNameFromExpr(attr.value, ctx) || attr.name;
+        lines.push(`${i}createEffect(() => { ${v}.setAttribute('${attr.name}', ${emitExpr(attr.value, ctx)}); }, { name: 'view:attr:${viewName}', module: $m, viewTarget: { element: '${escapeStr(elDesc)}', binding: 'attr:${attr.name}' } });`);
       } else {
         lines.push(`${i}${v}.setAttribute('${attr.name}', ${emitExpr(attr.value, ctx)});`);
       }
     }
   }
 
-  for (const child of node.children) lines.push(...emitVNode(child, v, ctx));
+  for (const child of node.children) lines.push(...emitVNode(child, v, ctx, elDesc));
   lines.push(`${i}${parent}.appendChild(${v});`);
   return lines;
 }
 
-function emitVComponent(node: VComponent, parent: string, ctx: GenContext): string[] {
+function emitVComponent(node: VComponent, parent: string, ctx: GenContext, parentDesc: string): string[] {
   const i = ind(ctx);
   const v = nextEl(ctx);
   const childVar = `__child${ctx.elCount}`;
@@ -515,15 +541,16 @@ function emitVText(node: VText, parent: string, ctx: GenContext): string[] {
   ];
 }
 
-function emitVExpr(node: VExpr, parent: string, ctx: GenContext): string[] {
+function emitVExpr(node: VExpr, parent: string, ctx: GenContext, parentDesc: string): string[] {
   const i = ind(ctx);
   const v = nextTxt(ctx);
   const expr = emitExpr(node.expr, ctx);
   const lines: string[] = [];
 
   if (isReactive(node.expr, ctx)) {
+    const viewName = primaryReactiveNameFromExpr(node.expr, ctx) || v;
     lines.push(`${i}const ${v} = document.createTextNode('');`);
-    lines.push(`${i}createEffect(() => { ${v}.data = String(${expr}); }, { name: 'view:${v}', module: $m });`);
+    lines.push(`${i}createEffect(() => { ${v}.data = String(${expr}); }, { name: 'view:${viewName}', module: $m, viewTarget: { element: '${escapeStr(parentDesc)}', binding: 'text' } });`);
   } else {
     lines.push(`${i}const ${v} = document.createTextNode(String(${expr}));`);
   }
@@ -531,7 +558,7 @@ function emitVExpr(node: VExpr, parent: string, ctx: GenContext): string[] {
   return lines;
 }
 
-function emitVIf(node: VIf, parent: string, ctx: GenContext): string[] {
+function emitVIf(node: VIf, parent: string, ctx: GenContext, parentDesc: string): string[] {
   const i = ind(ctx);
   const anchor = nextEl(ctx);
   const container = nextEl(ctx);
@@ -549,7 +576,7 @@ function emitVIf(node: VIf, parent: string, ctx: GenContext): string[] {
   ctx.indent++;
   lines.push(`${ind(ctx)}${container} = document.createElement('span');`);
   lines.push(`${ind(ctx)}${container}.style.display = 'contents';`);
-  for (const child of node.then) lines.push(...emitVNode(child, container, ctx));
+  for (const child of node.then) lines.push(...emitVNode(child, container, ctx, parentDesc));
   lines.push(`${ind(ctx)}${anchor}.parentNode.insertBefore(${container}, ${anchor}.nextSibling);`);
   ctx.indent--;
 
@@ -558,7 +585,7 @@ function emitVIf(node: VIf, parent: string, ctx: GenContext): string[] {
     ctx.indent++;
     lines.push(`${ind(ctx)}${container} = document.createElement('span');`);
     lines.push(`${ind(ctx)}${container}.style.display = 'contents';`);
-    for (const child of node.else_) lines.push(...emitVNode(child, container, ctx));
+    for (const child of node.else_) lines.push(...emitVNode(child, container, ctx, parentDesc));
     lines.push(`${ind(ctx)}${anchor}.parentNode.insertBefore(${container}, ${anchor}.nextSibling);`);
     ctx.indent--;
   }
@@ -569,7 +596,7 @@ function emitVIf(node: VIf, parent: string, ctx: GenContext): string[] {
   return lines;
 }
 
-function emitVFor(node: VFor, parent: string, ctx: GenContext): string[] {
+function emitVFor(node: VFor, parent: string, ctx: GenContext, parentDesc: string): string[] {
   const i = ind(ctx);
   const anchor = nextEl(ctx);
   const container = nextEl(ctx);
@@ -594,7 +621,7 @@ function emitVFor(node: VFor, parent: string, ctx: GenContext): string[] {
   }
 
   ctx.indent++;
-  for (const child of node.body) lines.push(...emitVNode(child, container, ctx));
+  for (const child of node.body) lines.push(...emitVNode(child, container, ctx, parentDesc));
   ctx.indent--;
 
   lines.push(`${ii}}`);
@@ -640,14 +667,14 @@ function emitEventAttr(attr: VAttr, elVar: string, ctx: GenContext): string[] {
   return [`${i}${elVar}.addEventListener('${event}', ${handler});`];
 }
 
-function emitBindAttr(attr: VAttr, elVar: string, ctx: GenContext): string[] {
+function emitBindAttr(attr: VAttr, elVar: string, ctx: GenContext, elDesc: string = ''): string[] {
   const i = ind(ctx);
   if (!attr.value || attr.value.kind !== 'identifier') return [];
   const name = attr.value.name;
   const setter = 'set' + capitalize(name);
   return [
     `${i}${elVar}.value = ${name}();`,
-    `${i}createEffect(() => { ${elVar}.value = ${name}(); }, { name: 'bind:${name}', module: $m });`,
+    `${i}createEffect(() => { ${elVar}.value = ${name}(); }, { name: 'view:bind:${name}', module: $m, viewTarget: { element: '${escapeStr(elDesc)}', binding: 'bind:value' } });`,
     `${i}${elVar}.addEventListener('input', (e) => { ${setter}(e.target.value); });`,
   ];
 }

@@ -8,8 +8,9 @@ export interface StaticGraph {
 export interface GraphNode {
   id: string;
   name: string;
-  type: 'signal' | 'comb' | 'event' | 'sensitivity' | 'view-binding' | 'assert' | 'cell' | 'constraint';
+  type: 'signal' | 'comb' | 'event' | 'sensitivity' | 'view-binding' | 'view-effect' | 'assert' | 'cell' | 'constraint';
   isToken?: boolean;
+  viewTarget?: { element: string; binding: string };
 }
 
 export interface GraphEdge {

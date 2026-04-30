@@ -29,6 +29,7 @@ const COLORS: Record<string, string> = {
   comb: '#4ae04a',
   event: '#ff9f43',
   'view-binding': '#c084fc',
+  'view-effect': '#a78bfa',
   effect: '#c084fc',
   assert: '#ff6b6b',
   sensitivity: '#f472b6',
@@ -88,13 +89,14 @@ function buildLayout(
     assert: [],
     sensitivity: [],
     event: [],
+    'view-effect': [],
     'view-binding': [],
   };
   for (const node of graph.nodes) {
     (columns[node.type] ?? columns['event']).push(node);
   }
 
-  const colOrder = ['signal', 'cell', 'propagator', 'comb', 'assert', 'sensitivity', 'event', 'view-binding'];
+  const colOrder = ['signal', 'cell', 'propagator', 'comb', 'assert', 'sensitivity', 'event', 'view-effect', 'view-binding'];
   const activeCols = colOrder.filter(c => columns[c].length > 0);
 
   // Compute layout — fit all columns within container
@@ -291,7 +293,7 @@ function buildLayout(
     const x = PAD_X + ci * (NODE_W + COL_GAP);
     const header = document.createElement('div');
     header.className = 'circuit-col-header';
-    header.textContent = colType === 'view-binding' ? 'VIEW' : colType === 'assert' ? 'ASSERTS' : colType === 'propagator' ? 'PROPAGATORS' : colType === 'sensitivity' ? 'SENSITIVITY' : colType.toUpperCase() + 'S';
+    header.textContent = colType === 'view-binding' ? 'VIEW' : colType === 'view-effect' ? 'DOM BINDINGS' : colType === 'assert' ? 'ASSERTS' : colType === 'propagator' ? 'PROPAGATORS' : colType === 'sensitivity' ? 'SENSITIVITY' : colType.toUpperCase() + 'S';
     header.style.position = 'absolute';
     header.style.left = `${x}px`;
     header.style.top = '4px';
@@ -317,12 +319,26 @@ function createNodeEl(node: StaticNode, color: string, nodeW: number, nodeH: num
 
   const nameEl = document.createElement('div');
   nameEl.className = 'circuit-node-name';
-  nameEl.textContent = node.name;
+  if (node.viewTarget) {
+    nameEl.textContent = `${node.viewTarget.element}`;
+    nameEl.title = `${node.id} → ${node.viewTarget.element} [${node.viewTarget.binding}]`;
+  } else {
+    nameEl.textContent = node.name;
+  }
   el.appendChild(nameEl);
+
+  if (node.viewTarget) {
+    const bindEl = document.createElement('div');
+    bindEl.className = 'circuit-node-value';
+    bindEl.textContent = node.viewTarget.binding;
+    bindEl.style.fontSize = '9px';
+    bindEl.style.opacity = '0.7';
+    el.appendChild(bindEl);
+  }
 
   const valueEl = document.createElement('span');
   valueEl.className = 'circuit-node-value';
-  valueEl.textContent = '—';
+  valueEl.textContent = node.viewTarget ? '' : '—';
   el.appendChild(valueEl);
 
   return { el, valueEl };
