@@ -1,0 +1,13 @@
+module SafeCounter {
+  signal count: int = 0;
+  comb doubled = count * 2;
+  assert always (count >= 0);
+  assert doubled == count * 2;
+  always @(increment) { count <= count + 1; }
+  view {
+    <div>
+      <p>Count: {count}, Doubled: {doubled}</p>
+      <button @click=increment>+</button>
+    </div>
+  }
+}

@@ -1,0 +1,18 @@
+module ClickCounter {
+  input label: string = "Click";
+  output clicks: int = 0;
+  always @(click) { clicks <= clicks + 1; }
+  view {
+    <button @click=click>{label} ({clicks})</button>
+  }
+}
+
+module App {
+  signal totalClicks: int = 0;
+  view {
+    <div>
+      <ClickCounter label="Button A" clicks:={totalClicks} />
+      <p>Total: {totalClicks}</p>
+    </div>
+  }
+}
