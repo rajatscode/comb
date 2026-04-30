@@ -278,6 +278,9 @@ body {
 }
 
 .circuit-node.active { box-shadow: 0 0 12px currentColor; }
+.circuit-node.added { border-color: #4caf50 !important; background: rgba(76, 175, 80, 0.15); }
+.circuit-node.removed { border-color: #f44336 !important; background: rgba(244, 67, 54, 0.15); }
+.circuit-node.changed { border-color: #ff9800 !important; background: rgba(255, 152, 0, 0.15); }
 
 .circuit-node-name {
   font-size: 9px;
@@ -294,6 +297,135 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ============================================
+   Circuit Diff Demo
+   ============================================ */
+
+.diff-summary {
+  flex-shrink: 0;
+  padding: 0.4rem 1.5rem;
+  background: #16162a;
+  border-bottom: 1px solid #2a2a4a;
+}
+
+.diff-stats {
+  display: flex;
+  gap: 1.2rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.diff-stats .stat {
+  font-size: 0.85rem;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-weight: 600;
+}
+
+.diff-stats .stat.added { color: #4caf50; }
+.diff-stats .stat.changed { color: #ff9800; }
+.diff-stats .stat.removed { color: #f44336; }
+.diff-stats .stat.edges { color: #888; }
+.diff-stats .stat.topology { color: #ccc; }
+.diff-stats .safe { color: #4caf50; font-weight: bold; }
+.diff-stats .breaking { color: #f44336; font-weight: bold; }
+.diff-stats .caution { color: #ff9800; font-weight: bold; }
+
+.diff-legend {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.4rem;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+  color: #888;
+}
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.swatch.added { background: #4caf50; }
+.swatch.changed { background: #ff9800; }
+.swatch.removed { background: #f44336; }
+.swatch.unchanged { background: #3a3a5a; }
+
+.diff-graphs {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+
+.diff-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid #2a2a4a;
+}
+.diff-pane:last-child { border-right: none; }
+
+.diff-label {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.75rem;
+  color: #888;
+  background: #1a1a30;
+  border-bottom: 1px solid #2a2a4a;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.diff-label .version {
+  display: inline-block;
+  background: #2a2a4a;
+  color: #ccc;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  margin-right: 0.4rem;
+  font-weight: 600;
+}
+
+.diff-graph-container {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+}
+
+.diff-sources {
+  display: flex;
+  flex-shrink: 0;
+  height: 140px;
+  border-top: 1px solid #3a3a6a;
+  overflow: hidden;
+  background: #12121e;
+}
+
+.diff-source {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 0.8rem;
+  border-right: 1px solid #2a2a4a;
+  background: #12121e;
+}
+.diff-source:last-child { border-right: none; }
+
+.diff-source pre {
+  margin: 0;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: #ddd;
+  white-space: pre-wrap;
+}
+
+.hl-keyword { color: #c084fc; font-weight: 600; }
+.hl-string { color: #e8915a; }
+.hl-type { color: #4a9eff; }
+.hl-comment { color: #555; font-style: italic; }
+.hl-added { color: #4caf50; font-weight: bold; }
 
 /* ============================================
    Counter (legacy)

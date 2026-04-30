@@ -10,6 +10,7 @@ nav.className = 'demo-nav';
 nav.innerHTML = `
   <a href="#registration" class="nav-link active" data-demo="registration">Registration Form</a>
   <a href="#ticker" class="nav-link" data-demo="ticker">Stock Ticker</a>
+  <a href="#diff" class="nav-link" data-demo="diff">Circuit Diff</a>
 `;
 app.appendChild(nav);
 
@@ -35,6 +36,8 @@ function loadDemo(name: string) {
     loadRegistration();
   } else if (name === 'ticker') {
     loadTicker();
+  } else if (name === 'diff') {
+    loadDiff();
   }
 }
 
@@ -187,6 +190,12 @@ async function loadRegistration() {
 async function loadTicker() {
   const { mountStockTicker } = await import('./demos/stock-ticker.js');
   const result = mountStockTicker(content);
+  currentDispose = result.dispose;
+}
+
+async function loadDiff() {
+  const { mountCircuitDiff } = await import('./demos/circuit-diff.js');
+  const result = mountCircuitDiff(content);
   currentDispose = result.dispose;
 }
 

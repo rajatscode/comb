@@ -33,10 +33,17 @@ const COLORS: Record<string, string> = {
   assert: '#ff6b6b',
 };
 
+export interface HighlightSet {
+  added?: Set<string>;
+  removed?: Set<string>;
+  changed?: Set<string>;
+}
+
 export function renderCircuitGraph(
   container: HTMLElement,
   graph: StaticGraph,
   circuit?: CircuitGraph,
+  highlights?: HighlightSet,
 ): { dispose: () => void } {
   container.innerHTML = '';
   container.style.position = 'relative';
@@ -47,7 +54,7 @@ export function renderCircuitGraph(
   // Build layout. If container has no dimensions yet, retry after a timeout.
   function tryBuild() {
     if (container.clientWidth > 0 && container.clientHeight > 0) {
-      buildLayout(container, graph, circuit, (u) => { unsub = u; });
+      buildLayout(container, graph, circuit, (u) => { unsub = u; }, highlights);
     } else {
       setTimeout(tryBuild, 50);
     }
@@ -67,6 +74,7 @@ function buildLayout(
   graph: StaticGraph,
   circuit: CircuitGraph | undefined,
   setUnsub: (u: () => void) => void,
+  highlights?: HighlightSet,
 ) {
   // Categorize nodes into columns
   const columns: Record<string, StaticNode[]> = {
@@ -93,7 +101,8 @@ function buildLayout(
 
   // Compute NODE_H and gap to fit tallest column in container
   const maxRows = Math.max(...activeCols.map(c => columns[c].length));
-  const availH = ch - 40; // 40px for headers + padding
+  const headerH = 20; // column header height
+  const availH = ch - headerH - 8; // reserve header + bottom padding
   const rowGap = maxRows > 4 ? Math.min(ROW_GAP, Math.floor(availH / maxRows * 0.15)) : ROW_GAP;
   const NODE_H = Math.min(50, Math.max(20, Math.floor((availH - (maxRows - 1) * rowGap) / maxRows)));
 
@@ -105,12 +114,17 @@ function buildLayout(
     const colNodes = columns[colType];
     const x = PAD_X + ci * (NODE_W + COL_GAP);
     const totalH = colNodes.length * (NODE_H + rowGap) - rowGap;
-    const offsetY = Math.max(24, (ch - totalH) / 2);
+    const startY = headerH + 4; // just below column header
+    const maxOffsetY = ch - totalH - 4; // ensure last node fits
+    const offsetY = Math.max(startY, Math.min((ch - totalH) / 2, maxOffsetY));
 
     for (let ri = 0; ri < colNodes.length; ri++) {
       const node = colNodes[ri];
       const y = offsetY + ri * (NODE_H + rowGap);
       const { el, valueEl } = createNodeEl(node, COLORS[node.type] ?? '#888', NODE_W, NODE_H);
+      if (highlights?.added?.has(node.id)) el.classList.add('added');
+      if (highlights?.removed?.has(node.id)) el.classList.add('removed');
+      if (highlights?.changed?.has(node.id)) el.classList.add('changed');
       el.style.left = `${x}px`;
       el.style.top = `${y}px`;
       container.appendChild(el);

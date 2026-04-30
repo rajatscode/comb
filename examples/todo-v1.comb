@@ -1,0 +1,18 @@
+module TodoApp {
+  signal input: string = "";
+  signal items: string = "";
+  signal filter: string = "all";
+  comb count = len(items);
+  comb label = str(count) + " items";
+  comb visible = filter == "all" ? items : filter == "done" ? items : items;
+  always @(add) { items <= append(items, input); input <= ""; }
+  always @(clear) { items <= ""; }
+  view {
+    <div class="todo">
+      <h2>{label}</h2>
+      <input @bind=input placeholder="Add todo" />
+      <button @click=add>Add</button>
+      <button @click=clear>Clear All</button>
+    </div>
+  }
+}

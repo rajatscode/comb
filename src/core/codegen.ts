@@ -504,6 +504,7 @@ function emitCall(expr: Expr & { kind: 'call' }, ctx: GenContext): string {
     if (name === 'format_time') return `new Date(${args}).toLocaleTimeString()`;
     if (name === 'len' && expr.args.length === 1) return `${emitExpr(expr.args[0], ctx)}.length`;
     if (name === 'contains' && expr.args.length === 2) return `${emitExpr(expr.args[0], ctx)}.includes(${emitExpr(expr.args[1], ctx)})`;
+    if (name === 'append' && expr.args.length === 2) return `[...${emitExpr(expr.args[0], ctx)}, ${emitExpr(expr.args[1], ctx)}]`;
     return `${emitExpr(expr.callee, ctx)}(${args})`;
   }
   if (expr.callee.kind === 'member') {
