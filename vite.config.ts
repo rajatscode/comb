@@ -57,6 +57,7 @@ export default defineConfig({
       input: {
         main: 'index.html',
         playground: 'playground.html',
+        docs: 'docs.html',
       },
     },
   },
