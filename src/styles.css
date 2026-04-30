@@ -22,14 +22,14 @@ body {
   gap: 0;
   background: #16162a;
   border-bottom: 1px solid #2a2a4a;
-  padding: 0 1rem;
+  padding: 0 1.5rem;
 }
 
 .nav-link {
-  padding: 0.6rem 1.2rem;
+  padding: 0.7rem 1.4rem;
   color: #888;
   text-decoration: none;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   border-bottom: 2px solid transparent;
   transition: color 0.2s, border-color 0.2s;
 }
@@ -37,52 +37,56 @@ body {
 .nav-link:hover { color: #ccc; }
 .nav-link.active { color: #4a9eff; border-bottom-color: #4a9eff; }
 
-/* Demo content area */
+/* Demo content — default row layout for registration split */
 #demo-content {
   flex: 1;
   display: flex;
+  flex-direction: row;
   min-height: 0;
   overflow: hidden;
 }
 
-/* Pane layout (registration form) */
+/* ============================================
+   Registration Form Demo (horizontal split)
+   ============================================ */
+
 .pane {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 2rem;
+  padding: 1.5rem;
   min-width: 0;
   overflow-y: auto;
 }
 
 .pane-app {
-  flex: 0 0 380px;
-  align-items: center;
+  flex: 0 0 360px;
+  padding-top: 2rem;
 }
 
 .pane-circuit {
   flex: 1;
   border-left: 1px solid #2a2a4a;
   position: relative;
+  padding: 0;
 }
 
-/* Form wrapper */
 .form-wrapper {
   width: 100%;
-  max-width: 340px;
+  max-width: 320px;
+  margin: 0 auto;
 }
 
-/* Registration form */
 .reg-form { width: 100%; }
-.reg-form h2 { margin-top: 0; margin-bottom: 1.2rem; font-size: 1.4rem; }
+.reg-form h2 { margin-top: 0; margin-bottom: 1rem; font-size: 1.3rem; }
 
-.field { margin-bottom: 1rem; }
-.field label { display: inline; font-size: 0.8rem; color: #aaa; margin-bottom: 0.3rem; }
+.field { margin-bottom: 0.8rem; }
+.field label { display: inline; font-size: 0.8rem; color: #aaa; }
 .field input {
   display: block;
   width: 100%;
-  padding: 0.5rem 0.7rem;
-  font-size: 0.95rem;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.9rem;
   background: #20203a;
   color: #e0e0e0;
   border: 1px solid #3a3a5a;
@@ -92,61 +96,66 @@ body {
   margin-top: 0.2rem;
 }
 .field input:focus { border-color: #4a9eff; }
-.field span { display: inline-block; font-size: 0.75rem; margin-top: 0.25rem; font-weight: 600; }
+.field span { display: inline-block; font-size: 0.72rem; margin-top: 0.2rem; font-weight: 600; }
 
 .valid { color: #4ae04a; }
 .invalid { color: #ff6b6b; }
 
 .reg-form button {
   width: 100%;
-  padding: 0.6rem;
-  font-size: 1rem;
+  padding: 0.55rem;
+  font-size: 0.95rem;
   cursor: pointer;
   background: #2a2a4e;
   color: #e0e0e0;
   border: 1px solid #3a3a5a;
   border-radius: 4px;
   transition: background 0.15s;
-  margin-top: 0.5rem;
+  margin-top: 0.4rem;
 }
 .reg-form button:hover { background: #3a3a6e; }
 
 /* Compiler error examples */
-.error-examples { margin-top: 2rem; border-top: 1px solid #2a2a4a; padding-top: 1rem; }
-.error-examples h3 { font-size: 0.85rem; color: #888; margin: 0 0 0.8rem; text-transform: uppercase; letter-spacing: 1px; }
-.error-example { margin-bottom: 0.8rem; padding: 0.5rem; background: #1e1e35; border-radius: 4px; border-left: 3px solid #ff6b6b; }
-.error-example code { display: block; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.7rem; color: #ccc; margin-bottom: 0.3rem; word-break: break-all; }
-.error-msg { font-size: 0.7rem; color: #ff6b6b; }
+.error-examples { margin-top: 1.5rem; border-top: 1px solid #2a2a4a; padding-top: 0.8rem; }
+.error-examples h3 { font-size: 0.75rem; color: #666; margin: 0 0 0.6rem; text-transform: uppercase; letter-spacing: 1px; }
+.error-example { margin-bottom: 0.5rem; padding: 0.4rem 0.5rem; background: #1e1e35; border-radius: 4px; border-left: 3px solid #ff6b6b; }
+.error-example code { display: block; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.65rem; color: #bbb; margin-bottom: 0.2rem; word-break: break-all; }
+.error-msg { font-size: 0.65rem; color: #ff6b6b; }
 
-/* Stock ticker demo */
+/* ============================================
+   Stock Ticker Demo (vertical stack)
+   ============================================ */
+
 .stock-ticker {
   text-align: center;
-  padding: 1.5rem 2rem;
+  padding: 1.2rem 2rem;
   border-bottom: 1px solid #2a2a4a;
+  flex: 0 0 auto;
 }
 
-.stock-ticker h2 { margin: 0 0 0.8rem; font-size: 1.3rem; }
+.stock-ticker h2 { margin: 0 0 0.3rem; font-size: 1.1rem; color: #aaa; }
 
 .price-display {
-  font-size: 2.5rem;
+  font-size: 2.2rem;
   font-weight: bold;
   font-family: 'SF Mono', 'Fira Code', monospace;
   color: #5b9bd5;
-  margin: 0.5rem 0;
+  margin: 0.2rem 0;
+  line-height: 1.2;
 }
 
 .avg-display {
-  font-size: 0.95rem;
+  font-size: 0.85rem;
   color: #6bc46d;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.3rem;
 }
 
 .status {
-  font-size: 0.85rem;
-  padding: 0.4rem 0.8rem;
+  font-size: 0.8rem;
+  padding: 0.3rem 0.7rem;
   border-radius: 4px;
   display: inline-block;
-  margin-bottom: 0.8rem;
+  margin-bottom: 0.5rem;
   font-weight: 600;
 }
 
@@ -158,32 +167,32 @@ body {
   align-items: center;
   justify-content: center;
   gap: 0.8rem;
-  margin-top: 0.5rem;
 }
 
 .slider-row label { font-size: 0.8rem; color: #aaa; white-space: nowrap; }
 
 .threshold-slider {
-  width: 200px;
+  width: 160px;
   accent-color: #e8915a;
 }
 
-/* Stock ticker circuit section */
+/* Stock ticker circuit section — fills available middle space */
 .stock-circuit {
-  height: 300px;
+  flex: 1;
+  min-height: 200px;
   border-bottom: 1px solid #2a2a4a;
   position: relative;
 }
 
 /* Waveform */
 .waveform-container {
+  flex: 0 0 auto;
   position: relative;
-  border-top: 1px solid #2a2a4a;
 }
 
 .waveform-tooltip {
   position: absolute;
-  background: rgba(30, 30, 50, 0.9);
+  background: rgba(30, 30, 50, 0.92);
   color: #ccc;
   font-size: 0.7rem;
   font-family: 'SF Mono', 'Fira Code', monospace;
@@ -194,7 +203,43 @@ body {
   z-index: 10;
 }
 
-/* Counter styles */
+/* ============================================
+   Circuit Graph (shared)
+   ============================================ */
+
+.circuit-node {
+  background: #20203a;
+  border-radius: 6px;
+  padding: 5px 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  transition: box-shadow 0.3s ease;
+  z-index: 1;
+}
+
+.circuit-node.active { box-shadow: 0 0 12px currentColor; }
+
+.circuit-node-name {
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  opacity: 0.7;
+  margin-bottom: 1px;
+}
+
+.circuit-node-value {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============================================
+   Counter (legacy)
+   ============================================ */
+
 .counter { text-align: center; }
 .counter h1 { margin-top: 0; }
 .counter button {
@@ -212,33 +257,3 @@ body {
 .counter button:active { background: #4a4a6e; }
 .display { font-size: 2rem; font-weight: bold; margin: 1rem 0; }
 .detail { color: #888; margin: 0.5rem 0 1.5rem; }
-
-/* Circuit node styles */
-.circuit-node {
-  background: #20203a;
-  border-radius: 6px;
-  padding: 6px 10px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  transition: box-shadow 0.3s ease;
-  z-index: 1;
-}
-
-.circuit-node.active { box-shadow: 0 0 12px currentColor; }
-
-.circuit-node-name {
-  font-size: 10px;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  opacity: 0.7;
-  margin-bottom: 2px;
-}
-
-.circuit-node-value {
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 13px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}

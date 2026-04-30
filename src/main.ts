@@ -23,6 +23,7 @@ function loadDemo(name: string) {
   if (currentDispose) { currentDispose(); currentDispose = null; }
   circuit.reset();
   content.innerHTML = '';
+  content.removeAttribute('style');
 
   // Update nav active state
   nav.querySelectorAll('.nav-link').forEach(el => {
