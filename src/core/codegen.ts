@@ -569,16 +569,34 @@ function emitEventAttr(attr: VAttr, elVar: string, ctx: GenContext): string[] {
   const i = ind(ctx);
   const event = attr.name;
   const handler = attr.value && attr.value.kind === 'identifier' ? attr.value.name : 'unknown';
+  const modifiers = attr.modifier ? attr.modifier.split('.') : [];
+
+  // Check for DOM event modifiers (prevent, stop) vs key modifiers (enter, escape, etc.)
+  const domModifiers = modifiers.filter(m => m === 'prevent' || m === 'stop');
+  const keyModifiers = modifiers.filter(m => m !== 'prevent' && m !== 'stop');
+
+  // Build modifier preamble
+  const preamble: string[] = [];
+  for (const m of domModifiers) {
+    if (m === 'prevent') preamble.push('e.preventDefault();');
+    if (m === 'stop') preamble.push('e.stopPropagation();');
+  }
+
+  const needsEventParam = domModifiers.length > 0 || keyModifiers.length > 0 || (attr.eventArgs && attr.eventArgs.length > 0 && event === 'contextmenu');
 
   if (attr.eventArgs && attr.eventArgs.length > 0) {
     const args = attr.eventArgs.map(a => emitExpr(a, ctx)).join(', ');
-    if (event === 'contextmenu') {
-      return [`${i}${elVar}.addEventListener('${event}', (e) => { e.preventDefault(); ${handler}(${args}); });`];
-    }
-    return [`${i}${elVar}.addEventListener('${event}', () => ${handler}(${args}));`];
+    const pre = preamble.length > 0 ? ` ${preamble.join(' ')}` : '';
+    return [`${i}${elVar}.addEventListener('${event}', (e) => {${pre} ${handler}(${args}); });`];
   }
-  if (attr.modifier) {
-    return [`${i}${elVar}.addEventListener('${event}', (e) => { if (e.key === '${capitalize(attr.modifier)}') ${handler}(); });`];
+  if (keyModifiers.length > 0) {
+    const keyCheck = `e.key === '${capitalize(keyModifiers[0])}'`;
+    const pre = preamble.length > 0 ? ` ${preamble.join(' ')}` : '';
+    return [`${i}${elVar}.addEventListener('${event}', (e) => {${pre} if (${keyCheck}) ${handler}(); });`];
+  }
+  if (domModifiers.length > 0) {
+    const pre = preamble.join(' ');
+    return [`${i}${elVar}.addEventListener('${event}', (e) => { ${pre} ${handler}(); });`];
   }
   return [`${i}${elVar}.addEventListener('${event}', ${handler});`];
 }

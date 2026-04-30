@@ -38,8 +38,10 @@ test('counter.comb — clean compile with correct deps', () => {
   const combNodes = graph.nodes.filter(n => n.type === 'comb');
   const eventNodes = graph.nodes.filter(n => n.type === 'event');
 
-  assert(signalNodes.length === 1, `Expected 1 signal, got ${signalNodes.length}`);
-  assert(signalNodes[0].name === 'count', `Expected signal 'count', got '${signalNodes[0].name}'`);
+  assert(signalNodes.length === 2, `Expected 2 signals, got ${signalNodes.length}`);
+  const sigNames = signalNodes.map(n => n.name).sort();
+  assert(sigNames.includes('count'), `Expected signal 'count'`);
+  assert(sigNames.includes('accent'), `Expected signal 'accent' (token)`);
 
   assert(combNodes.length === 2, `Expected 2 combs, got ${combNodes.length}`);
   const combNames = combNodes.map(n => n.name).sort();
@@ -485,6 +487,47 @@ module Parent {
 
   const js = result.js!;
   assert(js.includes('bind:result'), 'Should wire output binding for result');
+});
+
+// --- Test 23: Event modifier @click.prevent ---
+test('event modifier — @click.prevent emits preventDefault', () => {
+  const source = `module App {
+  signal x: int = 0;
+  always @(go) { x <= x + 1; }
+  view { <button @click.prevent=go>Go</button> }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+  const js = result.js!;
+  assert(js.includes('e.preventDefault()'), 'Should emit e.preventDefault()');
+  assert(js.includes("addEventListener('click'"), 'Should listen to click event');
+});
+
+// --- Test 24: Multiple event modifiers @submit.prevent.stop ---
+test('event modifiers — @submit.prevent.stop emits both', () => {
+  const source = `module App {
+  signal x: int = 0;
+  always @(go) { x <= x + 1; }
+  view { <form @submit.prevent.stop=go><button>Go</button></form> }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+  const js = result.js!;
+  assert(js.includes('e.preventDefault()'), 'Should emit e.preventDefault()');
+  assert(js.includes('e.stopPropagation()'), 'Should emit e.stopPropagation()');
+});
+
+// --- Test 25: Token + scoped style in counter ---
+test('counter.comb with token + scoped style compiles', () => {
+  const counterSrc = fs.readFileSync(path.resolve('examples/counter.comb'), 'utf-8');
+  const result = compile(counterSrc);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+  const js = result.js!;
+  assert(js.includes('token:accent'), 'Should have token effect for accent');
+  assert(js.includes('__style'), 'Should inject scoped style');
+  assert(js.includes('counter_'), 'Should scope .counter class');
+  assert(js.includes('display_'), 'Should scope .display class');
+  assert(js.includes('var(--accent)'), 'Style should reference CSS var');
 });
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

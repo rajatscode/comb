@@ -1,26 +1,25 @@
 module Counter {
-  signal count: int = 0;
+  token accent: color = "#4a9eff";
 
+  signal count: int = 0;
   comb label = "Count: " + str(count);
   comb doubled = count * 2;
 
-  always @(increment) {
-    count <= count + 1;
-  }
+  always @(increment) { count <= count + 1; }
+  always @(decrement) { count <= count - 1; }
+  always @(reset) { count <= 0; }
 
-  always @(decrement) {
-    count <= count - 1;
-  }
-
-  always @(reset) {
-    count <= 0;
+  style {
+    .counter { text-align: center; padding: 2rem; }
+    .display { font-size: 2rem; font-weight: bold; color: var(--accent); }
+    .controls { display: flex; gap: 0.5rem; justify-content: center; margin-top: 1rem; }
   }
 
   view {
     <div class="counter">
       <h1>Comb Counter</h1>
       <p class="display">{label}</p>
-      <p class="detail">doubled = {doubled}</p>
+      <p>doubled = {doubled}</p>
       <div class="controls">
         <button @click=decrement>-</button>
         <button @click=reset>reset</button>

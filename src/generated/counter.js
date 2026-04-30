@@ -3,6 +3,12 @@ import { createSignal, createComb, createEffect, batch, createScope, circuit } f
 export const __graph = {
   "nodes": [
     {
+      "id": "accent",
+      "name": "accent",
+      "type": "signal",
+      "isToken": true
+    },
+    {
       "id": "count",
       "name": "count",
       "type": "signal"
@@ -82,6 +88,11 @@ export function Counter(root) {
   circuit.loadStaticGraph(__graph);
   const __scope = createScope();
 
+  const [accent, setAccent] = createSignal("#4a9eff", { name: 'accent', module: $m, type: 'color' });
+  createEffect(() => {
+    document.documentElement.style.setProperty('--accent', String(accent()));
+  }, { name: 'token:accent', module: $m });
+
   const [count, setCount] = createSignal(0, { name: 'count', module: $m, type: 'int' });
 
   const label = createComb(() => ("Count: " + String(count())), { name: 'label', module: $m, deps: ["count"] });
@@ -106,20 +117,23 @@ export function Counter(root) {
     });
   }
 
+  const __style = document.createElement('style');
+  __style.textContent = '.counter_rnr4f { text-align: center; padding: 2rem; }\n    .display_rnr4f { font-size: 2rem; font-weight: bold; color: var(--accent); }\n    .controls_rnr4f { display: flex; gap: 0.5rem; justify-content: center; margin-top: 1rem; }';
+  document.head.appendChild(__style);
+
   const el0 = document.createElement('div');
-  el0.setAttribute('class', 'counter');
+  el0.setAttribute('class', 'counter_rnr4f');
   const el1 = document.createElement('h1');
   const txt0 = document.createTextNode('Comb Counter');
   el1.appendChild(txt0);
   el0.appendChild(el1);
   const el2 = document.createElement('p');
-  el2.setAttribute('class', 'display');
+  el2.setAttribute('class', 'display_rnr4f');
   const txt1 = document.createTextNode('');
   createEffect(() => { txt1.data = String(label()); }, { name: 'view:txt1', module: $m });
   el2.appendChild(txt1);
   el0.appendChild(el2);
   const el3 = document.createElement('p');
-  el3.setAttribute('class', 'detail');
   const txt2 = document.createTextNode('doubled =');
   el3.appendChild(txt2);
   const txt3 = document.createTextNode('');
@@ -127,7 +141,7 @@ export function Counter(root) {
   el3.appendChild(txt3);
   el0.appendChild(el3);
   const el4 = document.createElement('div');
-  el4.setAttribute('class', 'controls');
+  el4.setAttribute('class', 'controls_rnr4f');
   const el5 = document.createElement('button');
   el5.addEventListener('click', decrement);
   const txt4 = document.createTextNode('-');
@@ -154,6 +168,11 @@ export function __test() {
   circuit.loadStaticGraph(__graph);
   const __scope = createScope();
 
+  const [accent, setAccent] = createSignal("#4a9eff", { name: 'accent', module: $m, type: 'color' });
+  createEffect(() => {
+    document.documentElement.style.setProperty('--accent', String(accent()));
+  }, { name: 'token:accent', module: $m });
+
   const [count, setCount] = createSignal(0, { name: 'count', module: $m, type: 'int' });
 
   const label = createComb(() => ("Count: " + String(count())), { name: 'label', module: $m, deps: ["count"] });
@@ -161,7 +180,7 @@ export function __test() {
   const doubled = createComb(() => (count() * 2), { name: 'doubled', module: $m, deps: ["count"] });
 
   return {
-    signals: { count: { get: count, set: setCount } },
+    signals: { accent: { get: accent, set: setAccent }, count: { get: count, set: setCount } },
     combs: { label, doubled },
     dispose: __scope.dispose,
   };

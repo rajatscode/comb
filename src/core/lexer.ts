@@ -360,7 +360,7 @@ export function tokenize(source: string): Token[] {
       if (ch === '@') {
         advance();
         let name = readIdentifier();
-        if (peek() === '.') { advance(); name += '.' + readIdentifier(); }
+        while (peek() === '.') { advance(); name += '.' + readIdentifier(); }
         if (name === 'bind') {
           tokens.push(tok(TokenType.AtBind, '@bind', sl, sc));
         } else {

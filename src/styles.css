@@ -795,6 +795,12 @@ a:hover { text-decoration: underline; }
   line-height: 1.5;
 }
 
+.demo-card-highlight {
+  border-color: #3a4a6a;
+  background: #1a2235;
+}
+.demo-card-highlight:hover { border-color: #4a9eff; background: #1e2a40; }
+
 /* Footer */
 .landing-footer {
   text-align: center;
