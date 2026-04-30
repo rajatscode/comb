@@ -1,0 +1,48 @@
+module RegistrationForm {
+  signal username: string = "";
+  signal email: string = "";
+  signal password: string = "";
+  signal confirm: string = "";
+
+  comb usernameValid = len(username) >= 3;
+  comb emailValid = contains(email, "@") && contains(email, ".");
+  comb passwordLength = len(password);
+  comb requiredStrength = len(username) < 5 ? 8 : 6;
+  comb passwordStrong = passwordLength >= requiredStrength;
+  comb passwordsMatch = password == confirm && len(confirm) > 0;
+  comb canSubmit = usernameValid && emailValid && passwordStrong && passwordsMatch;
+  comb strengthLabel = passwordLength < 4 ? "weak" : passwordLength < 7 ? "medium" : "strong";
+  comb submitLabel = canSubmit ? "Create Account" : "Fill all fields";
+
+  always @(submit) {
+  }
+
+  view {
+    <form class="reg-form">
+      <h2>Create Account</h2>
+      <div class="field">
+        <label>Username</label>
+        <input @bind=username placeholder="3+ characters" />
+        <span class={usernameValid ? "valid" : "invalid"}>{usernameValid ? "ok" : "too short"}</span>
+      </div>
+      <div class="field">
+        <label>Email</label>
+        <input @bind=email placeholder="you@example.com" />
+        <span class={emailValid ? "valid" : "invalid"}>{emailValid ? "ok" : "needs @ and ."}</span>
+      </div>
+      <div class="field">
+        <label>Password (min </label>
+        <span>{requiredStrength}</span>
+        <label> chars)</label>
+        <input @bind=password />
+        <span class={passwordStrong ? "valid" : "invalid"}>{strengthLabel}</span>
+      </div>
+      <div class="field">
+        <label>Confirm Password</label>
+        <input @bind=confirm />
+        <span class={passwordsMatch ? "valid" : "invalid"}>{passwordsMatch ? "match" : "no match"}</span>
+      </div>
+      <button @click=submit>{submitLabel}</button>
+    </form>
+  }
+}

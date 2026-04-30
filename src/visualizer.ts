@@ -213,8 +213,13 @@ function buildLayout(
 
   // Live mode — subscribe to circuit events
   if (circuit) {
+    // Detect module name from circuit's registered nodes
+    const allNodes = circuit.getNodes();
+    const firstNode = allNodes[0];
+    const moduleName = firstNode ? firstNode.id.split('.')[0] : '';
+
     for (const [id, layout] of nodeLayouts) {
-      const runtimeNode = circuit.getNode(`Counter.${layout.name}`);
+      const runtimeNode = circuit.getNode(`${moduleName}.${layout.name}`);
       if (runtimeNode?.getValue) {
         const val = runtimeNode.getValue();
         layout.valueEl.textContent = formatValue(val);
