@@ -123,6 +123,13 @@
       <a href="#directives">Directives</a>
       <a href="#assertions">Assertions</a>
       <a href="#composition">Composition</a>
+      <a href="#slots">Slots</a>
+      <a href="#functions">Functions</a>
+      <a href="#methods">Method Calls</a>
+      <a href="#templates">String Templates</a>
+      <a href="#destructuring">Destructuring</a>
+      <a href="#trycatch">Try/Catch</a>
+      <a href="#async">Async Blocks</a>
       <a href="#tokens">Design Tokens</a>
       <a href="#styles">Scoped Styles</a>
       <a href="#propagators">Propagators</a>
@@ -156,11 +163,15 @@
       <h2 id="primitives">Primitives</h2>
 
       <h3>signal &mdash; mutable state</h3>
-<pre class="docs-code"><span class="kw">signal</span> count: <span class="ty">int</span> = <span class="num">0</span>;
-<span class="kw">signal</span> name: <span class="ty">string</span> = <span class="str">""</span>;
-<span class="kw">signal</span> active: <span class="ty">bool</span> = <span class="num">true</span>;
+<pre class="docs-code"><span class="kw">signal</span> count = <span class="num">0</span>;
+<span class="kw">signal</span> name = <span class="str">""</span>;
 <span class="kw">signal</span> price: <span class="ty">float</span> = <span class="num">9.99</span>;</pre>
-      <p>Types: <code>int</code>, <code>string</code>, <code>bool</code>, <code>float</code>. Signals are the only mutable primitive. They can only be written inside <code>always</code> blocks using the <code>&lt;=</code> operator.</p>
+      <p>Type annotations are optional &mdash; the type is inferred from the initial value. Explicit types (<code>signal x: int = 0;</code>) are still supported and enable compile-time type checking (warnings). Types: <code>int</code>, <code>string</code>, <code>bool</code>, <code>float</code>.</p>
+      <p>Signals can only be written inside <code>always</code> blocks using <code>&lt;=</code>, <code>++</code>, <code>--</code>, <code>+=</code>, or <code>-=</code>:</p>
+<pre class="docs-code"><span class="kw">always</span> @(increment) {
+  count<span class="op">++</span>;           <span class="cm">// sugar for count &lt;= count + 1</span>
+  score <span class="op">+=</span> <span class="num">10</span>;       <span class="cm">// sugar for score &lt;= score + 10</span>
+}</pre>
 
       <h3>comb &mdash; derived value</h3>
 <pre class="docs-code"><span class="kw">comb</span> doubled = count * <span class="num">2</span>;
@@ -189,6 +200,10 @@
 }</pre>
       <p>Auto-fires when any declared signal changes. The compiler <strong>verifies</strong> the sensitivity list: every signal read inside the block must be declared in the <code>@(...)</code> list. An undeclared read is a compile error. Self-triggering writes are also caught.</p>
 
+      <h3>edgeCount / negedgeCount &mdash; reactive edge counting</h3>
+<pre class="docs-code"><span class="kw">comb</span> alertCount = <span class="fn">edgeCount</span>(cpuHigh) + <span class="fn">edgeCount</span>(memHigh);</pre>
+      <p><code>edgeCount(expr)</code> returns a reactive value that automatically increments each time <code>expr</code> transitions false&rarr;true. No manual counter signal needed &mdash; the count is derived from event history. <code>negedgeCount(expr)</code> counts true&rarr;false transitions.</p>
+
       <h3>view &mdash; reactive DOM</h3>
 <pre class="docs-code"><span class="kw">view</span> {
   &lt;<span class="ty">div</span> class=<span class="str">"counter"</span>&gt;
@@ -216,11 +231,27 @@
 <pre class="docs-code"><span class="kw">@for</span> item <span class="kw">in</span> items {
   &lt;<span class="ty">li</span>&gt;{item}&lt;/<span class="ty">li</span>&gt;
 }</pre>
+      <p>Keyed list rendering with efficient reconciliation:</p>
+<pre class="docs-code"><span class="kw">@for</span> item <span class="kw">in</span> items key=item.id {
+  &lt;<span class="ty">div</span>&gt;{item.name}&lt;/<span class="ty">div</span>&gt;
+}</pre>
 
       <h3>@bind &mdash; two-way binding</h3>
 <pre class="docs-code">&lt;<span class="ty">input</span> <span class="op">@bind</span>=name /&gt;
 &lt;<span class="ty">input</span> type=<span class="str">"range"</span> min=<span class="str">"0"</span> max=<span class="str">"255"</span> <span class="op">@bind</span>=r /&gt;</pre>
       <p>Binds the input value to a signal or cell. Updates are bidirectional &mdash; changing the input updates the signal, and changing the signal updates the input. Range/number inputs auto-coerce to <code>Number</code>.</p>
+
+      <h3>Form Elements</h3>
+      <p>All form elements support <code>@bind</code> for two-way binding:</p>
+<pre class="docs-code">&lt;<span class="ty">input</span> <span class="op">@bind</span>=name /&gt;
+&lt;<span class="ty">textarea</span> <span class="op">@bind</span>=description&gt;&lt;/<span class="ty">textarea</span>&gt;
+&lt;<span class="ty">select</span> <span class="op">@bind</span>=category&gt;
+  &lt;<span class="ty">option</span> value=<span class="str">"a"</span>&gt;Option A&lt;/<span class="ty">option</span>&gt;
+  &lt;<span class="ty">option</span> value=<span class="str">"b"</span>&gt;Option B&lt;/<span class="ty">option</span>&gt;
+&lt;/<span class="ty">select</span>&gt;
+&lt;<span class="ty">input</span> type=<span class="str">"checkbox"</span> <span class="op">@bind</span>=agreed /&gt;
+&lt;<span class="ty">input</span> type=<span class="str">"radio"</span> name=<span class="str">"size"</span> value=<span class="str">"small"</span> <span class="op">@bind</span>=selectedSize /&gt;</pre>
+      <p>The compiler detects the element type and uses the appropriate property (<code>value</code> vs <code>checked</code>) and event (<code>input</code> vs <code>change</code>).</p>
 
       <!-- Assertions -->
       <h2 id="assertions">Assertions</h2>
@@ -252,6 +283,93 @@
   }
 }</pre>
       <p><code>input</code> &mdash; read-only inside the child, set by the parent via attributes. <code>output</code> &mdash; writable by the child, readable by the parent. <code>:=</code> binds an output back to a parent signal (bidirectional wiring). Multiple modules compile together &mdash; the compiler builds a cross-module registry for verification.</p>
+
+      <!-- Slots -->
+      <h2 id="slots">Component Slots</h2>
+      <p>Components accept child content via <code>&lt;slot /&gt;</code>. Parent content between component tags is passed to the child and rendered at the slot position.</p>
+<pre class="docs-code"><span class="kw">module</span> <span class="ty">Card</span> {
+  <span class="kw">input</span> title: <span class="ty">string</span> = <span class="str">""</span>;
+  <span class="kw">view</span> {
+    &lt;<span class="ty">div</span> class=<span class="str">"card"</span>&gt;
+      &lt;<span class="ty">h3</span>&gt;{title}&lt;/<span class="ty">h3</span>&gt;
+      &lt;<span class="ty">div</span> class=<span class="str">"card-body"</span>&gt;
+        &lt;<span class="ty">slot</span> /&gt;
+      &lt;/<span class="ty">div</span>&gt;
+    &lt;/<span class="ty">div</span>&gt;
+  }
+}
+
+<span class="kw">module</span> <span class="ty">App</span> {
+  <span class="kw">view</span> {
+    &lt;<span class="ty">Card</span> title=<span class="str">"My Card"</span>&gt;
+      &lt;<span class="ty">p</span>&gt;Child content goes here&lt;/<span class="ty">p</span>&gt;
+    &lt;/<span class="ty">Card</span>&gt;
+  }
+}</pre>
+
+      <!-- Functions -->
+      <h2 id="functions">Functions</h2>
+
+      <h3>fn &mdash; custom functions</h3>
+      <p>Functions are defined with <code>fn name(params) -&gt; returnType { body }</code>. The return type is optional. The last expression in the body is the implicit return value (like Rust). Explicit <code>return expr;</code> is also supported.</p>
+<pre class="docs-code"><span class="kw">fn</span> <span class="fn">clamp</span>(value: <span class="ty">int</span>, min: <span class="ty">int</span>, max: <span class="ty">int</span>) -> <span class="ty">int</span> {
+  value < min ? min : value > max ? max : value;
+}
+
+<span class="kw">fn</span> <span class="fn">formatPrice</span>(amount: <span class="ty">float</span>) -> <span class="ty">string</span> {
+  <span class="str">"$"</span> + <span class="fn">str</span>(<span class="fn">round</span>(amount * <span class="num">100</span>) / <span class="num">100</span>);
+}</pre>
+
+      <!-- Method Calls -->
+      <h2 id="methods">Method Calls</h2>
+      <p>Array and string methods work as method calls:</p>
+<pre class="docs-code"><span class="kw">comb</span> names = users.<span class="fn">map</span>(|u| u.name);
+<span class="kw">comb</span> active = users.<span class="fn">filter</span>(|u| u.active);
+<span class="kw">comb</span> found = items.<span class="fn">find</span>(|item| item.id == targetId);
+<span class="kw">comb</span> csv = names.<span class="fn">join</span>(<span class="str">", "</span>);
+<span class="kw">comb</span> hasAdmin = users.<span class="fn">some</span>(|u| u.role == <span class="str">"admin"</span>);</pre>
+      <p>Supported methods include: <code>map</code>, <code>filter</code>, <code>find</code>, <code>findIndex</code>, <code>some</code>, <code>every</code>, <code>includes</code>, <code>indexOf</code>, <code>join</code>, <code>flat</code>, <code>sort</code>, <code>reverse</code>, <code>push</code>, <code>pop</code>, <code>trim</code>, <code>split</code>, <code>replace</code>, <code>startsWith</code>, <code>endsWith</code>, <code>toUpperCase</code>, <code>toLowerCase</code>, <code>substring</code>, <code>charAt</code>.</p>
+
+      <!-- String Templates -->
+      <h2 id="templates">String Templates</h2>
+<pre class="docs-code"><span class="kw">comb</span> greeting = <span class="str">`Hello, ${name}! You have ${count} items.`</span>;
+<span class="kw">comb</span> statusMsg = <span class="str">`Price: $${str(round(price * 100) / 100)}`</span>;</pre>
+      <p>Backtick strings with <code>${expr}</code> interpolation, compiled to JS template literals.</p>
+
+      <!-- Destructuring -->
+      <h2 id="destructuring">Destructuring</h2>
+<pre class="docs-code"><span class="kw">always</span> @(processData) {
+  <span class="kw">const</span> { name, email } = userData;
+  <span class="kw">const</span> [first, ...rest] = items;
+  displayName <span class="op">&lt;=</span> name;
+}</pre>
+      <p>Object and array destructuring with <code>const</code>. Supports aliases (<code>{ key: alias }</code>) and rest patterns (<code>...rest</code>).</p>
+
+      <!-- Try/Catch -->
+      <h2 id="trycatch">Try/Catch</h2>
+<pre class="docs-code"><span class="kw">always</span> @(submit) {
+  <span class="kw">try</span> {
+    result <span class="op">&lt;=</span> <span class="fn">processForm</span>(data);
+  } <span class="kw">catch</span> (e) {
+    error <span class="op">&lt;=</span> <span class="str">"Something went wrong"</span>;
+  }
+}</pre>
+
+      <!-- Async Blocks -->
+      <h2 id="async">Async Blocks</h2>
+<pre class="docs-code"><span class="kw">always</span> @(loadUsers) {
+  loading <span class="op">&lt;=</span> <span class="num">true</span>;
+  <span class="kw">async</span> {
+    <span class="kw">const</span> response = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">"/api/users"</span>);
+    <span class="kw">const</span> data = <span class="kw">await</span> response.<span class="fn">json</span>();
+    users <span class="op">&lt;=</span> data;
+    loading <span class="op">&lt;=</span> <span class="num">false</span>;
+  } <span class="kw">catch</span> {
+    error <span class="op">&lt;=</span> <span class="str">"Failed to load"</span>;
+    loading <span class="op">&lt;=</span> <span class="num">false</span>;
+  }
+}</pre>
+      <p><code>async { }</code> blocks run asynchronously &mdash; the always block returns immediately and the async body executes in the background. Signal writes inside async blocks trigger new simulation cycles when they resolve. <code>await</code> is only valid inside async blocks.</p>
 
       <!-- Tokens -->
       <h2 id="tokens">Design Tokens</h2>
@@ -310,6 +428,15 @@
           <tr><td>len(x)</td><td>Length of string or array</td></tr>
           <tr><td>contains(s, sub)</td><td>Check if string contains substring</td></tr>
           <tr><td>append(arr, item)</td><td>Append item to array (immutable)</td></tr>
+          <tr><td>floor(x)</td><td>Round down (Math.floor)</td></tr>
+          <tr><td>round(x)</td><td>Round to nearest (Math.round)</td></tr>
+          <tr><td>min(a, b)</td><td>Minimum of two values</td></tr>
+          <tr><td>max(a, b)</td><td>Maximum of two values</td></tr>
+          <tr><td>abs(x)</td><td>Absolute value</td></tr>
+          <tr><td>reduce(arr, fn, init)</td><td>Array reduce</td></tr>
+          <tr><td>slice(arr, start)</td><td>Array slice</td></tr>
+          <tr><td>edgeCount(expr)</td><td>Reactive count of posedge firings (no manual counter needed)</td></tr>
+          <tr><td>negedgeCount(expr)</td><td>Reactive count of negedge firings</td></tr>
           <tr><td>rgbToHsv(r, g, b)</td><td>RGB to HSV conversion (returns {h, s, v})</td></tr>
           <tr><td>hsvToRgb(h, s, v)</td><td>HSV to RGB conversion (returns {r, g, b})</td></tr>
           <tr><td>rgbToHex(r, g, b)</td><td>RGB to hex string (e.g. "#ff0080")</td></tr>
