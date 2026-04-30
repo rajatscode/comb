@@ -764,21 +764,29 @@ function showLanding() {
     }
 
     const iv = setInterval(async () => {
-      // CPU: event loop latency
+      // CPU: event loop latency (real)
       const cpu = await measureCpuLoad();
 
-      // Memory: JS heap (Chrome only)
+      // Memory: JS heap as % of total allocated (not limit — limit is huge)
       const perfMem = (performance as any).memory;
       const mem = perfMem
-        ? (perfMem.usedJSHeapSize / perfMem.jsHeapSizeLimit) * 100
-        : 30 + Math.random() * 10; // fallback for non-Chrome
+        ? (perfMem.usedJSHeapSize / perfMem.totalJSHeapSize) * 100
+        : 40 + Math.random() * 15;
 
-      // Network: real connection info
-      const conn = (navigator as any).connection;
-      const net = conn?.downlink ?? (5 + Math.random() * 20); // Mbps
+      // Network: measure real fetch latency as a throughput proxy
+      let net = 0;
+      try {
+        const t0 = performance.now();
+        await fetch(window.location.href, { method: 'HEAD', cache: 'no-store' });
+        const latency = performance.now() - t0;
+        net = Math.round(1000 / Math.max(latency, 1)); // rough "requests/sec" capacity
+      } catch {
+        const conn = (navigator as any).connection;
+        net = conn?.downlink ?? 10;
+      }
 
       // Storage: real disk usage
-      let disk = 10;
+      let disk = 0;
       try {
         const est = await navigator.storage?.estimate?.();
         if (est && est.quota && est.usage) {
