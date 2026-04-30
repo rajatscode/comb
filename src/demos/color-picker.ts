@@ -14,11 +14,7 @@ export function mountColorPicker(root: HTMLElement): { dispose: () => void } {
 
   const scope = createScope();
 
-  // Track which direction is being updated to prevent loops
-  let updatingFromRgb = false;
-  let updatingFromHsv = false;
-
-  // 6 cells
+  // 6 cells — convergence via Object.is: integer roundtrips are exact
   const [r, setR] = createCell(255, { name: 'r', module: MODULE });
   const [g, setG] = createCell(0, { name: 'g', module: MODULE });
   const [b, setB] = createCell(0, { name: 'b', module: MODULE });
@@ -28,24 +24,18 @@ export function mountColorPicker(root: HTMLElement): { dispose: () => void } {
 
   // Propagator: RGB → HSV
   createPropagator(() => {
-    if (updatingFromHsv) return;
-    updatingFromRgb = true;
     const hsv = rgbToHsv(r(), g(), b());
     setH(hsv.h);
     setS(hsv.s);
     setV(hsv.v);
-    updatingFromRgb = false;
   }, { name: 'rgb→hsv', module: MODULE, deps: ['r', 'g', 'b'], writes: ['h', 's', 'v'] });
 
   // Propagator: HSV → RGB
   createPropagator(() => {
-    if (updatingFromRgb) return;
-    updatingFromHsv = true;
     const rgb = hsvToRgb(h(), s(), v());
     setR(rgb.r);
     setG(rgb.g);
     setB(rgb.b);
-    updatingFromHsv = false;
   }, { name: 'hsv→rgb', module: MODULE, deps: ['h', 's', 'v'], writes: ['r', 'g', 'b'] });
 
   // Combs
