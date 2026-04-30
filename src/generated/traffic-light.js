@@ -335,3 +335,4 @@ export function __test() {
     dispose: __scope.dispose,
   };
 }
+//# sourceMappingURL=traffic-light.js.map

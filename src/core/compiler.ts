@@ -3,7 +3,7 @@
 import { tokenize } from './lexer.js';
 import { parse, ParseError } from './parser.js';
 import { verify, type CompileError, type CompileWarning } from './verify.js';
-import { generate } from './codegen.js';
+import { generate, generateWithSourceMap, SourceMapBuilder } from './codegen.js';
 import type { Module } from './ast.js';
 import type { StaticGraph } from './graph.js';
 
@@ -16,9 +16,12 @@ export interface CompileResult {
   graph?: StaticGraph;
   errors: CompileError[];
   warnings: CompileWarning[];
+  sourceMap?: string;  // JSON string of source map v3
 }
 
-export function compile(source: string): CompileResult {
+export function compile(source: string, options?: { sourceFile?: string }): CompileResult {
+  const sourceFile = options?.sourceFile;
+
   // Tokenize
   let tokens;
   try {
@@ -50,6 +53,7 @@ export function compile(source: string): CompileResult {
   const allErrors: CompileError[] = [];
   const allWarnings: CompileWarning[] = [];
   const jsChunks: string[] = [];
+  const allSourceMapBuilders: SourceMapBuilder[] = [];
   let primaryGraph: StaticGraph | undefined;
 
   for (const mod of modules) {
@@ -59,7 +63,13 @@ export function compile(source: string): CompileResult {
 
     if (result.errors.length === 0) {
       try {
-        jsChunks.push(generate(mod, result.graph));
+        if (sourceFile) {
+          const genResult = generateWithSourceMap(mod, result.graph);
+          jsChunks.push(genResult.code);
+          allSourceMapBuilders.push(genResult.sourceMap);
+        } else {
+          jsChunks.push(generate(mod, result.graph));
+        }
       } catch (e: any) {
         allErrors.push({ message: `Codegen error in ${mod.name}: ${e.message}`, line: 1, column: 1 });
       }
@@ -74,7 +84,26 @@ export function compile(source: string): CompileResult {
   }
 
   const js = jsChunks.join('\n\n');
+
+  // Build combined source map if source file was provided
+  let sourceMapJson: string | undefined;
+  if (sourceFile && allSourceMapBuilders.length > 0) {
+    // For multi-module files, merge mappings with line offset
+    const combined = new SourceMapBuilder();
+    let lineOffset = 0;
+    for (let i = 0; i < allSourceMapBuilders.length; i++) {
+      const smb = allSourceMapBuilders[i];
+      for (const m of smb.getMappings()) {
+        combined.addMapping(m.originalLine, m.originalColumn, m.generatedLine + lineOffset, m.generatedColumn);
+      }
+      if (i < jsChunks.length) {
+        lineOffset += jsChunks[i].split('\n').length + 2; // +2 for the blank lines between chunks
+      }
+    }
+    sourceMapJson = JSON.stringify(combined.toJSON(sourceFile, source));
+  }
+
   // Return last module as primary AST for backward compat
   const primaryMod = modules[modules.length - 1];
-  return { js, ast: primaryMod, modules, graph: primaryGraph, errors: [], warnings: allWarnings };
+  return { js, ast: primaryMod, modules, graph: primaryGraph, errors: [], warnings: allWarnings, sourceMap: sourceMapJson };
 }

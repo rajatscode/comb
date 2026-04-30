@@ -3,12 +3,122 @@
 
 import type {
   Module, Declaration, InputDecl, OutputDecl, SignalDecl, TokenDecl, CombDecl, CellDecl,
+<<<<<<< HEAD
   ConstraintDecl, AlwaysBlock, ViewBlock, StyleBlock, EnumDecl, AssertDecl, TemporalAssertDecl, FnDecl,
   Statement, SignalAssign, IfStatement, ExprStatement, ReturnStmt, DestructureStmt, TryStmt,
   AsyncStmt, ConstDeclStmt, VNode, VElement, VText, VExpr, VIf, VFor,
   VComponent, VSlot, VAttr, Expr,
+||||||| b68c2e9
+  ConstraintDecl, AlwaysBlock, ViewBlock, StyleBlock, EnumDecl, AssertDecl, Statement,
+  SignalAssign, IfStatement, ExprStatement, VNode, VElement, VText, VExpr, VIf, VFor,
+  VComponent, VAttr, Expr,
+=======
+  ConstraintDecl, AlwaysBlock, ViewBlock, StyleBlock, EnumDecl, AssertDecl, Statement,
+  SignalAssign, IfStatement, ExprStatement, VNode, VElement, VText, VExpr, VIf, VFor,
+  VComponent, VAttr, Expr, SourceLoc,
+>>>>>>> worktree-agent-a270f5ad
 } from './ast.js';
 import type { StaticGraph } from './graph.js';
+
+// --- Source Map Support ---
+
+export interface SourceMapping {
+  generatedLine: number;
+  generatedColumn: number;
+  originalLine: number;
+  originalColumn: number;
+}
+
+const BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+function encodeVLQ(value: number): string {
+  let vlq = value < 0 ? ((-value) << 1) + 1 : value << 1;
+  let encoded = '';
+  do {
+    let digit = vlq & 0x1f;
+    vlq >>>= 5;
+    if (vlq > 0) digit |= 0x20;
+    encoded += BASE64[digit];
+  } while (vlq > 0);
+  return encoded;
+}
+
+export class SourceMapBuilder {
+  private mappings: SourceMapping[] = [];
+
+  addMapping(originalLine: number, originalColumn: number, generatedLine: number, generatedColumn: number) {
+    this.mappings.push({ generatedLine, generatedColumn, originalLine, originalColumn });
+  }
+
+  getMappings(): SourceMapping[] {
+    return [...this.mappings];
+  }
+
+  toJSON(sourceFile: string, sourceContent: string | null = null): object {
+    return {
+      version: 3,
+      file: sourceFile.replace('.comb', '.js'),
+      sources: [sourceFile],
+      sourcesContent: [sourceContent],
+      mappings: this.encodeMappings(),
+    };
+  }
+
+  private encodeMappings(): string {
+    // Sort by generated line, then column
+    const sorted = [...this.mappings].sort((a, b) =>
+      a.generatedLine !== b.generatedLine
+        ? a.generatedLine - b.generatedLine
+        : a.generatedColumn - b.generatedColumn
+    );
+
+    if (sorted.length === 0) return '';
+
+    // Group by generated line
+    const maxLine = sorted[sorted.length - 1].generatedLine;
+    const byLine: SourceMapping[][] = [];
+    for (let i = 0; i <= maxLine; i++) byLine.push([]);
+    for (const m of sorted) byLine[m.generatedLine].push(m);
+
+    let prevGenCol = 0;
+    let prevOrigLine = 0;
+    let prevOrigCol = 0;
+    const sourceIndex = 0; // always 0, single source file
+
+    const lineSegments: string[] = [];
+    for (let line = 0; line <= maxLine; line++) {
+      const mappingsOnLine = byLine[line];
+      if (mappingsOnLine.length === 0) {
+        lineSegments.push('');
+        continue;
+      }
+
+      prevGenCol = 0; // reset per line
+      const segments: string[] = [];
+      for (const m of mappingsOnLine) {
+        let segment = '';
+        segment += encodeVLQ(m.generatedColumn - prevGenCol);
+        segment += encodeVLQ(0); // source index delta (always 0)
+        segment += encodeVLQ(m.originalLine - prevOrigLine);
+        segment += encodeVLQ(m.originalColumn - prevOrigCol);
+        prevGenCol = m.generatedColumn;
+        prevOrigLine = m.originalLine;
+        prevOrigCol = m.originalColumn;
+        segments.push(segment);
+      }
+      lineSegments.push(segments.join(','));
+    }
+
+    return lineSegments.join(';');
+  }
+}
+
+// --- Annotated Line: a generated line + optional source location ---
+
+interface AnnotatedLine {
+  text: string;
+  loc?: SourceLoc; // original source location, if known
+}
 
 interface GenContext {
   moduleName: string;
@@ -78,6 +188,7 @@ function nextTxt(ctx: GenContext): string { return `txt${ctx.txtCount++}`; }
 function capitalize(s: string): string { return s[0].toUpperCase() + s.slice(1); }
 function escapeStr(s: string): string { return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n'); }
 
+<<<<<<< HEAD
 function viewHasSlot(vnodes: VNode[]): boolean {
   for (const vn of vnodes) {
     if (vn.kind === 'vslot') return true;
@@ -92,9 +203,29 @@ function viewHasSlot(vnodes: VNode[]): boolean {
   return false;
 }
 
+||||||| b68c2e9
+=======
+export interface GenerateResult {
+  code: string;
+  sourceMap: SourceMapBuilder;
+}
+
+>>>>>>> worktree-agent-a270f5ad
 export function generate(mod: Module, graph: StaticGraph): string {
+  return generateWithSourceMap(mod, graph).code;
+}
+
+export function generateWithSourceMap(mod: Module, graph: StaticGraph): GenerateResult {
   const ctx = createContext(mod);
-  const lines: string[] = [];
+  const alines: AnnotatedLine[] = [];
+
+  // Helper to push annotated lines
+  function pushLine(text: string, loc?: SourceLoc) {
+    alines.push({ text, loc });
+  }
+  function pushLines(lines: string[], loc?: SourceLoc) {
+    for (const l of lines) alines.push({ text: l, loc });
+  }
 
   // Imports
   const hasCells = mod.body.some(d => d.kind === 'cell');
@@ -110,6 +241,7 @@ export function generate(mod: Module, graph: StaticGraph): string {
   if (hasCells) importParts.push('createCell');
   if (hasConstraints) importParts.push('createPropagator');
 <<<<<<< HEAD
+<<<<<<< HEAD
   if (hasEdgeTriggers) importParts.push('createEdgeEffect');
   if (hasTemporalAsserts) importParts.push('createTemporalAssert');
 ||||||| b68c2e9
@@ -117,19 +249,26 @@ export function generate(mod: Module, graph: StaticGraph): string {
   if (hasKeyedFor) importParts.push('reconcileKeyed');
 >>>>>>> worktree-agent-ae75abc4
   lines.push(`import { ${importParts.join(', ')} } from '../runtime/index.js';`);
+||||||| b68c2e9
+  lines.push(`import { ${importParts.join(', ')} } from '../runtime/index.js';`);
+=======
+  pushLine(`import { ${importParts.join(', ')} } from '../runtime/index.js';`);
+>>>>>>> worktree-agent-a270f5ad
 
   // Conditional color utility import
   const colorBuiltins = ['rgbToHsv', 'hsvToRgb', 'rgbToHex'];
   const src = JSON.stringify(mod);
   const usedColorFns = colorBuiltins.filter(fn => src.includes(fn));
   if (usedColorFns.length > 0) {
-    lines.push(`import { ${usedColorFns.join(', ')} } from '../runtime/color.js';`);
+    pushLine(`import { ${usedColorFns.join(', ')} } from '../runtime/color.js';`);
   }
-  lines.push('');
+  pushLine('');
 
   // Static graph export
-  lines.push(`export const __graph = ${JSON.stringify(graph, null, 2)};`);
-  lines.push('');
+  const graphJson = JSON.stringify(graph, null, 2);
+  const graphLines = `export const __graph = ${graphJson};`.split('\n');
+  for (const gl of graphLines) pushLine(gl);
+  pushLine('');
 
   // Module factory function
   const hasInputs = ctx.inputs.size > 0;
@@ -145,6 +284,7 @@ export function generate(mod: Module, graph: StaticGraph): string {
   if (paramNames.length > 0) sigParts.push(`{ ${paramNames.join(', ')} }`);
   if (hasPorts) sigParts.push('__props');
   sigParts.push('root');
+<<<<<<< HEAD
   if (hasSlot) sigParts.push('__children');
   lines.push(`export function ${mod.name}(${sigParts.join(', ')}) {`);
   if (hasPorts) lines.push(`  if (!__props) __props = {};`);
@@ -152,10 +292,26 @@ export function generate(mod: Module, graph: StaticGraph): string {
   lines.push(`  circuit.loadStaticGraph(__graph);`);
   lines.push(`  const __scope = createScope();`);
   lines.push('');
+||||||| b68c2e9
+  lines.push(`export function ${mod.name}(${sigParts.join(', ')}) {`);
+  if (hasPorts) lines.push(`  if (!__props) __props = {};`);
+  lines.push(`  const $m = '${mod.name}';`);
+  lines.push(`  circuit.loadStaticGraph(__graph);`);
+  lines.push(`  const __scope = createScope();`);
+  lines.push('');
+=======
+  pushLine(`export function ${mod.name}(${sigParts.join(', ')}) {`, mod.loc);
+  if (hasPorts) pushLine(`  if (!__props) __props = {};`);
+  pushLine(`  const $m = '${mod.name}';`);
+  pushLine(`  circuit.loadStaticGraph(__graph);`);
+  pushLine(`  const __scope = createScope();`);
+  pushLine('');
+>>>>>>> worktree-agent-a270f5ad
 
   for (const decl of mod.body) {
-    lines.push(...emitDecl(decl, ctx));
-    lines.push('');
+    const declLines = emitDecl(decl, ctx);
+    for (const l of declLines) pushLine(l, decl.loc);
+    pushLine('');
   }
 
   // Build return with ports
@@ -167,28 +323,39 @@ export function generate(mod: Module, graph: StaticGraph): string {
     for (const name of ctx.outputs) {
       portEntries.push(`${name}: { get: ${name}, set: set${capitalize(name)} }`);
     }
-    lines.push(`  return { dispose: __scope.dispose, __ports: { ${portEntries.join(', ')} } };`);
+    pushLine(`  return { dispose: __scope.dispose, __ports: { ${portEntries.join(', ')} } };`);
   } else {
-    lines.push('  return { dispose: __scope.dispose };');
+    pushLine('  return { dispose: __scope.dispose };');
   }
-  lines.push('}');
-  lines.push('');
+  pushLine('}');
+  pushLine('');
 
   // __test export — headless factory with signal/comb access, no view
-  lines.push(`export function __test() {`);
-  lines.push(`  const $m = '${mod.name}';`);
-  lines.push(`  circuit.loadStaticGraph(__graph);`);
-  lines.push(`  const __scope = createScope();`);
-  lines.push('');
+  pushLine(`export function __test() {`);
+  pushLine(`  const $m = '${mod.name}';`);
+  pushLine(`  circuit.loadStaticGraph(__graph);`);
+  pushLine(`  const __scope = createScope();`);
+  pushLine('');
 
   const signalNames: string[] = [];
   const combNames: string[] = [];
   const testCtx = { ...ctx, indent: 1, elCount: 0, txtCount: 0, assertCount: 0 };
 
   for (const decl of mod.body) {
+<<<<<<< HEAD
     if (decl.kind === 'input' || decl.kind === 'output' || decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'comb' || decl.kind === 'cell' || decl.kind === 'constraint' || decl.kind === 'enum' || decl.kind === 'assert' || decl.kind === 'temporal_assert' || decl.kind === 'fn') {
       lines.push(...emitDecl(decl, testCtx));
       lines.push('');
+||||||| b68c2e9
+    if (decl.kind === 'input' || decl.kind === 'output' || decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'comb' || decl.kind === 'cell' || decl.kind === 'constraint' || decl.kind === 'enum' || decl.kind === 'assert') {
+      lines.push(...emitDecl(decl, testCtx));
+      lines.push('');
+=======
+    if (decl.kind === 'input' || decl.kind === 'output' || decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'comb' || decl.kind === 'cell' || decl.kind === 'constraint' || decl.kind === 'enum' || decl.kind === 'assert') {
+      const declLines = emitDecl(decl, testCtx);
+      for (const l of declLines) pushLine(l, decl.loc);
+      pushLine('');
+>>>>>>> worktree-agent-a270f5ad
       if (decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'input' || decl.kind === 'output' || decl.kind === 'cell') signalNames.push(decl.name);
       if (decl.kind === 'comb') combNames.push(decl.name);
     }
@@ -197,14 +364,30 @@ export function generate(mod: Module, graph: StaticGraph): string {
   // Build return object
   const signalEntries = signalNames.map(n => `${n}: { get: ${n}, set: set${capitalize(n)} }`).join(', ');
   const combEntries = combNames.map(n => `${n}`).join(', ');
-  lines.push(`  return {`);
-  lines.push(`    signals: { ${signalEntries} },`);
-  lines.push(`    combs: { ${combEntries} },`);
-  lines.push(`    dispose: __scope.dispose,`);
-  lines.push(`  };`);
-  lines.push('}');
+  pushLine(`  return {`);
+  pushLine(`    signals: { ${signalEntries} },`);
+  pushLine(`    combs: { ${combEntries} },`);
+  pushLine(`    dispose: __scope.dispose,`);
+  pushLine(`  };`);
+  pushLine('}');
 
-  return lines.join('\n');
+  // Build source map from annotated lines
+  const smb = new SourceMapBuilder();
+  for (let i = 0; i < alines.length; i++) {
+    const al = alines[i];
+    if (al.loc) {
+      // Original lines are 1-based in the AST, source maps use 0-based
+      const origLine = al.loc.line - 1;
+      const origCol = al.loc.column - 1;
+      const genCol = al.text.length - al.text.trimStart().length; // leading whitespace = column
+      smb.addMapping(origLine, origCol, i, genCol);
+    }
+  }
+
+  return {
+    code: alines.map(al => al.text).join('\n'),
+    sourceMap: smb,
+  };
 }
 
 // Declarations
