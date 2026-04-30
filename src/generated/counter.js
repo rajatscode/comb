@@ -1,4 +1,4 @@
-import { createSignal, createComb, createEffect, batch, createScope } from '../runtime/index.js';
+import { createSignal, createComb, createEffect, batch, createScope, circuit } from '../runtime/index.js';
 
 export const __graph = {
   "nodes": [
@@ -79,6 +79,7 @@ export const __graph = {
 
 export function Counter(root) {
   const $m = 'Counter';
+  circuit.loadStaticGraph(__graph);
   const __scope = createScope();
 
   const [count, setCount] = createSignal(0, { name: 'count', module: $m, type: 'int' });

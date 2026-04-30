@@ -176,18 +176,18 @@ body {
   accent-color: #e8915a;
 }
 
-/* Stock ticker circuit section — fills available middle space */
+/* Stock ticker circuit section */
 .stock-circuit {
-  flex: 1;
-  min-height: 200px;
+  height: 220px;
   border-bottom: 1px solid #2a2a4a;
   position: relative;
 }
 
 /* Waveform */
 .waveform-container {
-  flex: 0 0 auto;
+  height: 260px;
   position: relative;
+  flex-shrink: 0;
 }
 
 .waveform-tooltip {

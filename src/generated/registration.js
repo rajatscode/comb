@@ -1,4 +1,4 @@
-import { createSignal, createComb, createEffect, batch, createScope } from '../runtime/index.js';
+import { createSignal, createComb, createEffect, batch, createScope, circuit } from '../runtime/index.js';
 
 export const __graph = {
   "nodes": [
@@ -209,6 +209,7 @@ export const __graph = {
 
 export function RegistrationForm(root) {
   const $m = 'RegistrationForm';
+  circuit.loadStaticGraph(__graph);
   const __scope = createScope();
 
   const [username, setUsername] = createSignal("", { name: 'username', module: $m, type: 'string' });

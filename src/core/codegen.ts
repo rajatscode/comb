@@ -51,7 +51,7 @@ export function generate(mod: Module, graph: StaticGraph): string {
   const lines: string[] = [];
 
   // Imports
-  lines.push("import { createSignal, createComb, createEffect, batch, createScope } from '../runtime/index.js';");
+  lines.push("import { createSignal, createComb, createEffect, batch, createScope, circuit } from '../runtime/index.js';");
   lines.push('');
 
   // Static graph export
@@ -63,6 +63,7 @@ export function generate(mod: Module, graph: StaticGraph): string {
   const paramList = paramNames.length > 0 ? `{ ${paramNames.join(', ')} }, root` : 'root';
   lines.push(`export function ${mod.name}(${paramList}) {`);
   lines.push(`  const $m = '${mod.name}';`);
+  lines.push(`  circuit.loadStaticGraph(__graph);`);
   lines.push(`  const __scope = createScope();`);
   lines.push('');
 

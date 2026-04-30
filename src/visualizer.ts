@@ -42,16 +42,18 @@ export function renderCircuitGraph(
   container.style.overflow = 'hidden';
 
   let unsub: (() => void) | undefined;
-  let disposed = false;
 
-  // Defer layout until the container has been laid out by the browser
-  requestAnimationFrame(() => {
-    if (disposed) return;
-    buildLayout(container, graph, circuit, (u) => { unsub = u; });
-  });
+  // Build layout. If container has no dimensions yet, retry after a timeout.
+  function tryBuild() {
+    if (container.clientWidth > 0 && container.clientHeight > 0) {
+      buildLayout(container, graph, circuit, (u) => { unsub = u; });
+    } else {
+      setTimeout(tryBuild, 50);
+    }
+  }
+  tryBuild();
 
   function dispose() {
-    disposed = true;
     unsub?.();
     container.innerHTML = '';
   }
