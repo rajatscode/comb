@@ -1,0 +1,22 @@
+body {
+  font-family: system-ui, sans-serif;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  display: flex;
+  justify-content: center;
+  padding-top: 4rem;
+  margin: 0;
+}
+.counter { text-align: center; }
+.counter button {
+  font-size: 1.5rem;
+  padding: 0.5rem 1.5rem;
+  margin: 0 0.5rem;
+  cursor: pointer;
+  background: #2a2a3e;
+  color: #e0e0e0;
+  border: 1px solid #3a3a5a;
+  border-radius: 4px;
+}
+.counter button:hover { background: #3a3a5e; }
+.display { font-size: 2rem; font-weight: bold; margin: 1rem 0; }

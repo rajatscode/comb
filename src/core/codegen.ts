@@ -51,7 +51,7 @@ export function generate(mod: Module, graph: StaticGraph): string {
   const lines: string[] = [];
 
   // Imports
-  lines.push("import { createSignal, createComb, createEffect, batch, createScope } from '../runtime/signals.js';");
+  lines.push("import { createSignal, createComb, createEffect, batch, createScope } from '../runtime/index.js';");
   lines.push('');
 
   // Static graph export

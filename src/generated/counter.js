@@ -1,4 +1,4 @@
-import { createSignal, createComb, createEffect, batch } from '../runtime/signals.js';
+import { createSignal, createComb, createEffect, batch, createScope } from '../runtime/index.js';
 
 export const __graph = {
   "nodes": [
@@ -89,6 +89,7 @@ export const __graph = {
 
 export function Counter(root) {
   const $m = 'Counter';
+  const __scope = createScope();
 
   const [count, setCount] = createSignal(0, { name: 'count', module: $m, type: 'int' });
 
@@ -154,4 +155,5 @@ export function Counter(root) {
   el0.appendChild(el4);
   root.appendChild(el0);
 
+  return { dispose: __scope.dispose };
 }

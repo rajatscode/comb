@@ -35,7 +35,7 @@ test('counter.comb — generates JS with expected structure', () => {
   const js = result.js!;
 
   // Import from runtime
-  assert(js.includes("import { createSignal, createComb, createEffect, batch, createScope } from '../runtime/signals.js'"), 'Missing runtime import');
+  assert(js.includes("import { createSignal, createComb, createEffect, batch, createScope } from '../runtime/index.js'"), 'Missing runtime import');
 
   // Static graph export
   assert(js.includes('export const __graph ='), 'Missing __graph export');
