@@ -45,7 +45,7 @@ module RegistrationForm {
         <input @bind=confirm />
         <span class={passwordsMatch ? "valid" : "invalid"}>{passwordsMatch ? "match" : "no match"}</span>
       </div>
-      <button @click=submit>{submitLabel}</button>
+      <button @click=submit disabled={!canSubmit}>{submitLabel}</button>
     </form>
   }
 }

@@ -476,7 +476,12 @@ function emitVElement(node: VElement, parent: string, ctx: GenContext, parentDes
         lines.push(`${i}${v}.setAttribute('${attr.name}', '${escapeStr(attrVal)}');`);
       } else if (isReactive(attr.value, ctx)) {
         const viewName = primaryReactiveNameFromExpr(attr.value, ctx) || attr.name;
-        lines.push(`${i}createEffect(() => { ${v}.setAttribute('${attr.name}', ${emitExpr(attr.value, ctx)}); }, { name: 'view:attr:${viewName}', module: $m, viewTarget: { element: '${escapeStr(elDesc)}', binding: 'attr:${attr.name}' } });`);
+        const boolAttrs = ['disabled', 'checked', 'readonly', 'hidden', 'required'];
+        if (boolAttrs.includes(attr.name)) {
+          lines.push(`${i}createEffect(() => { const __v = ${emitExpr(attr.value, ctx)}; if (__v) ${v}.setAttribute('${attr.name}', ''); else ${v}.removeAttribute('${attr.name}'); }, { name: 'view:attr:${viewName}', module: $m, viewTarget: { element: '${escapeStr(elDesc)}', binding: 'attr:${attr.name}' } });`);
+        } else {
+          lines.push(`${i}createEffect(() => { ${v}.setAttribute('${attr.name}', ${emitExpr(attr.value, ctx)}); }, { name: 'view:attr:${viewName}', module: $m, viewTarget: { element: '${escapeStr(elDesc)}', binding: 'attr:${attr.name}' } });`);
+        }
       } else {
         lines.push(`${i}${v}.setAttribute('${attr.name}', ${emitExpr(attr.value, ctx)});`);
       }

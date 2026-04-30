@@ -200,6 +200,15 @@ export const __graph = {
       }
     },
     {
+      "id": "view:attr:disabled",
+      "name": "view:attr:disabled",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "button",
+        "binding": "attr:disabled"
+      }
+    },
+    {
       "id": "view:submitLabel",
       "name": "view:submitLabel",
       "type": "view-effect",
@@ -376,6 +385,11 @@ export const __graph = {
       "type": "data"
     },
     {
+      "from": "canSubmit",
+      "to": "view:attr:disabled",
+      "type": "data"
+    },
+    {
       "from": "submitLabel",
       "to": "view:submitLabel",
       "type": "data"
@@ -532,6 +546,7 @@ export function RegistrationForm(root) {
   el0.appendChild(el16);
   const el20 = document.createElement('button');
   el20.addEventListener('click', submit);
+  createEffect(() => { const __v = !canSubmit(); if (__v) el20.setAttribute('disabled', ''); else el20.removeAttribute('disabled'); }, { name: 'view:attr:canSubmit', module: $m, viewTarget: { element: 'button', binding: 'attr:disabled' } });
   const txt11 = document.createTextNode('');
   createEffect(() => { txt11.data = String(submitLabel()); }, { name: 'view:submitLabel', module: $m, viewTarget: { element: 'button', binding: 'text' } });
   el20.appendChild(txt11);
