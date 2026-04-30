@@ -1,0 +1,31 @@
+module StockTicker {
+  signal price: float = 100.0;
+  signal threshold: float = 105.0;
+  signal history: string = "";
+  signal historyLen: int = 0;
+  signal movingAvg: float = 100.0;
+
+  comb alertFired = movingAvg > threshold;
+  comb priceDisplay = "$" + str(price);
+  comb avgDisplay = "$" + str(movingAvg);
+  comb statusClass = alertFired ? "status alert" : "status normal";
+  comb statusText = alertFired
+    ? "ALERT: avg " + avgDisplay + " > $" + str(threshold)
+    : "Normal: avg " + avgDisplay + " ≤ $" + str(threshold);
+
+  view {
+    <div class="stock-ticker">
+      <h2>Stock Ticker</h2>
+      <div class="price-display">
+        <span class="price">{priceDisplay}</span>
+        <span class="avg">avg: {avgDisplay}</span>
+      </div>
+      <p class={statusClass}>{statusText}</p>
+      <div class="controls">
+        <label>Alert Threshold: ${str(threshold)}
+          <input type="range" min="90" max="120" step="0.5" @bind=threshold />
+        </label>
+      </div>
+    </div>
+  }
+}
