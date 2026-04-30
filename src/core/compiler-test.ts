@@ -530,5 +530,116 @@ test('counter.comb with token + scoped style compiles', () => {
   assert(js.includes('var(--accent)'), 'Style should reference CSS var');
 });
 
+// --- Test 26: Cell + constraint — clean compile with createCell + createPropagator ---
+test('cell + constraint — compiles to createCell + createPropagator', () => {
+  const source = `
+module TempConverter {
+  cell celsius: float = 0.0;
+  cell fahrenheit: float = 32.0;
+
+  constraint convert {
+    (celsius) => {
+      fahrenheit <= celsius * 9.0 / 5.0 + 32.0;
+    }
+    (fahrenheit) => {
+      celsius <= (fahrenheit - 32.0) * 5.0 / 9.0;
+    }
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('createCell'), 'Should use createCell for cells');
+  assert(js.includes('createPropagator'), 'Should use createPropagator for constraint clauses');
+  assert(js.includes("name: 'celsius'"), 'Should name celsius cell');
+  assert(js.includes("name: 'fahrenheit'"), 'Should name fahrenheit cell');
+  assert(js.includes("convert:0"), 'Should name first clause convert:0');
+  assert(js.includes("convert:1"), 'Should name second clause convert:1');
+
+  // Graph should have cell and constraint nodes
+  const graph = result.graph!;
+  const cellNodes = graph.nodes.filter(n => n.type === 'cell');
+  assert(cellNodes.length === 2, `Expected 2 cell nodes, got ${cellNodes.length}`);
+  const constraintNodes = graph.nodes.filter(n => n.type === 'constraint');
+  assert(constraintNodes.length === 1, `Expected 1 constraint node, got ${constraintNodes.length}`);
+
+  // Bidirectional edges
+  const edges = graph.edges;
+  assert(edges.some(e => e.from === 'celsius' && e.to === 'constraint:convert'), 'Edge celsius→constraint');
+  assert(edges.some(e => e.from === 'constraint:convert' && e.to === 'celsius'), 'Edge constraint→celsius');
+  assert(edges.some(e => e.from === 'fahrenheit' && e.to === 'constraint:convert'), 'Edge fahrenheit→constraint');
+  assert(edges.some(e => e.from === 'constraint:convert' && e.to === 'fahrenheit'), 'Edge constraint→fahrenheit');
+});
+
+// --- Test 27: Constraint — reading non-input cell produces error ---
+test('constraint — reading undeclared input produces error', () => {
+  const source = `
+module Bad {
+  cell a: int = 0;
+  cell b: int = 0;
+  cell c: int = 0;
+
+  constraint sync {
+    (a) => {
+      b <= a + c;
+    }
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length > 0, 'Expected error for reading undeclared input');
+  assert(result.errors.some(e => e.message.includes("'c'") && e.message.includes('not declared')), `Error should mention undeclared read of c, got: ${result.errors.map(e => e.message)}`);
+});
+
+// --- Test 28: Constraint — self-triggering write produces error ---
+test('constraint — writing to own input produces error', () => {
+  const source = `
+module Bad {
+  cell x: int = 0;
+  cell y: int = 0;
+
+  constraint loop {
+    (x) => {
+      x <= x + 1;
+    }
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length > 0, 'Expected error for self-triggering write');
+  assert(result.errors.some(e => e.message.includes("'x'") && e.message.includes('self-trigger')), `Error should mention self-trigger, got: ${result.errors.map(e => e.message)}`);
+});
+
+// --- Test 29: Constraint — non-cell input produces error ---
+test('constraint — non-cell input produces error', () => {
+  const source = `
+module Bad {
+  signal x: int = 0;
+  cell y: int = 0;
+
+  constraint sync {
+    (x) => {
+      y <= x;
+    }
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length > 0, 'Expected error for non-cell input');
+  assert(result.errors.some(e => e.message.includes("'x'") && e.message.includes('not a cell')), `Error should mention not a cell, got: ${result.errors.map(e => e.message)}`);
+});
+
+// --- Test 30: Cell imports are conditional ---
+test('cell/constraint imports only when used', () => {
+  const source = `
+module Simple {
+  signal x: int = 0;
+  comb doubled = x * 2;
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+  const js = result.js!;
+  assert(!js.includes('createCell'), 'Should not import createCell when no cells');
+  assert(!js.includes('createPropagator'), 'Should not import createPropagator when no constraints');
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

@@ -1,6 +1,6 @@
 // verify.ts — Verification pass: dependency extraction, resolution, cycle detection
 
-import type { Module, Declaration, CombDecl, AlwaysBlock, AssertDecl, Expr, Statement, VNode } from './ast.js';
+import type { Module, Declaration, CombDecl, AlwaysBlock, AssertDecl, ConstraintDecl, Expr, Statement, VNode } from './ast.js';
 import type { StaticGraph, GraphNode, GraphEdge } from './graph.js';
 
 export interface CompileError {
@@ -21,7 +21,7 @@ export interface VerifyResult {
   warnings: CompileWarning[];
 }
 
-type SymbolKind = 'signal' | 'comb' | 'enum' | 'input' | 'output';
+type SymbolKind = 'signal' | 'comb' | 'enum' | 'input' | 'output' | 'cell';
 
 export function verify(mod: Module, moduleRegistry?: Map<string, Module>): VerifyResult {
   const errors: CompileError[] = [];
@@ -37,6 +37,7 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
     if (decl.kind === 'signal') symbols.set(decl.name, 'signal');
     if (decl.kind === 'token') symbols.set(decl.name, 'signal'); // tokens are signals
     if (decl.kind === 'comb') symbols.set(decl.name, 'comb');
+    if (decl.kind === 'cell') symbols.set(decl.name, 'cell');
     if (decl.kind === 'enum') {
       symbols.set(decl.name, 'enum');
       for (const v of decl.variants) enumValues.add(`${decl.name}.${v}`);
@@ -124,7 +125,7 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
             errors.push({ message: `Cannot write to '${w}' (comb) in always @(${decl.trigger.name}) — only signals can be assigned`, line: decl.loc.line, column: decl.loc.column });
           } else if (kind === 'input') {
             errors.push({ message: `Cannot write to '${w}' (input) in always @(${decl.trigger.name}) — inputs are read-only`, line: decl.loc.line, column: decl.loc.column });
-          } else if (kind !== 'signal' && kind !== 'output') {
+          } else if (kind !== 'signal' && kind !== 'output' && kind !== 'cell') {
             errors.push({ message: `Cannot write to '${w}' (${kind}) in always @(${decl.trigger.name}) — only signals can be assigned`, line: decl.loc.line, column: decl.loc.column });
           }
         }
@@ -167,6 +168,51 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
     }
   }
 
+  // 3b. Verify constraint clauses
+  for (const decl of mod.body) {
+    if (decl.kind === 'constraint') {
+      for (const clause of decl.clauses) {
+        // Verify all declared inputs exist and are cells
+        for (const inp of clause.inputs) {
+          if (!symbols.has(inp)) {
+            errors.push({ message: `Undefined cell '${inp}' in constraint '${decl.name}' clause inputs`, line: decl.loc.line, column: decl.loc.column });
+          } else if (symbols.get(inp) !== 'cell') {
+            errors.push({ message: `'${inp}' is not a cell — constraint '${decl.name}' inputs must be cells`, line: decl.loc.line, column: decl.loc.column });
+          }
+        }
+
+        // Collect reads and writes in clause body
+        const reads = new Set<string>();
+        const writes = new Set<string>();
+        collectAlwaysReadsWrites(clause.body, reads, writes, symbols, new Set());
+
+        // Verify reads are subset of declared inputs
+        const inputSet = new Set(clause.inputs);
+        for (const r of reads) {
+          if (symbols.has(r) && isReactiveKind(symbols.get(r)!) && !inputSet.has(r)) {
+            errors.push({ message: `Read of '${r}' not declared in constraint '${decl.name}' clause inputs (${clause.inputs.join(', ')})`, line: decl.loc.line, column: decl.loc.column });
+          }
+        }
+
+        // Verify write targets are cells
+        for (const w of writes) {
+          if (!symbols.has(w)) {
+            errors.push({ message: `Undefined cell '${w}' written in constraint '${decl.name}'`, line: decl.loc.line, column: decl.loc.column });
+          } else if (symbols.get(w) !== 'cell') {
+            errors.push({ message: `'${w}' is not a cell — constraint '${decl.name}' can only write to cells`, line: decl.loc.line, column: decl.loc.column });
+          }
+        }
+
+        // Verify no clause writes to its own inputs (no self-triggering)
+        for (const w of writes) {
+          if (inputSet.has(w)) {
+            errors.push({ message: `Cannot write to '${w}' in constraint '${decl.name}' — it is a declared input of this clause (would self-trigger)`, line: decl.loc.line, column: decl.loc.column });
+          }
+        }
+      }
+    }
+  }
+
   // 4. Cycle detection among combs
   const combDeps = new Map<string, string[]>();
   for (const decl of mod.body) {
@@ -188,7 +234,7 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
 
 // Collect identifiers that resolve to signals or combs (dependencies)
 function isReactiveKind(kind: SymbolKind): boolean {
-  return kind === 'signal' || kind === 'comb' || kind === 'input' || kind === 'output';
+  return kind === 'signal' || kind === 'comb' || kind === 'input' || kind === 'output' || kind === 'cell';
 }
 
 function collectDeps(expr: Expr, deps: Set<string>, symbols: Map<string, SymbolKind>, builtins: Set<string>, enumValues: Set<string>): void {
@@ -347,6 +393,25 @@ function buildGraph(mod: Module, symbols: Map<string, SymbolKind>): StaticGraph 
       nodes.push({ id: assertId, name: assertId, type: 'assert' });
       for (const dep of decl.deps) {
         edges.push({ from: dep, to: assertId, type: 'data' });
+      }
+    }
+    if (decl.kind === 'cell') {
+      nodes.push({ id: decl.name, name: decl.name, type: 'cell' });
+    }
+    if (decl.kind === 'constraint') {
+      const constraintId = `constraint:${decl.name}`;
+      nodes.push({ id: constraintId, name: decl.name, type: 'constraint' });
+      // Bidirectional edges: collect all cells referenced across all clauses
+      const allCells = new Set<string>();
+      for (const clause of decl.clauses) {
+        for (const inp of clause.inputs) allCells.add(inp);
+        const writes = new Set<string>();
+        collectAlwaysReadsWrites(clause.body, new Set(), writes, symbols, new Set());
+        for (const w of writes) allCells.add(w);
+      }
+      for (const cell of allCells) {
+        edges.push({ from: cell, to: constraintId, type: 'data' });
+        edges.push({ from: constraintId, to: cell, type: 'write' });
       }
     }
     if (decl.kind === 'view') {

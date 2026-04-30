@@ -2,9 +2,9 @@
 // Emits readable ES module JavaScript targeting the Comb runtime API
 
 import type {
-  Module, Declaration, InputDecl, OutputDecl, SignalDecl, TokenDecl, CombDecl,
-  AlwaysBlock, ViewBlock, StyleBlock, EnumDecl, AssertDecl, Statement, SignalAssign,
-  IfStatement, ExprStatement, VNode, VElement, VText, VExpr, VIf, VFor,
+  Module, Declaration, InputDecl, OutputDecl, SignalDecl, TokenDecl, CombDecl, CellDecl,
+  ConstraintDecl, AlwaysBlock, ViewBlock, StyleBlock, EnumDecl, AssertDecl, Statement,
+  SignalAssign, IfStatement, ExprStatement, VNode, VElement, VText, VExpr, VIf, VFor,
   VComponent, VAttr, Expr,
 } from './ast.js';
 import type { StaticGraph } from './graph.js';
@@ -13,6 +13,7 @@ interface GenContext {
   moduleName: string;
   signals: Set<string>;
   combs: Set<string>;
+  cells: Set<string>;
   params: Set<string>;
   inputs: Set<string>;
   outputs: Set<string>;
@@ -38,6 +39,7 @@ function createContext(mod: Module): GenContext {
     moduleName: mod.name,
     signals: new Set(),
     combs: new Set(),
+    cells: new Set(),
     params: new Set(),
     inputs: new Set(),
     outputs: new Set(),
@@ -54,6 +56,7 @@ function createContext(mod: Module): GenContext {
     if (decl.kind === 'output') { ctx.outputs.add(decl.name); ctx.signals.add(decl.name); }
     if (decl.kind === 'signal') ctx.signals.add(decl.name);
     if (decl.kind === 'token') ctx.signals.add(decl.name); // tokens are reactive signals
+    if (decl.kind === 'cell') { ctx.cells.add(decl.name); ctx.signals.add(decl.name); } // cells are reactive
     if (decl.kind === 'comb') ctx.combs.add(decl.name);
     if (decl.kind === 'enum') ctx.enums.set(decl.name, decl.variants);
   }
@@ -73,7 +76,12 @@ export function generate(mod: Module, graph: StaticGraph): string {
   const lines: string[] = [];
 
   // Imports
-  lines.push("import { createSignal, createComb, createEffect, batch, createScope, circuit } from '../runtime/index.js';");
+  const hasCells = mod.body.some(d => d.kind === 'cell');
+  const hasConstraints = mod.body.some(d => d.kind === 'constraint');
+  const importParts = ['createSignal', 'createComb', 'createEffect', 'batch', 'createScope', 'circuit'];
+  if (hasCells) importParts.push('createCell');
+  if (hasConstraints) importParts.push('createPropagator');
+  lines.push(`import { ${importParts.join(', ')} } from '../runtime/index.js';`);
   lines.push('');
 
   // Static graph export
@@ -131,10 +139,10 @@ export function generate(mod: Module, graph: StaticGraph): string {
   const testCtx = { ...ctx, indent: 1, elCount: 0, txtCount: 0, assertCount: 0 };
 
   for (const decl of mod.body) {
-    if (decl.kind === 'input' || decl.kind === 'output' || decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'comb' || decl.kind === 'enum' || decl.kind === 'assert') {
+    if (decl.kind === 'input' || decl.kind === 'output' || decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'comb' || decl.kind === 'cell' || decl.kind === 'constraint' || decl.kind === 'enum' || decl.kind === 'assert') {
       lines.push(...emitDecl(decl, testCtx));
       lines.push('');
-      if (decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'input' || decl.kind === 'output') signalNames.push(decl.name);
+      if (decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'input' || decl.kind === 'output' || decl.kind === 'cell') signalNames.push(decl.name);
       if (decl.kind === 'comb') combNames.push(decl.name);
     }
   }
@@ -165,6 +173,8 @@ function emitDecl(decl: Declaration, ctx: GenContext): string[] {
     case 'view': return emitView(decl, ctx);
     case 'style': return emitStyle(decl, ctx);
     case 'enum': return emitEnum(decl, ctx);
+    case 'cell': return emitCell(decl, ctx);
+    case 'constraint': return emitConstraint(decl, ctx);
     case 'assert': return emitAssert(decl, ctx);
   }
 }
@@ -216,6 +226,35 @@ function emitComb(decl: CombDecl, ctx: GenContext): string[] {
   const expr = emitExpr(decl.expr, ctx);
   const depsArr = JSON.stringify(decl.deps);
   return [`${i}const ${decl.name} = createComb(() => ${expr}, { name: '${decl.name}', module: $m, deps: ${depsArr} });`];
+}
+
+function emitCell(decl: CellDecl, ctx: GenContext): string[] {
+  const i = ind(ctx);
+  const init = emitExpr(decl.initial, ctx);
+  const setter = 'set' + capitalize(decl.name);
+  return [`${i}const [${decl.name}, ${setter}] = createCell(${init}, { name: '${decl.name}', module: $m });`];
+}
+
+function emitConstraint(decl: ConstraintDecl, ctx: GenContext): string[] {
+  const i = ind(ctx);
+  const lines: string[] = [];
+  for (let ci = 0; ci < decl.clauses.length; ci++) {
+    const clause = decl.clauses[ci];
+    const inputReads = clause.inputs.map(inp => `${inp}()`).join('; ');
+    lines.push(`${i}createPropagator(() => {`);
+    lines.push(`${i}  // Read inputs: ${clause.inputs.join(', ')}`);
+    for (const inp of clause.inputs) {
+      lines.push(`${i}  const __${inp} = ${inp}();`);
+    }
+    lines.push(`${i}  batch(() => {`);
+    const savedIndent = ctx.indent;
+    ctx.indent += 2;
+    for (const stmt of clause.body) lines.push(...emitStmt(stmt, ctx));
+    ctx.indent = savedIndent;
+    lines.push(`${i}  });`);
+    lines.push(`${i}}, [${clause.inputs.map(inp => `'${inp}'`).join(', ')}], { name: '${decl.name}:${ci}', module: $m });`);
+  }
+  return lines;
 }
 
 function emitEnum(decl: EnumDecl, ctx: GenContext): string[] {

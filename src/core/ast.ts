@@ -27,7 +27,9 @@ export type Declaration =
   | OutputDecl
   | SignalDecl
   | TokenDecl
+  | CellDecl
   | CombDecl
+  | ConstraintDecl
   | AlwaysBlock
   | ViewBlock
   | StyleBlock
@@ -66,12 +68,32 @@ export interface TokenDecl {
   loc: SourceLoc;
 }
 
+export interface CellDecl {
+  kind: 'cell';
+  name: string;
+  type: TypeExpr;
+  initial: Expr;
+  loc: SourceLoc;
+}
+
 export interface CombDecl {
   kind: 'comb';
   name: string;
   expr: Expr;
   deps: string[]; // filled by verification pass
   loc: SourceLoc;
+}
+
+export interface ConstraintDecl {
+  kind: 'constraint';
+  name: string;
+  clauses: ConstraintClause[];
+  loc: SourceLoc;
+}
+
+export interface ConstraintClause {
+  inputs: string[];
+  body: Statement[];
 }
 
 export interface AlwaysBlock {

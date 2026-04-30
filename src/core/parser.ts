@@ -2,7 +2,8 @@
 
 import { Token, TokenType } from './lexer.js';
 import type {
-  Module, Param, Declaration, InputDecl, OutputDecl, SignalDecl, TokenDecl, CombDecl,
+  Module, Param, Declaration, InputDecl, OutputDecl, SignalDecl, TokenDecl, CellDecl,
+  CombDecl, ConstraintDecl, ConstraintClause,
   AlwaysBlock, ViewBlock, StyleBlock, EnumDecl, AssertDecl, EventTrigger, Statement,
   SignalAssign, IfStatement, ExprStatement, VNode, VElement, VText, VExpr, VIf, VFor,
   VComponent, VAttr, Expr, Literal, Identifier, BinaryExpr, UnaryExpr,
@@ -144,7 +145,9 @@ class Parser {
       case TokenType.Output: return this.parseOutputDecl();
       case TokenType.Signal: return this.parseSignalDecl();
       case TokenType.Token: return this.parseTokenDecl();
+      case TokenType.Cell: return this.parseCellDecl();
       case TokenType.Comb: return this.parseCombDecl();
+      case TokenType.Constraint: return this.parseConstraintDecl();
       case TokenType.Always: return this.parseAlwaysBlock();
       case TokenType.View: return this.parseViewBlock();
       case TokenType.Style: return this.parseStyleBlock();
@@ -204,6 +207,55 @@ class Parser {
     const initial = this.parseExpr();
     this.expect(TokenType.Semicolon, 'token declaration');
     return { kind: 'token', name, type, initial, loc };
+  }
+
+  private parseCellDecl(): CellDecl {
+    const loc = this.loc();
+    this.expect(TokenType.Cell);
+    const name = this.expect(TokenType.Identifier, 'cell name').value;
+    this.expect(TokenType.Colon, 'cell type');
+    const type = this.parseType();
+    this.expect(TokenType.Assign, 'cell initializer');
+    const initial = this.parseExpr();
+    this.expect(TokenType.Semicolon, 'cell declaration');
+    return { kind: 'cell', name, type, initial, loc };
+  }
+
+  private parseConstraintDecl(): ConstraintDecl {
+    const loc = this.loc();
+    this.expect(TokenType.Constraint);
+    const name = this.expect(TokenType.Identifier, 'constraint name').value;
+    this.expect(TokenType.LBrace, 'constraint body');
+    const clauses: ConstraintClause[] = [];
+    while (!this.check(TokenType.RBrace) && !this.check(TokenType.EOF)) {
+      clauses.push(this.parseConstraintClause());
+    }
+    this.expect(TokenType.RBrace, 'constraint body end');
+    return { kind: 'constraint', name, clauses, loc };
+  }
+
+  private parseConstraintClause(): ConstraintClause {
+    this.expect(TokenType.LParen, 'constraint clause inputs');
+    const inputs: string[] = [];
+    if (!this.check(TokenType.RParen)) {
+      inputs.push(this.expect(TokenType.Identifier, 'constraint input').value);
+      while (this.match(TokenType.Comma)) {
+        inputs.push(this.expect(TokenType.Identifier, 'constraint input').value);
+      }
+    }
+    this.expect(TokenType.RParen, 'constraint clause inputs end');
+    // Expect => (parsed as = then >)
+    this.expect(TokenType.Assign, 'constraint arrow');
+    this.expect(TokenType.Gt, 'constraint arrow');
+    this.expect(TokenType.LBrace, 'constraint clause body');
+    const body: Statement[] = [];
+    this.inStatementContext = true;
+    while (!this.check(TokenType.RBrace) && !this.check(TokenType.EOF)) {
+      body.push(this.parseStatement());
+    }
+    this.inStatementContext = false;
+    this.expect(TokenType.RBrace, 'constraint clause body end');
+    return { inputs, body };
   }
 
   private parseCombDecl(): CombDecl {
