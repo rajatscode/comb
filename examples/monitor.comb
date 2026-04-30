@@ -39,7 +39,7 @@ module Monitor {
       <p class={statusClass}>{statusText}</p>
       <p class="alert-info">Alerts fired: {str(alertCount)} | {lastAlert}</p>
       <label>Threshold: {threshDisplay}
-        <input type="range" min="50" max="100" @bind=cpuThreshold />
+        <input type="range" min="0" max="100" @bind=cpuThreshold />
       </label>
     </div>
   }

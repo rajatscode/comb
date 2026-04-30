@@ -46,7 +46,7 @@ const COMB_CODE = `module Monitor {
       <p class={statusClass}>{statusText}</p>
       <p class="alert-info">Alerts fired: {str(alertCount)} | {lastAlert}</p>
       <label>Threshold: {threshDisplay}
-        <input type="range" min="50" max="100" @bind=cpuThreshold />
+        <input type="range" min="0" max="100" @bind=cpuThreshold />
       </label>
     </div>
   }
@@ -205,65 +205,95 @@ function createLanding(): HTMLElement {
   landing.innerHTML = `
     <section class="landing-hero">
       <h1 class="hero-title">Comb</h1>
-      <p class="hero-subtitle">The reactive framework with edge-triggered sensitivity.</p>
-      <p class="hero-tagline">Write circuits. Ship apps.</p>
-    </section>
-
-    <section class="showcase-section">
-      <h2 class="section-title">The same dashboard. Five frameworks.</h2>
-      <div class="showcase-tabs">
-        <button class="tab active" data-tab="comb">Comb</button>
-        <button class="tab" data-tab="react">React</button>
-        <button class="tab" data-tab="vue">Vue</button>
-        <button class="tab" data-tab="svelte">Svelte</button>
-        <button class="tab" data-tab="solid">Solid</button>
-      </div>
-      <div class="showcase-panels">
-        <div class="panel active" data-panel="comb">
-          <pre><code>${escapeHtml(COMB_CODE)}</code></pre>
-          <div class="panel-footer">
-            <span class="line-count">46 lines</span>
-            <span class="panel-note panel-note-ok">Edge detection is a language primitive &mdash; compiler-verified</span>
-          </div>
-        </div>
-        <div class="panel" data-panel="react">
-          <pre><code>${escapeHtml(REACT_CODE)}</code></pre>
-          <div class="panel-footer">
-            <span class="line-count">~35 lines</span>
-            <span class="panel-note panel-note-warn">Manual edge detection &mdash; <code>prevHigh</code> ref must be managed by hand</span>
-          </div>
-        </div>
-        <div class="panel" data-panel="vue">
-          <pre><code>${escapeHtml(VUE_CODE)}</code></pre>
-          <div class="panel-footer">
-            <span class="line-count">~35 lines</span>
-            <span class="panel-note panel-note-warn">Manual edge detection &mdash; <code>prevHigh</code> variable must be managed by hand</span>
-          </div>
-        </div>
-        <div class="panel" data-panel="svelte">
-          <pre><code>${escapeHtml(SVELTE_CODE)}</code></pre>
-          <div class="panel-footer">
-            <span class="line-count">~25 lines</span>
-            <span class="panel-note panel-note-warn">Manual edge detection &mdash; <code>prevHigh</code> flag must be managed by hand</span>
-          </div>
-        </div>
-        <div class="panel" data-panel="solid">
-          <pre><code>${escapeHtml(SOLID_CODE)}</code></pre>
-          <div class="panel-footer">
-            <span class="line-count">~30 lines</span>
-            <span class="panel-note panel-note-warn">Manual edge detection &mdash; <code>prevHigh</code> variable must be managed by hand</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="showcase-callout">
-        Every framework needs manual edge detection &mdash; tracking the previous value with a ref or variable, comparing on each update, and carefully managing the flag. Comb makes it a language primitive: <code>@(posedge expr)</code>. The compiler verifies it. The circuit graph visualizes it. One line replaces six.
-      </div>
+      <p class="hero-subtitle">A compiled UI framework where your reactive dependencies are visible, verified, and debuggable.</p>
     </section>
 
     <section class="live-preview-section">
-      <div class="live-preview-header">Live Preview &mdash; Comb Monitor Running</div>
+      <div class="live-preview-header">This is real &mdash; a compiled .comb module running live</div>
       <div id="live-preview" class="live-preview-container"></div>
+      <div style="display:flex; gap:1rem; justify-content:center; margin-top:1rem; flex-wrap:wrap;">
+        <a href="#monitor" class="hero-cta" style="display:inline-block; font-size:0.85rem; padding:0.5rem 1.5rem;">See circuit graph + waveform &rarr;</a>
+        <a href="/playground.html" class="hero-cta" style="display:inline-block; font-size:0.85rem; padding:0.5rem 1.5rem; background:transparent; border:1px solid #7b8cff;">Edit in Playground &rarr;</a>
+      </div>
+    </section>
+
+    <section class="showcase-section">
+      <h2 class="section-title">Why Comb?</h2>
+      <p style="text-align:center; color:#aaa; max-width:700px; margin:0 auto 2rem; line-height:1.6;">
+        Every framework makes you hand-track state transitions. Want to fire an alert <strong>once</strong> when a value crosses a threshold? Here's what that looks like:
+      </p>
+      <div class="showcase-tabs">
+        <button class="tab" data-tab="react">React</button>
+        <button class="tab" data-tab="svelte">Svelte</button>
+        <button class="tab" data-tab="solid">Solid</button>
+        <button class="tab active" data-tab="comb">Comb</button>
+      </div>
+      <div class="showcase-panels">
+        <div class="panel" data-panel="react">
+          <pre><code>const prevHigh = useRef(false);
+
+useEffect(() => {
+  const isHigh = cpuAvg > threshold;
+  if (isHigh && !prevHigh.current) {
+    setAlertCount(c => c + 1);              // posedge
+    setLastAlert(\`CPU crossed \${threshold}%\`);
+  }
+  if (!isHigh && prevHigh.current) {
+    setLastAlert(\`CPU recovered\`);           // negedge
+  }
+  prevHigh.current = isHigh;
+}, [cpuAvg, threshold]);</code></pre>
+          <div class="panel-footer">
+            <span class="panel-note panel-note-warn">13 lines. Manual ref. Easy to forget a dep. Fires every render if you get the array wrong.</span>
+          </div>
+        </div>
+        <div class="panel" data-panel="svelte">
+          <pre><code>let prevHigh = false;
+$effect(() => {
+  if (cpuHigh && !prevHigh) {
+    alertCount++;
+    lastAlert = \`CPU crossed \${threshold}%\`;
+  }
+  if (!cpuHigh && prevHigh) {
+    lastAlert = \`CPU recovered\`;
+  }
+  prevHigh = cpuHigh;
+});</code></pre>
+          <div class="panel-footer">
+            <span class="panel-note panel-note-warn">10 lines. Manual flag. No compiler help if you forget to update prevHigh.</span>
+          </div>
+        </div>
+        <div class="panel" data-panel="solid">
+          <pre><code>let prevHigh = false;
+createEffect(() => {
+  const isHigh = cpuAvg() > threshold();
+  if (isHigh && !prevHigh) {
+    setAlertCount(c => c + 1);
+    setLastAlert(\`CPU crossed \${threshold()}%\`);
+  }
+  if (!isHigh && prevHigh) {
+    setLastAlert(\`CPU recovered\`);
+  }
+  prevHigh = isHigh;
+});</code></pre>
+          <div class="panel-footer">
+            <span class="panel-note panel-note-warn">12 lines. Manual tracking. Conditional reads can lose reactivity.</span>
+          </div>
+        </div>
+        <div class="panel active" data-panel="comb">
+          <pre><code>always @(posedge cpuHigh) {
+  alertCount <= alertCount + 1;
+  lastAlert <= "CPU crossed " + threshDisplay;
+}
+
+always @(negedge cpuHigh) {
+  lastAlert <= "CPU recovered below " + threshDisplay;
+}</code></pre>
+          <div class="panel-footer">
+            <span class="panel-note panel-note-ok">7 lines. No manual tracking. Compiler-verified. Visualized in the circuit graph.</span>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section class="features-section">
@@ -425,43 +455,73 @@ function showLanding() {
     const previewEl = document.getElementById('live-preview');
     if (!previewEl) return;
 
-    const { Monitor, __graph } = await import('./generated/monitor.js');
-    const { renderWaveform } = await import('./waveform.js');
+    const { Monitor } = await import('./generated/monitor.js');
 
-    // Layout: monitor app + circuit graph side by side, waveform below
-    const previewRow = document.createElement('div');
-    previewRow.className = 'live-preview-row';
-
+    // App + auto-test panel
     const appPane = document.createElement('div');
     appPane.className = 'live-preview-app';
-    const circuitPane = document.createElement('div');
-    circuitPane.className = 'live-preview-circuit';
-
-    previewRow.appendChild(appPane);
-    previewRow.appendChild(circuitPane);
-    previewEl.appendChild(previewRow);
-
-    const wfDiv = document.createElement('div');
-    wfDiv.className = 'live-preview-waveform';
-    previewEl.appendChild(wfDiv);
+    previewEl.appendChild(appPane);
 
     const component = Monitor(appPane);
+
+    // Auto-test panel
+    const { __test } = await import('./generated/monitor.js');
+    const testPanel = document.createElement('div');
+    testPanel.className = 'auto-test-panel';
+    testPanel.innerHTML = `
+      <h4 style="margin:0 0 0.5rem; color:#7b8cff; font-size:0.85rem;">Auto-Testing &mdash; combs ARE specs</h4>
+      <p style="color:#888; font-size:0.8rem; margin:0 0 0.5rem;">__test() gives headless access to all signals. Fuzz 1000 random inputs, verify all combs.</p>
+      <button class="auto-test-btn" id="landing-autotest">Run Auto-Test (1000 inputs)</button>
+      <div id="autotest-result" style="font-family:monospace; font-size:0.8rem; color:#44ff44; margin-top:0.5rem;"></div>
+    `;
+    previewEl.appendChild(testPanel);
+
+    document.getElementById('landing-autotest')?.addEventListener('click', () => {
+      const btn = document.getElementById('landing-autotest') as HTMLButtonElement;
+      const result = document.getElementById('autotest-result')!;
+      btn.disabled = true;
+      btn.textContent = 'Running...';
+      setTimeout(() => {
+        const t = __test();
+        let pass = 0;
+        let fail = 0;
+        for (let i = 0; i < 1000; i++) {
+          const cpu = Math.random() * 100;
+          const avg = Math.random() * 100;
+          const thresh = Math.random() * 100;
+          batch(() => {
+            t.signals.cpu.set(Math.round(cpu * 10) / 10);
+            t.signals.cpuAvg.set(Math.round(avg * 10) / 10);
+            t.signals.cpuThreshold.set(Math.round(thresh * 10) / 10);
+          });
+          // Verify: cpuHigh should be (avg > thresh)
+          const expected = avg > thresh;
+          if (t.combs.cpuHigh() === expected) pass++;
+          else fail++;
+        }
+        t.dispose();
+        result.style.color = fail === 0 ? '#44ff44' : '#ff4444';
+        result.textContent = fail === 0
+          ? pass + '/1000 passed — cpuHigh = (cpuAvg > cpuThreshold) verified'
+          : fail + '/1000 failed';
+        btn.textContent = 'Run Again';
+        btn.disabled = false;
+      }, 50);
+    });
     const M = 'Monitor';
     const set = (name: string, v: any) => circuit.getNode(`${M}.${name}`)?.setValue?.(v);
 
-    circuit.startRecording();
+    // Start threshold at 40% so alerts fire quickly and visibly
+    set('cpuThreshold', 40);
 
-    renderCircuitGraph(circuitPane, __graph as any, circuit);
-    const wf = renderWaveform(wfDiv, circuit, [`${M}.cpu`, `${M}.cpuAvg`, `${M}.cpuHigh`]);
-
-    // Simulation
+    // Simulation — spike early (tick 5-12) so users see an alert fast
     const cpuHist: number[] = [];
-    let t = 0;
+    let tick = 0;
     const iv = setInterval(() => {
-      t++;
-      const spike = (t % 30 > 20 && t % 30 < 28);
-      const cpu = spike ? 75 + Math.random() * 20 : 20 + Math.random() * 30;
-      const mem = 40 + 20 * Math.sin(t / 40) + Math.random() * 10;
+      tick++;
+      const spike = (tick % 20 > 4 && tick % 20 < 12);
+      const cpu = spike ? 40 + Math.random() * 30 : 15 + Math.random() * 20;
+      const mem = 40 + 20 * Math.sin(tick / 40) + Math.random() * 10;
       cpuHist.push(cpu);
       if (cpuHist.length > 10) cpuHist.shift();
       const avg = cpuHist.reduce((a, b) => a + b) / cpuHist.length;
@@ -474,8 +534,6 @@ function showLanding() {
 
     livePreviewDispose = () => {
       clearInterval(iv);
-      circuit.stopRecording();
-      wf.dispose();
       component.dispose();
     };
   }, 100);

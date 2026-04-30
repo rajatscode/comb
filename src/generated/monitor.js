@@ -390,7 +390,7 @@ export function Monitor(root) {
   el11.appendChild(txt12);
   const el12 = document.createElement('input');
   el12.setAttribute('type', 'range');
-  el12.setAttribute('min', '50');
+  el12.setAttribute('min', '0');
   el12.setAttribute('max', '100');
   el12.value = cpuThreshold();
   createEffect(() => { el12.value = cpuThreshold(); }, { name: 'view:bind:cpuThreshold', module: $m, viewTarget: { element: 'input', binding: 'bind:value' } });

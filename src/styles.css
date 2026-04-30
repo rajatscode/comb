@@ -1112,3 +1112,10 @@ a:hover { text-decoration: underline; }
 .status-ok { color: #44ff44; }
 .alert-info { font-size: 0.85rem; color: #aaa; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+.auto-test-panel { background: #12122a; border: 1px solid #333; border-radius: 8px; padding: 1rem 1.5rem; margin-top: 1rem; }
+.auto-test-panel .auto-test-btn { background: #7b8cff; color: #fff; border: none; padding: 0.4rem 1rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
+.auto-test-panel .auto-test-btn:disabled { opacity: 0.5; cursor: default; }
+.auto-test-panel .auto-test-btn:hover:not(:disabled) { background: #6a7bff; }
+.live-preview-app { max-width: 600px; }
+
