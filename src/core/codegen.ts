@@ -376,7 +376,7 @@ function emitSignal(decl: SignalDecl, ctx: GenContext): string[] {
   const init = emitExpr(decl.initial, ctx);
   const setter = 'set' + capitalize(decl.name);
 
-  if (decl.type.kind === 'range') {
+  if (decl.type && decl.type.kind === 'range') {
     const { base, min, max } = decl.type;
     const meta = `{ name: '${decl.name}', module: $m, type: '${base}' }`;
     const rawSetter = `__rawSet${capitalize(decl.name)}`;
@@ -389,7 +389,7 @@ function emitSignal(decl: SignalDecl, ctx: GenContext): string[] {
     ];
   }
 
-  const typeName = decl.type.kind === 'simple' ? decl.type.name : undefined;
+  const typeName = decl.type?.kind === 'simple' ? decl.type.name : undefined;
   const meta = typeName
     ? `{ name: '${decl.name}', module: $m, type: '${typeName}' }`
     : `{ name: '${decl.name}', module: $m }`;
@@ -400,7 +400,7 @@ function emitToken(decl: TokenDecl, ctx: GenContext): string[] {
   const i = ind(ctx);
   const init = emitExpr(decl.initial, ctx);
   const setter = 'set' + capitalize(decl.name);
-  const typeName = decl.type.kind === 'simple' ? decl.type.name : undefined;
+  const typeName = decl.type?.kind === 'simple' ? decl.type.name : undefined;
   const meta = typeName
     ? `{ name: '${decl.name}', module: $m, type: '${typeName}' }`
     : `{ name: '${decl.name}', module: $m }`;

@@ -198,4 +198,3 @@ export function __test() {
     dispose: __scope.dispose,
   };
 }
-//# sourceMappingURL=counter.js.map

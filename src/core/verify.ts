@@ -236,7 +236,7 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
   const typeEnv = new Map<string, CombType>();
   for (const decl of mod.body) {
     if (decl.kind === 'input' || decl.kind === 'output' || decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'cell') {
-      const declaredType = resolveType(decl.type, enumDefs);
+      const declaredType = decl.type ? resolveType(decl.type, enumDefs) : { kind: 'any' as const };
       typeEnv.set(decl.name, declaredType);
       if (decl.initial || ('initial' in decl && (decl as any).initial)) {
         const init = (decl as any).initial as Expr | undefined;

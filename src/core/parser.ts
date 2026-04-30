@@ -202,12 +202,10 @@ class Parser {
     const loc = this.loc();
     this.expect(TokenType.Input);
     const name = this.expect(TokenType.Identifier, 'input name').value;
-    this.expect(TokenType.Colon, 'input type');
-    const type = this.parseType();
+    let type = undefined;
+    if (this.check(TokenType.Colon)) { this.advance(); type = this.parseType(); }
     let initial: Expr | undefined;
-    if (this.match(TokenType.Assign)) {
-      initial = this.parseExpr();
-    }
+    if (this.match(TokenType.Assign)) { initial = this.parseExpr(); }
     this.expect(TokenType.Semicolon, 'input declaration');
     return { kind: 'input', name, type, initial, loc };
   }
@@ -216,12 +214,10 @@ class Parser {
     const loc = this.loc();
     this.expect(TokenType.Output);
     const name = this.expect(TokenType.Identifier, 'output name').value;
-    this.expect(TokenType.Colon, 'output type');
-    const type = this.parseType();
+    let type = undefined;
+    if (this.check(TokenType.Colon)) { this.advance(); type = this.parseType(); }
     let initial: Expr | undefined;
-    if (this.match(TokenType.Assign)) {
-      initial = this.parseExpr();
-    }
+    if (this.match(TokenType.Assign)) { initial = this.parseExpr(); }
     this.expect(TokenType.Semicolon, 'output declaration');
     return { kind: 'output', name, type, initial, loc };
   }
@@ -230,8 +226,11 @@ class Parser {
     const loc = this.loc();
     this.expect(TokenType.Signal);
     const name = this.expect(TokenType.Identifier, 'signal name').value;
-    this.expect(TokenType.Colon, 'signal type');
-    const type = this.parseType();
+    let type = undefined;
+    if (this.check(TokenType.Colon)) {
+      this.advance();
+      type = this.parseType();
+    }
     this.expect(TokenType.Assign, 'signal initializer');
     const initial = this.parseExpr();
     this.expect(TokenType.Semicolon, 'signal declaration');
@@ -242,8 +241,8 @@ class Parser {
     const loc = this.loc();
     this.expect(TokenType.Token);
     const name = this.expect(TokenType.Identifier, 'token name').value;
-    this.expect(TokenType.Colon, 'token type');
-    const type = this.parseType();
+    let type = undefined;
+    if (this.check(TokenType.Colon)) { this.advance(); type = this.parseType(); }
     this.expect(TokenType.Assign, 'token initializer');
     const initial = this.parseExpr();
     this.expect(TokenType.Semicolon, 'token declaration');
@@ -254,8 +253,8 @@ class Parser {
     const loc = this.loc();
     this.expect(TokenType.Cell);
     const name = this.expect(TokenType.Identifier, 'cell name').value;
-    this.expect(TokenType.Colon, 'cell type');
-    const type = this.parseType();
+    let type = undefined;
+    if (this.check(TokenType.Colon)) { this.advance(); type = this.parseType(); }
     this.expect(TokenType.Assign, 'cell initializer');
     const initial = this.parseExpr();
     this.expect(TokenType.Semicolon, 'cell declaration');
@@ -499,6 +498,49 @@ class Parser {
     if (this.check(TokenType.Async)) return this.parseAsyncStmt();
 
     const loc = this.loc();
+
+    // Check for x++, x--, x += expr, x -= expr BEFORE full expression parsing
+    // (otherwise the expression parser consumes the + as a binary op)
+    if (this.check(TokenType.Identifier)) {
+      const name = this.peek().value;
+      if (this.peekAt(1).type === TokenType.Plus && this.peekAt(2).type === TokenType.Plus) {
+        this.advance(); this.advance(); this.advance(); // consume name + +
+        this.expect(TokenType.Semicolon, '++ statement');
+        const target: Identifier = { kind: 'identifier', name, loc };
+        const one: Literal = { kind: 'literal', value: 1, type: 'number', loc };
+        const add: BinaryExpr = { kind: 'binary', op: '+', left: target, right: one, loc };
+        return { kind: 'assign', target, value: add, loc };
+      }
+      if (this.peekAt(1).type === TokenType.Minus && this.peekAt(2).type === TokenType.Minus) {
+        this.advance(); this.advance(); this.advance();
+        this.expect(TokenType.Semicolon, '-- statement');
+        const target: Identifier = { kind: 'identifier', name, loc };
+        const one: Literal = { kind: 'literal', value: 1, type: 'number', loc };
+        const sub: BinaryExpr = { kind: 'binary', op: '-', left: target, right: one, loc };
+        return { kind: 'assign', target, value: sub, loc };
+      }
+      if (this.peekAt(1).type === TokenType.Plus && this.peekAt(2).type === TokenType.Assign) {
+        this.advance(); this.advance(); this.advance();
+        this.inStatementContext = true;
+        const rhs = this.parseExpr();
+        this.inStatementContext = false;
+        this.expect(TokenType.Semicolon, '+= statement');
+        const target: Identifier = { kind: 'identifier', name, loc };
+        const add: BinaryExpr = { kind: 'binary', op: '+', left: target, right: rhs, loc };
+        return { kind: 'assign', target, value: add, loc };
+      }
+      if (this.peekAt(1).type === TokenType.Minus && this.peekAt(2).type === TokenType.Assign) {
+        this.advance(); this.advance(); this.advance();
+        this.inStatementContext = true;
+        const rhs = this.parseExpr();
+        this.inStatementContext = false;
+        this.expect(TokenType.Semicolon, '-= statement');
+        const target: Identifier = { kind: 'identifier', name, loc };
+        const sub: BinaryExpr = { kind: 'binary', op: '-', left: target, right: rhs, loc };
+        return { kind: 'assign', target, value: sub, loc };
+      }
+    }
+
     this.inStatementContext = true;
     const expr = this.parseExpr();
     this.inStatementContext = false;

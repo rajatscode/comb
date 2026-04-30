@@ -1,75 +1,71 @@
 module Monitor {
-  signal cpu: float = 25.0;
-  signal mem: float = 40.0;
-  signal disk: float = 5.0;
-  signal net: float = 10.0;
-  signal cpuAvg: float = 25.0;
-  signal memAvg: float = 40.0;
-  signal cpuThreshold: float = 80.0;
-  signal memThreshold: float = 85.0;
-  signal diskThreshold: float = 90.0;
-  signal alertCount: int = 0;
-  signal lastAlert: string = "";
+  signal cpu = 25.0;
+  signal mem = 40.0;
+  signal disk = 5.0;
+  signal net = 10.0;
+  signal cpuAvg = 25.0;
+  signal memAvg = 40.0;
+  signal cpuThreshold = 80.0;
+  signal memThreshold = 85.0;
+  signal diskThreshold = 90.0;
+  signal alertCount = 0;
+  signal lastAlert = "";
 
   comb cpuHigh = cpuAvg > cpuThreshold;
   comb memHigh = memAvg > memThreshold;
   comb diskHigh = disk > diskThreshold;
   comb anyAlert = cpuHigh || memHigh || diskHigh;
-  comb statusText = anyAlert
-    ? (cpuHigh ? "CPU " : "") + (memHigh ? "MEM " : "") + (diskHigh ? "DISK " : "") + "alert"
-    : "All systems normal";
-  comb statusClass = anyAlert ? "status-alert" : "status-ok";
 
   always @(posedge cpuHigh) {
-    alertCount <= alertCount + 1;
+    alertCount++;
     lastAlert <= "CPU crossed threshold";
   }
-  always @(negedge cpuHigh) {
-    lastAlert <= "CPU recovered";
-  }
+  always @(negedge cpuHigh) { lastAlert <= "CPU recovered"; }
+
   always @(posedge memHigh) {
-    alertCount <= alertCount + 1;
+    alertCount++;
     lastAlert <= "Memory exceeded threshold";
   }
-  always @(negedge memHigh) {
-    lastAlert <= "Memory recovered";
-  }
+  always @(negedge memHigh) { lastAlert <= "Memory recovered"; }
+
   always @(posedge diskHigh) {
-    alertCount <= alertCount + 1;
+    alertCount++;
     lastAlert <= "Disk exceeded threshold";
   }
-  always @(negedge diskHigh) {
-    lastAlert <= "Disk recovered";
-  }
+  always @(negedge diskHigh) { lastAlert <= "Disk recovered"; }
 
   view {
     <div class="monitor">
       <div class="monitor-metrics">
         <div class="metric">
           <span class="metric-label">CPU</span>
-          <span class="metric-value">{str(round(cpu)) + "%"}</span>
-          <span class="metric-detail">{"avg " + str(round(cpuAvg)) + "%"}</span>
+          <span class="metric-value">{round(cpu) + "%"}</span>
+          <span class="metric-detail">{"avg " + round(cpuAvg) + "%"}</span>
         </div>
         <div class="metric">
           <span class="metric-label">Memory</span>
-          <span class="metric-value">{str(round(mem)) + "%"}</span>
-          <span class="metric-detail">{"avg " + str(round(memAvg)) + "%"}</span>
+          <span class="metric-value">{round(mem) + "%"}</span>
+          <span class="metric-detail">{"avg " + round(memAvg) + "%"}</span>
         </div>
         <div class="metric">
           <span class="metric-label">Disk</span>
-          <span class="metric-value">{str(round(disk)) + "%"}</span>
+          <span class="metric-value">{round(disk) + "%"}</span>
         </div>
         <div class="metric">
           <span class="metric-label">Network</span>
-          <span class="metric-value">{str(round(net)) + " MB/s"}</span>
+          <span class="metric-value">{round(net) + " MB/s"}</span>
         </div>
       </div>
-      <p class={statusClass}>{statusText}</p>
+      <p class={anyAlert ? "status-alert" : "status-ok"}>
+        {anyAlert
+          ? (cpuHigh ? "CPU " : "") + (memHigh ? "MEM " : "") + (diskHigh ? "DISK " : "") + "alert"
+          : "All systems normal"}
+      </p>
       <p class="alert-info">{"Alerts: " + str(alertCount) + " — " + lastAlert}</p>
       <div class="threshold-controls">
-        <label>{"CPU: " + str(round(cpuThreshold)) + "%"} <input type="range" min="0" max="100" @bind=cpuThreshold /></label>
-        <label>{"MEM: " + str(round(memThreshold)) + "%"} <input type="range" min="0" max="100" @bind=memThreshold /></label>
-        <label>{"DISK: " + str(round(diskThreshold)) + "%"} <input type="range" min="0" max="100" @bind=diskThreshold /></label>
+        <label>{"CPU: " + round(cpuThreshold) + "%"} <input type="range" min="0" max="100" @bind=cpuThreshold /></label>
+        <label>{"MEM: " + round(memThreshold) + "%"} <input type="range" min="0" max="100" @bind=memThreshold /></label>
+        <label>{"DISK: " + round(diskThreshold) + "%"} <input type="range" min="0" max="100" @bind=diskThreshold /></label>
       </div>
     </div>
   }

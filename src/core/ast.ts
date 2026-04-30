@@ -17,7 +17,7 @@ export interface Module {
 
 export interface Param {
   name: string;
-  type: TypeExpr;
+  type?: TypeExpr;
 }
 
 // Declarations
@@ -41,7 +41,7 @@ export type Declaration =
 export interface InputDecl {
   kind: 'input';
   name: string;
-  type: TypeExpr;
+  type?: TypeExpr;
   initial?: Expr;
   loc: SourceLoc;
 }
@@ -49,7 +49,7 @@ export interface InputDecl {
 export interface OutputDecl {
   kind: 'output';
   name: string;
-  type: TypeExpr;
+  type?: TypeExpr;
   initial?: Expr;
   loc: SourceLoc;
 }
@@ -57,7 +57,7 @@ export interface OutputDecl {
 export interface SignalDecl {
   kind: 'signal';
   name: string;
-  type: TypeExpr;
+  type?: TypeExpr;
   initial: Expr;
   loc: SourceLoc;
 }
@@ -65,7 +65,7 @@ export interface SignalDecl {
 export interface TokenDecl {
   kind: 'token';
   name: string;
-  type: TypeExpr;
+  type?: TypeExpr;
   initial: Expr;
   loc: SourceLoc;
 }
@@ -73,7 +73,7 @@ export interface TokenDecl {
 export interface CellDecl {
   kind: 'cell';
   name: string;
-  type: TypeExpr;
+  type?: TypeExpr;
   initial: Expr;
   loc: SourceLoc;
 }

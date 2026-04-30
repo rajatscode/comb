@@ -78,16 +78,6 @@ export const __graph = {
       "type": "comb"
     },
     {
-      "id": "statusText",
-      "name": "statusText",
-      "type": "comb"
-    },
-    {
-      "id": "statusClass",
-      "name": "statusClass",
-      "type": "comb"
-    },
-    {
       "id": "posedge:cpuHigh",
       "name": "posedge(cpuHigh)",
       "type": "sensitivity"
@@ -118,8 +108,8 @@ export const __graph = {
       "type": "sensitivity"
     },
     {
-      "id": "view:str",
-      "name": "view:str",
+      "id": "view:round",
+      "name": "view:round",
       "type": "view-effect",
       "viewTarget": {
         "element": "span.metric-value",
@@ -127,8 +117,8 @@ export const __graph = {
       }
     },
     {
-      "id": "view:str",
-      "name": "view:str",
+      "id": "view:round",
+      "name": "view:round",
       "type": "view-effect",
       "viewTarget": {
         "element": "span.metric-detail",
@@ -136,8 +126,8 @@ export const __graph = {
       }
     },
     {
-      "id": "view:str",
-      "name": "view:str",
+      "id": "view:round",
+      "name": "view:round",
       "type": "view-effect",
       "viewTarget": {
         "element": "span.metric-value",
@@ -145,8 +135,8 @@ export const __graph = {
       }
     },
     {
-      "id": "view:str",
-      "name": "view:str",
+      "id": "view:round",
+      "name": "view:round",
       "type": "view-effect",
       "viewTarget": {
         "element": "span.metric-detail",
@@ -154,8 +144,8 @@ export const __graph = {
       }
     },
     {
-      "id": "view:str",
-      "name": "view:str",
+      "id": "view:round",
+      "name": "view:round",
       "type": "view-effect",
       "viewTarget": {
         "element": "span.metric-value",
@@ -163,8 +153,8 @@ export const __graph = {
       }
     },
     {
-      "id": "view:str",
-      "name": "view:str",
+      "id": "view:round",
+      "name": "view:round",
       "type": "view-effect",
       "viewTarget": {
         "element": "span.metric-value",
@@ -181,8 +171,8 @@ export const __graph = {
       }
     },
     {
-      "id": "view:statusText",
-      "name": "view:statusText",
+      "id": "view:anyAlert",
+      "name": "view:anyAlert",
       "type": "view-effect",
       "viewTarget": {
         "element": "p",
@@ -199,8 +189,8 @@ export const __graph = {
       }
     },
     {
-      "id": "view:str",
-      "name": "view:str",
+      "id": "view:round",
+      "name": "view:round",
       "type": "view-effect",
       "viewTarget": {
         "element": "label",
@@ -217,8 +207,8 @@ export const __graph = {
       }
     },
     {
-      "id": "view:str",
-      "name": "view:str",
+      "id": "view:round",
+      "name": "view:round",
       "type": "view-effect",
       "viewTarget": {
         "element": "label",
@@ -235,8 +225,8 @@ export const __graph = {
       }
     },
     {
-      "id": "view:str",
-      "name": "view:str",
+      "id": "view:round",
+      "name": "view:round",
       "type": "view-effect",
       "viewTarget": {
         "element": "label",
@@ -297,31 +287,6 @@ export const __graph = {
     {
       "from": "diskHigh",
       "to": "anyAlert",
-      "type": "data"
-    },
-    {
-      "from": "anyAlert",
-      "to": "statusText",
-      "type": "data"
-    },
-    {
-      "from": "cpuHigh",
-      "to": "statusText",
-      "type": "data"
-    },
-    {
-      "from": "memHigh",
-      "to": "statusText",
-      "type": "data"
-    },
-    {
-      "from": "diskHigh",
-      "to": "statusText",
-      "type": "data"
-    },
-    {
-      "from": "anyAlert",
-      "to": "statusClass",
       "type": "data"
     },
     {
@@ -401,42 +366,57 @@ export const __graph = {
     },
     {
       "from": "cpu",
-      "to": "view:str",
+      "to": "view:round",
       "type": "data"
     },
     {
       "from": "cpuAvg",
-      "to": "view:str",
+      "to": "view:round",
       "type": "data"
     },
     {
       "from": "mem",
-      "to": "view:str",
+      "to": "view:round",
       "type": "data"
     },
     {
       "from": "memAvg",
-      "to": "view:str",
+      "to": "view:round",
       "type": "data"
     },
     {
       "from": "disk",
-      "to": "view:str",
+      "to": "view:round",
       "type": "data"
     },
     {
       "from": "net",
-      "to": "view:str",
+      "to": "view:round",
       "type": "data"
     },
     {
-      "from": "statusClass",
+      "from": "anyAlert",
       "to": "view:attr:class",
       "type": "data"
     },
     {
-      "from": "statusText",
-      "to": "view:statusText",
+      "from": "anyAlert",
+      "to": "view:anyAlert",
+      "type": "data"
+    },
+    {
+      "from": "cpuHigh",
+      "to": "view:anyAlert",
+      "type": "data"
+    },
+    {
+      "from": "memHigh",
+      "to": "view:anyAlert",
+      "type": "data"
+    },
+    {
+      "from": "diskHigh",
+      "to": "view:anyAlert",
       "type": "data"
     },
     {
@@ -451,7 +431,7 @@ export const __graph = {
     },
     {
       "from": "cpuThreshold",
-      "to": "view:str",
+      "to": "view:round",
       "type": "data"
     },
     {
@@ -461,7 +441,7 @@ export const __graph = {
     },
     {
       "from": "memThreshold",
-      "to": "view:str",
+      "to": "view:round",
       "type": "data"
     },
     {
@@ -471,7 +451,7 @@ export const __graph = {
     },
     {
       "from": "diskThreshold",
-      "to": "view:str",
+      "to": "view:round",
       "type": "data"
     },
     {
@@ -487,27 +467,27 @@ export function Monitor(root) {
   circuit.loadStaticGraph(__graph);
   const __scope = createScope();
 
-  const [cpu, setCpu] = createSignal(25, { name: 'cpu', module: $m, type: 'float' });
+  const [cpu, setCpu] = createSignal(25, { name: 'cpu', module: $m });
 
-  const [mem, setMem] = createSignal(40, { name: 'mem', module: $m, type: 'float' });
+  const [mem, setMem] = createSignal(40, { name: 'mem', module: $m });
 
-  const [disk, setDisk] = createSignal(5, { name: 'disk', module: $m, type: 'float' });
+  const [disk, setDisk] = createSignal(5, { name: 'disk', module: $m });
 
-  const [net, setNet] = createSignal(10, { name: 'net', module: $m, type: 'float' });
+  const [net, setNet] = createSignal(10, { name: 'net', module: $m });
 
-  const [cpuAvg, setCpuAvg] = createSignal(25, { name: 'cpuAvg', module: $m, type: 'float' });
+  const [cpuAvg, setCpuAvg] = createSignal(25, { name: 'cpuAvg', module: $m });
 
-  const [memAvg, setMemAvg] = createSignal(40, { name: 'memAvg', module: $m, type: 'float' });
+  const [memAvg, setMemAvg] = createSignal(40, { name: 'memAvg', module: $m });
 
-  const [cpuThreshold, setCpuThreshold] = createSignal(80, { name: 'cpuThreshold', module: $m, type: 'float' });
+  const [cpuThreshold, setCpuThreshold] = createSignal(80, { name: 'cpuThreshold', module: $m });
 
-  const [memThreshold, setMemThreshold] = createSignal(85, { name: 'memThreshold', module: $m, type: 'float' });
+  const [memThreshold, setMemThreshold] = createSignal(85, { name: 'memThreshold', module: $m });
 
-  const [diskThreshold, setDiskThreshold] = createSignal(90, { name: 'diskThreshold', module: $m, type: 'float' });
+  const [diskThreshold, setDiskThreshold] = createSignal(90, { name: 'diskThreshold', module: $m });
 
-  const [alertCount, setAlertCount] = createSignal(0, { name: 'alertCount', module: $m, type: 'int' });
+  const [alertCount, setAlertCount] = createSignal(0, { name: 'alertCount', module: $m });
 
-  const [lastAlert, setLastAlert] = createSignal("", { name: 'lastAlert', module: $m, type: 'string' });
+  const [lastAlert, setLastAlert] = createSignal("", { name: 'lastAlert', module: $m });
 
   const cpuHigh = createComb(() => (cpuAvg() > cpuThreshold()), { name: 'cpuHigh', module: $m, deps: ["cpuAvg","cpuThreshold"] });
 
@@ -516,10 +496,6 @@ export function Monitor(root) {
   const diskHigh = createComb(() => (disk() > diskThreshold()), { name: 'diskHigh', module: $m, deps: ["disk","diskThreshold"] });
 
   const anyAlert = createComb(() => ((cpuHigh() || memHigh()) || diskHigh()), { name: 'anyAlert', module: $m, deps: ["cpuHigh","memHigh","diskHigh"] });
-
-  const statusText = createComb(() => (anyAlert() ? ((((cpuHigh() ? "CPU " : "") + (memHigh() ? "MEM " : "")) + (diskHigh() ? "DISK " : "")) + "alert") : "All systems normal"), { name: 'statusText', module: $m, deps: ["anyAlert","cpuHigh","memHigh","diskHigh"] });
-
-  const statusClass = createComb(() => (anyAlert() ? "status-alert" : "status-ok"), { name: 'statusClass', module: $m, deps: ["anyAlert"] });
 
   createEdgeEffect(() => cpuHigh(), 'posedge', () => {
     batch(() => {
@@ -574,13 +550,13 @@ export function Monitor(root) {
   const el4 = document.createElement('span');
   el4.setAttribute('class', 'metric-value');
   const txt1 = document.createTextNode('');
-  createEffect(() => { txt1.data = String((String(Math.round(cpu())) + "%")); }, { name: 'view:str', module: $m, viewTarget: { element: 'span.metric-value', binding: 'text' } });
+  createEffect(() => { txt1.data = String((Math.round(cpu()) + "%")); }, { name: 'view:round', module: $m, viewTarget: { element: 'span.metric-value', binding: 'text' } });
   el4.appendChild(txt1);
   el2.appendChild(el4);
   const el5 = document.createElement('span');
   el5.setAttribute('class', 'metric-detail');
   const txt2 = document.createTextNode('');
-  createEffect(() => { txt2.data = String((("avg " + String(Math.round(cpuAvg()))) + "%")); }, { name: 'view:str', module: $m, viewTarget: { element: 'span.metric-detail', binding: 'text' } });
+  createEffect(() => { txt2.data = String((("avg " + Math.round(cpuAvg())) + "%")); }, { name: 'view:round', module: $m, viewTarget: { element: 'span.metric-detail', binding: 'text' } });
   el5.appendChild(txt2);
   el2.appendChild(el5);
   el1.appendChild(el2);
@@ -594,13 +570,13 @@ export function Monitor(root) {
   const el8 = document.createElement('span');
   el8.setAttribute('class', 'metric-value');
   const txt4 = document.createTextNode('');
-  createEffect(() => { txt4.data = String((String(Math.round(mem())) + "%")); }, { name: 'view:str', module: $m, viewTarget: { element: 'span.metric-value', binding: 'text' } });
+  createEffect(() => { txt4.data = String((Math.round(mem()) + "%")); }, { name: 'view:round', module: $m, viewTarget: { element: 'span.metric-value', binding: 'text' } });
   el8.appendChild(txt4);
   el6.appendChild(el8);
   const el9 = document.createElement('span');
   el9.setAttribute('class', 'metric-detail');
   const txt5 = document.createTextNode('');
-  createEffect(() => { txt5.data = String((("avg " + String(Math.round(memAvg()))) + "%")); }, { name: 'view:str', module: $m, viewTarget: { element: 'span.metric-detail', binding: 'text' } });
+  createEffect(() => { txt5.data = String((("avg " + Math.round(memAvg())) + "%")); }, { name: 'view:round', module: $m, viewTarget: { element: 'span.metric-detail', binding: 'text' } });
   el9.appendChild(txt5);
   el6.appendChild(el9);
   el1.appendChild(el6);
@@ -614,7 +590,7 @@ export function Monitor(root) {
   const el12 = document.createElement('span');
   el12.setAttribute('class', 'metric-value');
   const txt7 = document.createTextNode('');
-  createEffect(() => { txt7.data = String((String(Math.round(disk())) + "%")); }, { name: 'view:str', module: $m, viewTarget: { element: 'span.metric-value', binding: 'text' } });
+  createEffect(() => { txt7.data = String((Math.round(disk()) + "%")); }, { name: 'view:round', module: $m, viewTarget: { element: 'span.metric-value', binding: 'text' } });
   el12.appendChild(txt7);
   el10.appendChild(el12);
   el1.appendChild(el10);
@@ -628,15 +604,15 @@ export function Monitor(root) {
   const el15 = document.createElement('span');
   el15.setAttribute('class', 'metric-value');
   const txt9 = document.createTextNode('');
-  createEffect(() => { txt9.data = String((String(Math.round(net())) + " MB/s")); }, { name: 'view:str', module: $m, viewTarget: { element: 'span.metric-value', binding: 'text' } });
+  createEffect(() => { txt9.data = String((Math.round(net()) + " MB/s")); }, { name: 'view:round', module: $m, viewTarget: { element: 'span.metric-value', binding: 'text' } });
   el15.appendChild(txt9);
   el13.appendChild(el15);
   el1.appendChild(el13);
   el0.appendChild(el1);
   const el16 = document.createElement('p');
-  createEffect(() => { el16.setAttribute('class', statusClass()); }, { name: 'view:attr:statusClass', module: $m, viewTarget: { element: 'p', binding: 'attr:class' } });
+  createEffect(() => { el16.setAttribute('class', (anyAlert() ? "status-alert" : "status-ok")); }, { name: 'view:attr:anyAlert', module: $m, viewTarget: { element: 'p', binding: 'attr:class' } });
   const txt10 = document.createTextNode('');
-  createEffect(() => { txt10.data = String(statusText()); }, { name: 'view:statusText', module: $m, viewTarget: { element: 'p', binding: 'text' } });
+  createEffect(() => { txt10.data = String((anyAlert() ? ((((cpuHigh() ? "CPU " : "") + (memHigh() ? "MEM " : "")) + (diskHigh() ? "DISK " : "")) + "alert") : "All systems normal")); }, { name: 'view:anyAlert', module: $m, viewTarget: { element: 'p', binding: 'text' } });
   el16.appendChild(txt10);
   el0.appendChild(el16);
   const el17 = document.createElement('p');
@@ -649,7 +625,7 @@ export function Monitor(root) {
   el18.setAttribute('class', 'threshold-controls');
   const el19 = document.createElement('label');
   const txt12 = document.createTextNode('');
-  createEffect(() => { txt12.data = String((("CPU: " + String(Math.round(cpuThreshold()))) + "%")); }, { name: 'view:str', module: $m, viewTarget: { element: 'label', binding: 'text' } });
+  createEffect(() => { txt12.data = String((("CPU: " + Math.round(cpuThreshold())) + "%")); }, { name: 'view:round', module: $m, viewTarget: { element: 'label', binding: 'text' } });
   el19.appendChild(txt12);
   const el20 = document.createElement('input');
   el20.setAttribute('type', 'range');
@@ -662,7 +638,7 @@ export function Monitor(root) {
   el18.appendChild(el19);
   const el21 = document.createElement('label');
   const txt13 = document.createTextNode('');
-  createEffect(() => { txt13.data = String((("MEM: " + String(Math.round(memThreshold()))) + "%")); }, { name: 'view:str', module: $m, viewTarget: { element: 'label', binding: 'text' } });
+  createEffect(() => { txt13.data = String((("MEM: " + Math.round(memThreshold())) + "%")); }, { name: 'view:round', module: $m, viewTarget: { element: 'label', binding: 'text' } });
   el21.appendChild(txt13);
   const el22 = document.createElement('input');
   el22.setAttribute('type', 'range');
@@ -675,7 +651,7 @@ export function Monitor(root) {
   el18.appendChild(el21);
   const el23 = document.createElement('label');
   const txt14 = document.createTextNode('');
-  createEffect(() => { txt14.data = String((("DISK: " + String(Math.round(diskThreshold()))) + "%")); }, { name: 'view:str', module: $m, viewTarget: { element: 'label', binding: 'text' } });
+  createEffect(() => { txt14.data = String((("DISK: " + Math.round(diskThreshold())) + "%")); }, { name: 'view:round', module: $m, viewTarget: { element: 'label', binding: 'text' } });
   el23.appendChild(txt14);
   const el24 = document.createElement('input');
   el24.setAttribute('type', 'range');
@@ -697,27 +673,27 @@ export function __test() {
   circuit.loadStaticGraph(__graph);
   const __scope = createScope();
 
-  const [cpu, setCpu] = createSignal(25, { name: 'cpu', module: $m, type: 'float' });
+  const [cpu, setCpu] = createSignal(25, { name: 'cpu', module: $m });
 
-  const [mem, setMem] = createSignal(40, { name: 'mem', module: $m, type: 'float' });
+  const [mem, setMem] = createSignal(40, { name: 'mem', module: $m });
 
-  const [disk, setDisk] = createSignal(5, { name: 'disk', module: $m, type: 'float' });
+  const [disk, setDisk] = createSignal(5, { name: 'disk', module: $m });
 
-  const [net, setNet] = createSignal(10, { name: 'net', module: $m, type: 'float' });
+  const [net, setNet] = createSignal(10, { name: 'net', module: $m });
 
-  const [cpuAvg, setCpuAvg] = createSignal(25, { name: 'cpuAvg', module: $m, type: 'float' });
+  const [cpuAvg, setCpuAvg] = createSignal(25, { name: 'cpuAvg', module: $m });
 
-  const [memAvg, setMemAvg] = createSignal(40, { name: 'memAvg', module: $m, type: 'float' });
+  const [memAvg, setMemAvg] = createSignal(40, { name: 'memAvg', module: $m });
 
-  const [cpuThreshold, setCpuThreshold] = createSignal(80, { name: 'cpuThreshold', module: $m, type: 'float' });
+  const [cpuThreshold, setCpuThreshold] = createSignal(80, { name: 'cpuThreshold', module: $m });
 
-  const [memThreshold, setMemThreshold] = createSignal(85, { name: 'memThreshold', module: $m, type: 'float' });
+  const [memThreshold, setMemThreshold] = createSignal(85, { name: 'memThreshold', module: $m });
 
-  const [diskThreshold, setDiskThreshold] = createSignal(90, { name: 'diskThreshold', module: $m, type: 'float' });
+  const [diskThreshold, setDiskThreshold] = createSignal(90, { name: 'diskThreshold', module: $m });
 
-  const [alertCount, setAlertCount] = createSignal(0, { name: 'alertCount', module: $m, type: 'int' });
+  const [alertCount, setAlertCount] = createSignal(0, { name: 'alertCount', module: $m });
 
-  const [lastAlert, setLastAlert] = createSignal("", { name: 'lastAlert', module: $m, type: 'string' });
+  const [lastAlert, setLastAlert] = createSignal("", { name: 'lastAlert', module: $m });
 
   const cpuHigh = createComb(() => (cpuAvg() > cpuThreshold()), { name: 'cpuHigh', module: $m, deps: ["cpuAvg","cpuThreshold"] });
 
@@ -727,13 +703,9 @@ export function __test() {
 
   const anyAlert = createComb(() => ((cpuHigh() || memHigh()) || diskHigh()), { name: 'anyAlert', module: $m, deps: ["cpuHigh","memHigh","diskHigh"] });
 
-  const statusText = createComb(() => (anyAlert() ? ((((cpuHigh() ? "CPU " : "") + (memHigh() ? "MEM " : "")) + (diskHigh() ? "DISK " : "")) + "alert") : "All systems normal"), { name: 'statusText', module: $m, deps: ["anyAlert","cpuHigh","memHigh","diskHigh"] });
-
-  const statusClass = createComb(() => (anyAlert() ? "status-alert" : "status-ok"), { name: 'statusClass', module: $m, deps: ["anyAlert"] });
-
   return {
     signals: { cpu: { get: cpu, set: setCpu }, mem: { get: mem, set: setMem }, disk: { get: disk, set: setDisk }, net: { get: net, set: setNet }, cpuAvg: { get: cpuAvg, set: setCpuAvg }, memAvg: { get: memAvg, set: setMemAvg }, cpuThreshold: { get: cpuThreshold, set: setCpuThreshold }, memThreshold: { get: memThreshold, set: setMemThreshold }, diskThreshold: { get: diskThreshold, set: setDiskThreshold }, alertCount: { get: alertCount, set: setAlertCount }, lastAlert: { get: lastAlert, set: setLastAlert } },
-    combs: { cpuHigh, memHigh, diskHigh, anyAlert, statusText, statusClass },
+    combs: { cpuHigh, memHigh, diskHigh, anyAlert },
     dispose: __scope.dispose,
   };
 }
