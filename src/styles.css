@@ -608,9 +608,9 @@ a:hover { text-decoration: underline; }
 }
 
 .hero-title {
-  font-size: 4.5rem;
+  font-size: 3.5rem;
   font-weight: 800;
-  letter-spacing: -2px;
+  letter-spacing: -1px;
   margin: 0;
   background: linear-gradient(135deg, #4a9eff, #c084fc);
   -webkit-background-clip: text;
@@ -727,15 +727,17 @@ a:hover { text-decoration: underline; }
 .comparison-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.82rem;
+  font-size: 0.75rem;
+  table-layout: fixed;
 }
 
 .comparison-table th,
 .comparison-table td {
-  padding: 0.55rem 0.6rem;
+  padding: 0.45rem 0.5rem;
   text-align: left;
   border-bottom: 1px solid var(--border);
-  word-wrap: break-word;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .comparison-table thead th {
