@@ -48,12 +48,12 @@ module Monitor {
         <div class="metric">
           <span class="metric-label">CPU</span>
           <span class="metric-value">{str(round(cpu)) + "%"}</span>
-          <span class="metric-detail">avg {str(round(cpuAvg)) + "%"}</span>
+          <span class="metric-detail">{"avg " + str(round(cpuAvg)) + "%"}</span>
         </div>
         <div class="metric">
           <span class="metric-label">Memory</span>
           <span class="metric-value">{str(round(mem)) + "%"}</span>
-          <span class="metric-detail">avg {str(round(memAvg)) + "%"}</span>
+          <span class="metric-detail">{"avg " + str(round(memAvg)) + "%"}</span>
         </div>
         <div class="metric">
           <span class="metric-label">Disk</span>
@@ -67,9 +67,9 @@ module Monitor {
       <p class={statusClass}>{statusText}</p>
       <p class="alert-info">{"Alerts: " + str(alertCount) + " — " + lastAlert}</p>
       <div class="threshold-controls">
-        <label>CPU: {str(round(cpuThreshold)) + "%"} <input type="range" min="0" max="100" @bind=cpuThreshold /></label>
-        <label>MEM: {str(round(memThreshold)) + "%"} <input type="range" min="0" max="100" @bind=memThreshold /></label>
-        <label>DISK: {str(round(diskThreshold)) + "%"} <input type="range" min="0" max="100" @bind=diskThreshold /></label>
+        <label>{"CPU: " + str(round(cpuThreshold)) + "%"} <input type="range" min="0" max="100" @bind=cpuThreshold /></label>
+        <label>{"MEM: " + str(round(memThreshold)) + "%"} <input type="range" min="0" max="100" @bind=memThreshold /></label>
+        <label>{"DISK: " + str(round(diskThreshold)) + "%"} <input type="range" min="0" max="100" @bind=diskThreshold /></label>
       </div>
     </div>
   }
