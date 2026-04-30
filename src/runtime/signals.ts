@@ -1,14 +1,16 @@
-// signals.ts — Push-pull reactive primitives with auto-tracking
+// signals.ts — DES (Discrete Event Simulation) reactive runtime
+// Replaces microtask-based reactivity with a proper delta-cycle simulation engine.
 
 import { circuit } from './circuit.js';
 
-// --- Internal state ---
+// --- Internal types ---
 
 interface Computation {
   execute: () => void;
   dependencies: Set<SignalNode<any>>;
   cleanups: (() => void)[];
   disposed: boolean;
+  isDom: boolean;
 }
 
 interface SignalNode<T> {
@@ -16,12 +18,107 @@ interface SignalNode<T> {
   subscribers: Set<Computation>;
 }
 
+interface PendingUpdate<T> {
+  signal: SignalNode<T>;
+  nodeId: string;
+  value: T;
+  oldValue: T;
+}
+
+// --- Simulation Engine ---
+
+class SimulationEngine {
+  evaluating = false;
+  pendingUpdates: PendingUpdate<any>[] = [];
+  pendingComputations = new Set<Computation>();
+  private deltaCount = 0;
+  private maxDeltaCycles = 1000;
+  private domEffects: (() => void)[] = [];
+  batchDepth = 0;
+
+  scheduleUpdate<T>(signal: SignalNode<T>, nodeId: string, value: T, oldValue: T): void {
+    this.pendingUpdates.push({ signal, nodeId, value, oldValue });
+  }
+
+  scheduleComputation(comp: Computation): void {
+    if (comp.disposed) return;
+    if (comp.isDom) {
+      // DOM effects are deferred until after quiescence
+      this.scheduleDomEffect(() => {
+        if (!comp.disposed) comp.execute();
+      });
+    } else {
+      this.pendingComputations.add(comp);
+    }
+  }
+
+  runUntilQuiescent(): void {
+    this.deltaCount = 0;
+
+    while (this.pendingComputations.size > 0 || this.pendingUpdates.length > 0) {
+      this.deltaCount++;
+      if (this.deltaCount > this.maxDeltaCycles) {
+        console.error('[Comb] Delta cycle limit exceeded (' + this.maxDeltaCycles + ' iterations). Breaking potential infinite loop.');
+        this.pendingComputations.clear();
+        this.pendingUpdates.length = 0;
+        break;
+      }
+
+      // EVALUATE phase: run all pending computations
+      this.evaluating = true;
+      const batch = [...this.pendingComputations];
+      this.pendingComputations.clear();
+      for (const comp of batch) {
+        if (!comp.disposed) comp.execute();
+      }
+      this.evaluating = false;
+
+      // UPDATE phase: apply deferred signal writes
+      const updates = this.pendingUpdates.splice(0);
+      for (const u of updates) {
+        if (!Object.is(u.value, u.signal.value)) {
+          applyUpdate(u.signal, u.nodeId, u.value, u.oldValue);
+        }
+      }
+    }
+
+    // After quiescence: flush DOM effects
+    this.flushDomEffects();
+  }
+
+  scheduleDomEffect(fn: () => void): void {
+    this.domEffects.push(fn);
+  }
+
+  private flushDomEffects(): void {
+    const effects = this.domEffects.splice(0);
+    for (const fn of effects) fn();
+  }
+
+  enterBatch(): void {
+    this.batchDepth++;
+  }
+
+  exitBatch(): void {
+    this.batchDepth--;
+    if (this.batchDepth === 0) {
+      this.runUntilQuiescent();
+    }
+  }
+}
+
+const engine = new SimulationEngine();
+
+// --- Internal state ---
+
 let currentComputation: Computation | null = null;
-let batchDepth = 0;
-const pendingComputations = new Set<Computation>();
 let currentScope: Scope | null = null;
 
 // --- Internal helpers ---
+
+function isDomEffectName(name: string): boolean {
+  return name.startsWith('view:') || name.startsWith('bind:') || name.startsWith('token:');
+}
 
 function track<T>(signal: SignalNode<T>): void {
   if (currentComputation && !currentComputation.disposed) {
@@ -31,33 +128,18 @@ function track<T>(signal: SignalNode<T>): void {
 }
 
 function notify(signal: SignalNode<any>): void {
-  // Snapshot subscribers to avoid infinite re-iteration when a comp re-tracks itself
   const subs = [...signal.subscribers];
   for (const comp of subs) {
     if (comp.disposed) continue;
-    if (batchDepth > 0) {
-      pendingComputations.add(comp);
-    } else {
-      comp.execute();
-    }
+    engine.scheduleComputation(comp);
   }
 }
 
-function flushPending(): void {
-  // Iterate until stable — a comp may dirty another comp
-  let depth = 0;
-  while (pendingComputations.size > 0) {
-    if (++depth > 100) {
-      console.error('[Comb] Propagation depth limit exceeded (100 iterations). Breaking potential infinite loop.');
-      pendingComputations.clear();
-      break;
-    }
-    const batch = [...pendingComputations];
-    pendingComputations.clear();
-    for (const comp of batch) {
-      if (!comp.disposed) comp.execute();
-    }
-  }
+function applyUpdate<T>(signal: SignalNode<T>, nodeId: string, value: T, oldValue: T): void {
+  const old = signal.value;
+  signal.value = value;
+  circuit.notifyChange(nodeId, old, value);
+  notify(signal);
 }
 
 function cleanupComputation(comp: Computation): void {
@@ -131,9 +213,20 @@ export function createSignal<T>(
       : next;
     if (Object.is(nextVal, signal.value)) return;
     const old = signal.value;
-    signal.value = nextVal;
-    circuit.notifyChange(nodeId, old, nextVal);
-    notify(signal);
+
+    if (engine.evaluating) {
+      // Inside evaluation phase: defer to pendingUpdates (apply next delta)
+      engine.scheduleUpdate(signal, nodeId, nextVal, old);
+    } else {
+      // Outside evaluation: apply immediately
+      signal.value = nextVal;
+      circuit.notifyChange(nodeId, old, nextVal);
+      notify(signal);
+      // Run simulation to quiescence if not in batch
+      if (engine.batchDepth === 0) {
+        engine.runUntilQuiescent();
+      }
+    }
   };
 
   circuit.setNodeSetter(nodeId, (v: any) => write(v));
@@ -161,6 +254,7 @@ export function createComb<T>(
     dependencies: new Set(),
     cleanups: [],
     disposed: false,
+    isDom: false,
   };
 
   if (currentScope) currentScope.track(comp);
@@ -182,7 +276,8 @@ export function createComb<T>(
       value = newVal;
       signal.value = newVal;
       circuit.notifyChange(nodeId, old, newVal);
-      notify(signal); // only propagate if value actually changed
+      // Notify subscribers through the engine
+      notify(signal);
     }
     return value;
   }
@@ -201,15 +296,18 @@ export function createComb<T>(
 
 export function createEffect(
   fn: () => void | (() => void),
-  meta: { name: string; module: string },
+  meta: { name: string; module: string; [key: string]: any },
 ): void {
   const nodeId = circuit.registerNode({ name: meta.name, module: meta.module, type: 'effect' });
+
+  const isDom = isDomEffectName(meta.name);
 
   const comp: Computation = {
     execute: runEffect,
     dependencies: new Set(),
     cleanups: [],
     disposed: false,
+    isDom,
   };
 
   if (currentScope) currentScope.track(comp);
@@ -240,12 +338,11 @@ export function createEffect(
 }
 
 export function batch(fn: () => void): void {
-  batchDepth++;
+  engine.enterBatch();
   try {
     fn();
   } finally {
-    batchDepth--;
-    if (batchDepth === 0) flushPending();
+    engine.exitBatch();
   }
 }
 
@@ -261,12 +358,6 @@ export function createScope(): { dispose: () => void } {
   const scope = new Scope();
   const prevScope = currentScope;
   currentScope = scope;
-  // The caller will create signals/combs/effects while this scope is active.
-  // We need to restore parent scope later — but since module factories run synchronously,
-  // we restore on the microtask. Actually, let's just provide an enter/exit pattern
-  // by returning the scope and relying on the caller to manage it.
-  // For the codegen pattern (synchronous factory), we return dispose and keep
-  // the scope active until the factory function returns.
 
   return {
     dispose: () => {
@@ -295,9 +386,18 @@ export function createCell<T>(
     const merged = merge(signal.value, incoming);
     if (Object.is(merged, signal.value)) return;
     const old = signal.value;
-    signal.value = merged;
-    circuit.notifyChange(nodeId, old, merged);
-    notify(signal);
+
+    if (engine.evaluating) {
+      // Inside evaluation phase: defer update
+      engine.scheduleUpdate(signal, nodeId, merged, old);
+    } else {
+      signal.value = merged;
+      circuit.notifyChange(nodeId, old, merged);
+      notify(signal);
+      if (engine.batchDepth === 0) {
+        engine.runUntilQuiescent();
+      }
+    }
   };
 
   circuit.setNodeSetter(nodeId, (v: any) => set(v));
@@ -325,6 +425,7 @@ export function createPropagator(
     dependencies: new Set(),
     cleanups: [],
     disposed: false,
+    isDom: false,
   };
 
   if (currentScope) currentScope.track(comp);
@@ -347,6 +448,235 @@ export function createPropagator(
   runPropagator();
 }
 
+// --- Edge-triggered effects ---
+
+export function createEdgeEffect(
+  valueFn: () => any,
+  edge: 'posedge' | 'negedge',
+  action: () => void,
+  meta: { name: string; module: string },
+): void {
+  const nodeId = circuit.registerNode({ name: meta.name, module: meta.module, type: 'effect' });
+
+  let previousValue: any = undefined;
+  let initialized = false;
+
+  const comp: Computation = {
+    execute: runEdgeEffect,
+    dependencies: new Set(),
+    cleanups: [],
+    disposed: false,
+    isDom: false,
+  };
+
+  if (currentScope) currentScope.track(comp);
+
+  function runEdgeEffect(): void {
+    if (comp.disposed) return;
+
+    // Clear old tracking
+    for (const dep of comp.dependencies) dep.subscribers.delete(comp);
+    comp.dependencies.clear();
+
+    const prev = currentComputation;
+    currentComputation = comp;
+    const currentValue = valueFn();
+    currentComputation = prev;
+
+    if (initialized) {
+      const wasTruthy = !!previousValue;
+      const isTruthy = !!currentValue;
+
+      if (edge === 'posedge' && !wasTruthy && isTruthy) {
+        action();
+      } else if (edge === 'negedge' && wasTruthy && !isTruthy) {
+        action();
+      }
+    }
+
+    previousValue = currentValue;
+    initialized = true;
+    circuit.notifyEffect(nodeId);
+  }
+
+  // Run initially to capture baseline
+  runEdgeEffect();
+}
+
+// --- Temporal assertions ---
+
+export function createTemporalAssert(
+  triggerFn: () => boolean,
+  operator: 'eventually' | 'always' | 'next',
+  propertyFn: () => boolean,
+  meta: { name: string; module: string; duration: number },
+): void {
+  const nodeId = circuit.registerNode({ name: meta.name, module: meta.module, type: 'effect' });
+
+  let previousTrigger = false;
+  let triggerInitialized = false;
+
+  // State for active assertions
+  let armed = false;
+  let alwaysTimer: ReturnType<typeof setTimeout> | null = null;
+  let eventuallyTimer: ReturnType<typeof setTimeout> | null = null;
+  let nextCyclePending = false;
+
+  const triggerComp: Computation = {
+    execute: checkTrigger,
+    dependencies: new Set(),
+    cleanups: [],
+    disposed: false,
+    isDom: false,
+  };
+
+  if (currentScope) currentScope.track(triggerComp);
+
+  function checkTrigger(): void {
+    if (triggerComp.disposed) return;
+
+    // Clear old tracking
+    for (const dep of triggerComp.dependencies) dep.subscribers.delete(triggerComp);
+    triggerComp.dependencies.clear();
+
+    const prev = currentComputation;
+    currentComputation = triggerComp;
+    const currentTrigger = !!triggerFn();
+    currentComputation = prev;
+
+    // Detect posedge on trigger
+    if (triggerInitialized && !previousTrigger && currentTrigger) {
+      armAssertion();
+    }
+
+    previousTrigger = currentTrigger;
+    triggerInitialized = true;
+    circuit.notifyEffect(nodeId);
+  }
+
+  function armAssertion(): void {
+    armed = true;
+
+    if (operator === 'eventually') {
+      // Check immediately
+      if (propertyFn()) {
+        armed = false;
+        return;
+      }
+      // Set deadline
+      eventuallyTimer = setTimeout(() => {
+        if (armed && !propertyFn()) {
+          circuit.assertionFailed(meta.name, {
+            expr: `eventually within ${meta.duration}ms`,
+            module: meta.module,
+            values: { property: propertyFn() },
+          });
+        }
+        armed = false;
+      }, meta.duration);
+
+      // Also monitor on each change via a property watcher
+      const propComp: Computation = {
+        execute: () => {
+          if (!armed || propComp.disposed) return;
+          // Clear old tracking
+          for (const dep of propComp.dependencies) dep.subscribers.delete(propComp);
+          propComp.dependencies.clear();
+
+          const prev = currentComputation;
+          currentComputation = propComp;
+          const result = propertyFn();
+          currentComputation = prev;
+
+          if (result) {
+            armed = false;
+            if (eventuallyTimer) { clearTimeout(eventuallyTimer); eventuallyTimer = null; }
+            propComp.disposed = true;
+          }
+        },
+        dependencies: new Set(),
+        cleanups: [],
+        disposed: false,
+        isDom: false,
+      };
+      if (currentScope) currentScope.track(propComp);
+      // Run once to set up tracking
+      propComp.execute();
+
+    } else if (operator === 'always') {
+      // Property must remain true for duration ms
+      if (!propertyFn()) {
+        circuit.assertionFailed(meta.name, {
+          expr: `always for ${meta.duration}ms`,
+          module: meta.module,
+          values: { property: false },
+        });
+        armed = false;
+        return;
+      }
+
+      // Monitor property changes
+      const propComp: Computation = {
+        execute: () => {
+          if (!armed || propComp.disposed) return;
+          for (const dep of propComp.dependencies) dep.subscribers.delete(propComp);
+          propComp.dependencies.clear();
+
+          const prev = currentComputation;
+          currentComputation = propComp;
+          const result = propertyFn();
+          currentComputation = prev;
+
+          if (!result) {
+            circuit.assertionFailed(meta.name, {
+              expr: `always for ${meta.duration}ms`,
+              module: meta.module,
+              values: { property: false },
+            });
+            armed = false;
+            if (alwaysTimer) { clearTimeout(alwaysTimer); alwaysTimer = null; }
+            propComp.disposed = true;
+          }
+        },
+        dependencies: new Set(),
+        cleanups: [],
+        disposed: false,
+        isDom: false,
+      };
+      if (currentScope) currentScope.track(propComp);
+      propComp.execute();
+
+      // Success after duration
+      alwaysTimer = setTimeout(() => {
+        armed = false;
+        propComp.disposed = true;
+      }, meta.duration);
+
+    } else if (operator === 'next') {
+      // Property must be true after the next delta cycle completes
+      nextCyclePending = true;
+      // Schedule a check after current simulation quiesces
+      // We use a microtask to check after the current batch/simulation finishes
+      queueMicrotask(() => {
+        if (nextCyclePending && armed) {
+          if (!propertyFn()) {
+            circuit.assertionFailed(meta.name, {
+              expr: `next delta cycle`,
+              module: meta.module,
+              values: { property: propertyFn() },
+            });
+          }
+          armed = false;
+          nextCyclePending = false;
+        }
+      });
+    }
+  }
+
+  // Run initially to capture baseline trigger value
+  checkTrigger();
+}
+
 export function onMount(fn: () => void): void {
   queueMicrotask(fn);
 }
@@ -357,7 +687,7 @@ export function onDestroy(fn: () => void): void {
   }
 }
 
-// For test use — lets tests end the scope after synchronous factory code
+// For test use -- lets tests end the scope after synchronous factory code
 export function endScope(): void {
   if (currentScope) {
     const parent = (currentScope as any).parent;

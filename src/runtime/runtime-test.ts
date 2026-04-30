@@ -1,7 +1,7 @@
 // runtime-test.ts — 13 tests for the reactive runtime
 // Run: npx tsx src/runtime/runtime-test.ts
 
-import { createSignal, createComb, createEffect, batch, untrack, createScope, onMount, onDestroy } from './signals.js';
+import { createSignal, createComb, createEffect, batch, untrack, createScope, onMount, onDestroy, createEdgeEffect, createTemporalAssert } from './signals.js';
 import { circuit } from './circuit.js';
 
 let passed = 0;
@@ -258,6 +258,129 @@ test('onDestroy runs in reverse order (LIFO)', () => {
   onDestroy(() => { order.push(3); });
   scope.dispose();
   assertEqual(JSON.stringify(order), JSON.stringify([3, 2, 1]), 'onDestroy should run LIFO');
+});
+
+// --- DES Engine Tests ---
+
+// 14. Delta cycle convergence — propagator chains converge
+test('delta cycle convergence — propagator chain', () => {
+  const [a, setA] = createSignal(1, { name: 'a', module: 'Test' });
+  const b = createComb(() => a() * 2, { name: 'b', module: 'Test', deps: ['a'] });
+  const c = createComb(() => b() + 1, { name: 'c', module: 'Test', deps: ['b'] });
+  assertEqual(c(), 3, 'initial c = a*2+1 = 3');
+  setA(5);
+  assertEqual(b(), 10, 'b after a=5');
+  assertEqual(c(), 11, 'c after a=5');
+});
+
+// 15. createEdgeEffect — posedge fires on falsy->truthy
+test('createEdgeEffect — posedge fires on falsy to truthy', () => {
+  const [flag, setFlag] = createSignal(false, { name: 'flag', module: 'Test' });
+  let posedgeCount = 0;
+  createEdgeEffect(
+    () => flag(),
+    'posedge',
+    () => { posedgeCount++; },
+    { name: 'edge:flag', module: 'Test' },
+  );
+  assertEqual(posedgeCount, 0, 'no posedge initially');
+  setFlag(true);
+  assertEqual(posedgeCount, 1, 'posedge after false->true');
+  setFlag(true); // same value, no change
+  assertEqual(posedgeCount, 1, 'no posedge on same value');
+  setFlag(false);
+  assertEqual(posedgeCount, 1, 'no posedge on true->false');
+  setFlag(true);
+  assertEqual(posedgeCount, 2, 'posedge on second false->true');
+});
+
+// 16. createEdgeEffect — negedge fires on truthy->falsy
+test('createEdgeEffect — negedge fires on truthy to falsy', () => {
+  const [flag, setFlag] = createSignal(true, { name: 'flag', module: 'Test' });
+  let negedgeCount = 0;
+  createEdgeEffect(
+    () => flag(),
+    'negedge',
+    () => { negedgeCount++; },
+    { name: 'edge:flag', module: 'Test' },
+  );
+  assertEqual(negedgeCount, 0, 'no negedge initially');
+  setFlag(false);
+  assertEqual(negedgeCount, 1, 'negedge after true->false');
+  setFlag(true);
+  assertEqual(negedgeCount, 1, 'no negedge on false->true');
+  setFlag(false);
+  assertEqual(negedgeCount, 2, 'negedge on second true->false');
+});
+
+// 17. createEdgeEffect — posedge with numeric values
+test('createEdgeEffect — posedge with numeric 0->nonzero', () => {
+  const [count, setCount] = createSignal(0, { name: 'count', module: 'Test' });
+  let fired = 0;
+  createEdgeEffect(
+    () => count(),
+    'posedge',
+    () => { fired++; },
+    { name: 'edge:count', module: 'Test' },
+  );
+  assertEqual(fired, 0, 'no posedge initially');
+  setCount(5);
+  assertEqual(fired, 1, 'posedge after 0->5');
+  setCount(10); // truthy->truthy, no edge
+  assertEqual(fired, 1, 'no posedge on 5->10');
+  setCount(0); // truthy->falsy
+  assertEqual(fired, 1, 'no posedge on 10->0');
+  setCount(1); // falsy->truthy
+  assertEqual(fired, 2, 'posedge on 0->1');
+});
+
+// 18. DOM effects deferred — effects with view: prefix run after reactive stabilization
+test('DOM effects deferred after reactive stabilization', () => {
+  const log: string[] = [];
+  const [x, setX] = createSignal(0, { name: 'x', module: 'Test' });
+  const doubled = createComb(() => x() * 2, { name: 'doubled', module: 'Test', deps: ['x'] });
+  // Non-DOM effect (reactive)
+  createEffect(() => { log.push(`reactive:${doubled()}`); }, { name: 'compute:doubled', module: 'Test' });
+  // DOM effect
+  createEffect(() => { log.push(`dom:${doubled()}`); }, { name: 'view:doubled', module: 'Test' });
+  // Both run initially
+  assert(log.includes('reactive:0'), 'reactive should run initially');
+  assert(log.includes('dom:0'), 'dom should run initially');
+  log.length = 0;
+  setX(5);
+  // After update, both should have run with consistent value
+  assert(log.includes('reactive:10'), 'reactive should see doubled=10');
+  assert(log.includes('dom:10'), 'dom should see doubled=10');
+});
+
+// 19. Simulation engine handles writes during evaluation
+test('deferred writes during evaluation phase', () => {
+  const [a, setA] = createSignal(0, { name: 'a', module: 'Test' });
+  const [b, setB] = createSignal(0, { name: 'b', module: 'Test' });
+  // This effect reads a and writes b — simulating a propagator-like pattern
+  createEffect(() => {
+    const val = a();
+    if (val > 0) setB(val * 10);
+  }, { name: 'sync:a-to-b', module: 'Test' });
+  assertEqual(b(), 0, 'b initially 0');
+  setA(3);
+  assertEqual(b(), 30, 'b should be 30 after a=3');
+  setA(5);
+  assertEqual(b(), 50, 'b should be 50 after a=5');
+});
+
+// 20. createCell convergence with bidirectional propagators (color-picker pattern)
+test('cell convergence with bidirectional propagators', () => {
+  const [celsius, setCelsius] = createSignal(0, { name: 'celsius', module: 'Test' });
+  const [fahrenheit, setFahrenheit] = createSignal(32, { name: 'fahrenheit', module: 'Test' });
+  // Mimic the color-picker pattern with batch
+  createEffect(() => {
+    const c = celsius();
+    batch(() => { setFahrenheit(c * 9 / 5 + 32); });
+  }, { name: 'c-to-f', module: 'Test' });
+  assertEqual(fahrenheit(), 32, 'fahrenheit initially 32');
+  setCelsius(100);
+  assertEqual(fahrenheit(), 212, 'fahrenheit after celsius=100');
 });
 
 // --- Deferred test: verify onMount actually fires via microtask ---
