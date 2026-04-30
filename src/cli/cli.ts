@@ -26,24 +26,6 @@ function printHelp() {
   `);
 }
 
-<<<<<<< HEAD
-console.log(`Compiling ${input}...`);
-
-const sourceFile = basename(input);
-const result = compile(source, { sourceFile });
-
-if (result.errors.length > 0) {
-  for (const err of result.errors) {
-    console.error(`Error at ${err.line}:${err.column}: ${err.message}`);
-||||||| b68c2e9
-console.log(`Compiling ${input}...`);
-
-const result = compile(source);
-
-if (result.errors.length > 0) {
-  for (const err of result.errors) {
-    console.error(`Error at ${err.line}:${err.column}: ${err.message}`);
-=======
 function compileFile(input: string): boolean {
   let source: string;
   try {
@@ -52,7 +34,6 @@ function compileFile(input: string): boolean {
     console.error(`Error reading file: ${input}`);
     console.error(e.message);
     return false;
->>>>>>> worktree-agent-ae5d93b0
   }
 
   console.log(`Compiling ${input}...`);
@@ -100,56 +81,21 @@ function compileAll() {
     process.exit(1);
   }
 
-<<<<<<< HEAD
-const outFile = basename(input, '.comb') + '.js';
-const mapFile = outFile + '.map';
-
-// Append source map reference and write JS
-let jsOutput = result.js!;
-if (result.sourceMap) {
-  jsOutput += `\n//# sourceMappingURL=${mapFile}\n`;
-  writeFileSync(join(outDir, mapFile), result.sourceMap);
-}
-writeFileSync(join(outDir, outFile), jsOutput);
-||||||| b68c2e9
-const outFile = basename(input, '.comb') + '.js';
-writeFileSync(join(outDir, outFile), result.js!);
-=======
   const files = readdirSync(examplesDir).filter(f => f.endsWith('.comb'));
   if (files.length === 0) {
     console.log('No .comb files found in examples/');
     return;
   }
->>>>>>> worktree-agent-ae5d93b0
 
   let success = 0;
   let failed = 0;
 
-<<<<<<< HEAD
-console.log(`✓ Compiled successfully → ${join(outDir, outFile)}`);
-if (result.sourceMap) {
-  console.log(`  Source map → ${join(outDir, mapFile)}`);
-}
-console.log(`  Module: ${result.ast!.name}`);
-console.log(`  Signals: ${signals.map(s => s.name).join(', ') || 'none'}`);
-console.log(`  Combs: ${combs.map(c => c.name).join(', ') || 'none'}`);
-console.log(`  Events: ${events.map(e => e.name).join(', ') || 'none'}`);
-console.log(`  Edges: ${graph.edges.length}`);
-||||||| b68c2e9
-console.log(`✓ Compiled successfully → ${join(outDir, outFile)}`);
-console.log(`  Module: ${result.ast!.name}`);
-console.log(`  Signals: ${signals.map(s => s.name).join(', ') || 'none'}`);
-console.log(`  Combs: ${combs.map(c => c.name).join(', ') || 'none'}`);
-console.log(`  Events: ${events.map(e => e.name).join(', ') || 'none'}`);
-console.log(`  Edges: ${graph.edges.length}`);
-=======
   for (const file of files) {
     const ok = compileFile(join(examplesDir, file));
     if (ok) success++;
     else failed++;
     console.log('');
   }
->>>>>>> worktree-agent-ae5d93b0
 
   console.log(`Done: ${success} compiled, ${failed} failed out of ${files.length} files.`);
   if (failed > 0) process.exit(1);

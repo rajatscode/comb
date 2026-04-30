@@ -1,0 +1,46 @@
+module Monitor {
+  signal cpu: float = 25.0;
+  signal mem: float = 40.0;
+  signal cpuThreshold: float = 80.0;
+  signal cpuAvg: float = 25.0;
+  signal alertCount: int = 0;
+  signal lastAlert: string = "";
+
+  comb cpuHigh = cpuAvg > cpuThreshold;
+  comb cpuDisplay = str(round(cpu)) + "%";
+  comb avgDisplay = str(round(cpuAvg)) + "%";
+  comb memDisplay = str(round(mem)) + "%";
+  comb threshDisplay = str(round(cpuThreshold)) + "%";
+  comb statusText = cpuHigh ? "ALERT: CPU above " + threshDisplay : "Normal";
+  comb statusClass = cpuHigh ? "status-alert" : "status-ok";
+
+  always @(posedge cpuHigh) {
+    alertCount <= alertCount + 1;
+    lastAlert <= "CPU crossed " + threshDisplay;
+  }
+
+  always @(negedge cpuHigh) {
+    lastAlert <= "CPU recovered below " + threshDisplay;
+  }
+
+  view {
+    <div class="monitor">
+      <div class="monitor-metrics">
+        <div class="metric">
+          <span class="metric-label">CPU</span>
+          <span class="metric-value">{cpuDisplay}</span>
+          <span class="metric-detail">avg {avgDisplay}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">MEM</span>
+          <span class="metric-value">{memDisplay}</span>
+        </div>
+      </div>
+      <p class={statusClass}>{statusText}</p>
+      <p class="alert-info">Alerts fired: {str(alertCount)} | {lastAlert}</p>
+      <label>Threshold: {threshDisplay}
+        <input type="range" min="50" max="100" @bind=cpuThreshold />
+      </label>
+    </div>
+  }
+}

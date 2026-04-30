@@ -1008,3 +1008,18 @@ a:hover { text-decoration: underline; }
   background: var(--bg-surface);
   border-top: 1px solid var(--border);
 }
+
+/* ============================================
+   System Monitor Demo
+   ============================================ */
+
+.monitor { padding: 1rem; }
+.monitor-metrics { display: flex; gap: 2rem; margin-bottom: 1rem; }
+.metric { display: flex; flex-direction: column; }
+.metric-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; color: #888; }
+.metric-value { font-size: 2rem; font-weight: 700; font-family: monospace; }
+.metric-detail { font-size: 0.8rem; color: #999; }
+.status-alert { color: #ff4444; font-weight: 700; animation: pulse 1s infinite; }
+.status-ok { color: #44ff44; }
+.alert-info { font-size: 0.85rem; color: #aaa; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
