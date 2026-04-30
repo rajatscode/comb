@@ -7,6 +7,52 @@ body {
   margin: 0;
 }
 
+/* Classless base — semantic HTML looks good by default */
+h1, h2, h3 { font-weight: 600; margin: 0.5em 0; }
+h1 { font-size: 1.5rem; }
+h2 { font-size: 1.2rem; }
+h3 { font-size: 1rem; }
+
+input:not([type="range"]), select, textarea {
+  background: #2a2a3e;
+  color: #e0e0e0;
+  border: 1px solid #3a3a5a;
+  border-radius: 4px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+input:not([type="range"]):focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: #4a9eff;
+}
+
+button {
+  background: #2a2a3e;
+  color: #e0e0e0;
+  border: 1px solid #3a3a5a;
+  border-radius: 4px;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, border-color 0.15s;
+}
+button:hover { background: #3a3a5e; border-color: #4a4a6a; }
+button:disabled { opacity: 0.5; cursor: default; }
+
+label {
+  font-size: 0.85rem;
+  color: #aaa;
+}
+
+form { display: flex; flex-direction: column; gap: 0.8rem; }
+
+p { margin: 0.3em 0; }
+
+a { color: #4a9eff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
 #app {
   display: flex;
   flex-direction: column;
