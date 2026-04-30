@@ -156,6 +156,21 @@ export class CircuitGraph {
     if (node) node.getValue = getter;
   }
 
+  private pendingListenerEvents: GraphEvent[] = [];
+  private listenerFlushScheduled = false;
+
+  private scheduleListenerFlush(): void {
+    if (this.listenerFlushScheduled) return;
+    this.listenerFlushScheduled = true;
+    queueMicrotask(() => {
+      this.listenerFlushScheduled = false;
+      const events = this.pendingListenerEvents.splice(0);
+      for (const event of events) {
+        for (const listener of this.listeners) listener(event);
+      }
+    });
+  }
+
   notifyChange(nodeId: string, oldValue: any, newValue: any): void {
     const node = this.nodes.get(nodeId);
     if (!node) return;
@@ -166,14 +181,16 @@ export class CircuitGraph {
     if (this.events.length >= EVENT_BUFFER_SIZE) this.events.shift();
     this.events.push(event);
     if (this.recording) this.recordWaveform(nodeId, newValue);
-    for (const listener of this.listeners) listener(event);
+    this.pendingListenerEvents.push(event);
+    this.scheduleListenerFlush();
   }
 
   notifyEffect(nodeId: string): void {
     const event: GraphEvent = { type: 'effect-run', nodeId, timestamp: Date.now() };
     if (this.events.length >= EVENT_BUFFER_SIZE) this.events.shift();
     this.events.push(event);
-    for (const listener of this.listeners) listener(event);
+    this.pendingListenerEvents.push(event);
+    this.scheduleListenerFlush();
   }
 
   assertionFailed(assertId: string, info: { expr: string; module: string; values: Record<string, any> }): void {

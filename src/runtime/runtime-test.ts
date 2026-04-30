@@ -179,17 +179,20 @@ test('circuit edges from comb deps', () => {
   assert(edges.some(e => e.from === 'M.y' && e.to === 'M.sum'), 'edge y→sum');
 });
 
-// 12. CircuitGraph event subscription
-test('circuit event subscription', () => {
+// 12. CircuitGraph event subscription (listeners deferred to microtask for performance)
+test('circuit event subscription', async () => {
   const events: string[] = [];
   const unsub = circuit.subscribe(e => events.push(`${e.type}:${e.nodeId}`));
   const [x, setX] = createSignal(0, { name: 'x', module: 'Test' });
   setX(1);
+  await new Promise<void>(r => queueMicrotask(r));
   assert(events.some(e => e.includes('signal-change')), 'should receive signal-change event');
   unsub();
   setX(2);
+  await new Promise<void>(r => queueMicrotask(r));
   const countAfterUnsub = events.filter(e => e.includes('signal-change')).length;
   setX(3);
+  await new Promise<void>(r => queueMicrotask(r));
   assertEqual(events.filter(e => e.includes('signal-change')).length, countAfterUnsub, 'no events after unsubscribe');
 });
 
