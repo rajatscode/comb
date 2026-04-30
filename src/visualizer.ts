@@ -253,15 +253,31 @@ function buildLayout(
       }
     }
 
+    // Batch circuit events per frame to prevent lag during rapid updates
+    const pendingUpdates = new Map<string, { layout: NodeLayout; value?: any }>();
+    let updateScheduled = false;
+
+    function flushVisualUpdates() {
+      updateScheduled = false;
+      for (const [id, { layout, value }] of pendingUpdates) {
+        if (value !== undefined) {
+          layout.valueEl.textContent = formatValue(value);
+        }
+        flashNode(layout);
+        triggerPulse(layout.id);
+      }
+      pendingUpdates.clear();
+    }
+
     const unsub = circuit.subscribe((event: GraphEvent) => {
       const name = event.nodeId.split('.').pop() ?? '';
       const layout = nodeLayouts.get(name);
       if (layout) {
-        if (event.newValue !== undefined) {
-          layout.valueEl.textContent = formatValue(event.newValue);
+        pendingUpdates.set(name, { layout, value: event.newValue });
+        if (!updateScheduled) {
+          updateScheduled = true;
+          requestAnimationFrame(flushVisualUpdates);
         }
-        flashNode(layout);
-        triggerPulse(layout.id);
       }
     });
     setUnsub(unsub);
