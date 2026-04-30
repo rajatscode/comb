@@ -1,7 +1,7 @@
 // runtime-test.ts — 13 tests for the reactive runtime
 // Run: npx tsx src/runtime/runtime-test.ts
 
-import { createSignal, createComb, createEffect, batch, untrack, createScope } from './signals.js';
+import { createSignal, createComb, createEffect, batch, untrack, createScope, onMount, onDestroy } from './signals.js';
 import { circuit } from './circuit.js';
 
 let passed = 0;
@@ -230,5 +230,53 @@ test('diamond problem — consistent values, single computation', () => {
   assertEqual(lastDValue, 25, 'effect sees updated d');
 });
 
-console.log(`\n${passed} passed, ${failed} failed\n`);
-process.exit(failed > 0 ? 1 : 0);
+// --- Test: onMount schedules via microtask (does not run synchronously) ---
+test('onMount does not run synchronously', () => {
+  let mounted = false;
+  const scope = createScope();
+  onMount(() => { mounted = true; });
+  assertEqual(mounted, false, 'onMount should not run synchronously');
+  scope.dispose();
+});
+
+// --- Test: onDestroy runs on scope.dispose() ---
+test('onDestroy runs on scope.dispose()', () => {
+  let destroyed = false;
+  const scope = createScope();
+  onDestroy(() => { destroyed = true; });
+  assertEqual(destroyed, false, 'onDestroy should not run before dispose');
+  scope.dispose();
+  assertEqual(destroyed, true, 'onDestroy should run on dispose');
+});
+
+// --- Test: onDestroy runs in reverse order ---
+test('onDestroy runs in reverse order (LIFO)', () => {
+  const order: number[] = [];
+  const scope = createScope();
+  onDestroy(() => { order.push(1); });
+  onDestroy(() => { order.push(2); });
+  onDestroy(() => { order.push(3); });
+  scope.dispose();
+  assertEqual(JSON.stringify(order), JSON.stringify([3, 2, 1]), 'onDestroy should run LIFO');
+});
+
+// --- Deferred test: verify onMount actually fires via microtask ---
+let onMountFired = false;
+circuit.reset();
+const __mountScope = createScope();
+onMount(() => { onMountFired = true; });
+__mountScope.dispose();
+
+// Use queueMicrotask to check after onMount has had a chance to fire,
+// then setTimeout for final report to avoid unhandled promise rejections
+queueMicrotask(() => {
+  if (onMountFired) {
+    console.log('  ✓ onMount fires after microtask (deferred check)');
+    passed++;
+  } else {
+    console.log('  ✗ onMount fires after microtask (deferred check): did not fire');
+    failed++;
+  }
+  console.log(`\n${passed} passed, ${failed} failed\n`);
+  process.exit(failed > 0 ? 1 : 0);
+});

@@ -72,6 +72,7 @@ function cleanupComputation(comp: Computation): void {
 class Scope {
   private computations: Computation[] = [];
   private children: (() => void)[] = [];
+  private destroyCallbacks: (() => void)[] = [];
   private parent: Scope | null;
 
   constructor() {
@@ -86,8 +87,17 @@ class Scope {
     this.children.push(disposeFn);
   }
 
+  addCleanup(fn: () => void): void {
+    this.destroyCallbacks.push(fn);
+  }
+
   dispose(): void {
-    // Dispose children first (bottom-up)
+    // Run destroy callbacks in reverse order (LIFO)
+    for (let i = this.destroyCallbacks.length - 1; i >= 0; i--) {
+      this.destroyCallbacks[i]();
+    }
+    this.destroyCallbacks = [];
+    // Dispose children (bottom-up)
     for (const child of this.children) child();
     this.children = [];
     for (const comp of this.computations) {
@@ -331,6 +341,16 @@ export function createPropagator(
   }
 
   runPropagator();
+}
+
+export function onMount(fn: () => void): void {
+  queueMicrotask(fn);
+}
+
+export function onDestroy(fn: () => void): void {
+  if (currentScope) {
+    currentScope.addCleanup(fn);
+  }
 }
 
 // For test use — lets tests end the scope after synchronous factory code
