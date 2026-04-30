@@ -1089,9 +1089,14 @@ a:hover { text-decoration: underline; }
 
 .code-editor-section { margin: 0 0 2rem; }
 
+.code-comparison-row { display: flex; gap: 1rem; }
+.code-pane { flex: 1; min-width: 0; }
+.code-pane-header { padding: 0.5rem 1rem; font-size: 0.85rem; font-weight: 600; color: #7b8cff; border-bottom: 2px solid #7b8cff; background: #1a1a2e; }
+.code-pane-header-other { color: #888; border-bottom: 2px solid #333; }
+
 .comb-editor {
   width: 100%;
-  min-height: 200px;
+  min-height: 500px;
   background: #12121e;
   color: #e0e0e0;
   border: none;
@@ -1100,7 +1105,7 @@ a:hover { text-decoration: underline; }
   line-height: 1.5;
   resize: vertical;
   outline: none;
-  padding: 0;
+  padding: 1rem;
   tab-size: 2;
 }
 
@@ -1156,100 +1161,12 @@ a:hover { text-decoration: underline; }
   border-top: 1px solid var(--border);
 }
 
-.autotest-desc {
-  text-align: center;
-  color: #888;
-  font-size: 0.9rem;
-  margin: 0 0 1.5rem;
-}
-
-.matrix-wrapper {
-  max-width: 700px;
-  margin: 0 auto;
-}
-
-.matrix-header {
-  display: flex;
-  align-items: center;
-  margin-bottom: 4px;
-}
-
-.matrix-corner {
-  flex: 0 0 80px;
-  font-size: 0.65rem;
-  color: #666;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  text-align: right;
-  padding-right: 8px;
-}
-
-.matrix-col-label {
-  flex: 1;
-  text-align: center;
-  font-size: 0.7rem;
-  color: #888;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-}
-
-.matrix-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.matrix-row {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.matrix-row-label {
-  flex: 0 0 80px;
-  text-align: right;
-  padding-right: 8px;
-  font-size: 0.7rem;
-  color: #888;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-}
-
-.matrix-cell {
-  flex: 1;
-  aspect-ratio: 1;
-  min-height: 28px;
-  max-height: 40px;
-  background: #2a2a40;
-  border-radius: 3px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.65rem;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  color: #666;
-  transition: background 0.2s;
-}
-
-.matrix-cell.pass {
-  background: #1e4a1e;
-  color: #4ae04a;
-}
-
-.matrix-cell.fail {
-  background: #4a1e1e;
-  color: #ff6b6b;
-}
-
-.matrix-controls {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  margin-top: 1rem;
-}
-
-.autotest-result {
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 0.85rem;
-}
+.autotest-grid { max-height: 400px; overflow-y: auto; border: 1px solid #2a2a4a; border-radius: 8px; }
+.autotest-grid table { width: 100%; border-collapse: collapse; font-size: 0.75rem; font-family: monospace; }
+.autotest-grid th { position: sticky; top: 0; background: #1a1a2e; padding: 0.4rem 0.6rem; color: #7b8cff; text-align: left; border-bottom: 1px solid #2a2a4a; }
+.autotest-grid td { padding: 0.3rem 0.6rem; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.autotest-grid .pass { color: #4ae04a; }
+.autotest-grid .fail { color: #ff4444; font-weight: 700; }
 
 /* Prominent feature card (auto-testing) */
 .feature-card-prominent {
@@ -1262,8 +1179,8 @@ a:hover { text-decoration: underline; }
 
 @media (max-width: 640px) {
   .showcase-tabs { flex-wrap: wrap; }
-  .matrix-cell { min-height: 22px; font-size: 0.55rem; }
-  .matrix-corner, .matrix-row-label { flex: 0 0 50px; font-size: 0.6rem; }
+  .code-comparison-row { flex-direction: column; }
+  .autotest-grid { font-size: 0.65rem; }
 }
 
 /* ============================================

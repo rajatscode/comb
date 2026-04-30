@@ -158,25 +158,29 @@ function createLanding(): HTMLElement {
     </section>
 
     <section class="code-editor-section">
-      <div class="showcase-tabs" id="framework-tabs">
-        <button class="tab active" data-tab="comb">Comb</button>
-        <button class="tab" data-tab="react">React</button>
-        <button class="tab" data-tab="svelte">Svelte</button>
-        <button class="tab" data-tab="solid">Solid</button>
-      </div>
-      <div class="showcase-panels" id="framework-panels">
-        <div class="panel active" data-panel="comb">
+      <div class="code-comparison-row">
+        <div class="code-pane">
+          <div class="code-pane-header">Comb</div>
           <textarea id="comb-editor" class="comb-editor" spellcheck="false">${escapeHtml(COMB_SNIPPET)}</textarea>
           <div id="comb-errors" class="comb-errors"></div>
         </div>
-        <div class="panel" data-panel="react">
-          <pre><code>${escapeHtml(REACT_SNIPPET)}</code></pre>
-        </div>
-        <div class="panel" data-panel="svelte">
-          <pre><code>${escapeHtml(SVELTE_SNIPPET)}</code></pre>
-        </div>
-        <div class="panel" data-panel="solid">
-          <pre><code>${escapeHtml(SOLID_SNIPPET)}</code></pre>
+        <div class="code-pane">
+          <div class="showcase-tabs" id="framework-tabs">
+            <button class="tab active" data-tab="react">React</button>
+            <button class="tab" data-tab="svelte">Svelte</button>
+            <button class="tab" data-tab="solid">Solid</button>
+          </div>
+          <div class="showcase-panels" id="framework-panels">
+            <div class="panel active" data-panel="react">
+              <pre><code>${escapeHtml(REACT_SNIPPET)}</code></pre>
+            </div>
+            <div class="panel" data-panel="svelte">
+              <pre><code>${escapeHtml(SVELTE_SNIPPET)}</code></pre>
+            </div>
+            <div class="panel" data-panel="solid">
+              <pre><code>${escapeHtml(SOLID_SNIPPET)}</code></pre>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -196,18 +200,14 @@ function createLanding(): HTMLElement {
     </section>
 
     <section class="autotest-section">
-      <h2 class="section-title">Auto-Test Matrix</h2>
-      <p class="autotest-desc">Test cpuHigh = (cpuAvg &gt; cpuThreshold) across all input combinations.</p>
-      <div class="matrix-wrapper">
-        <div class="matrix-header">
-          <span class="matrix-corner">cpuThreshold \\ cpuAvg</span>
-          ${[0,10,20,30,40,50,60,70,80,90,100].map(v => `<span class="matrix-col-label">${v}</span>`).join('')}
-        </div>
-        <div id="matrix-grid" class="matrix-grid"></div>
-      </div>
-      <div class="matrix-controls">
-        <button id="run-autotest" class="auto-test-btn">Run Auto-Test</button>
-        <span id="autotest-result" class="autotest-result"></span>
+      <h2 class="section-title">Auto-Test</h2>
+      <p style="text-align:center; color:#888; font-size:0.85rem; margin-bottom:1rem;">
+        __test() gives headless access to all signals. Fuzz random inputs, verify every boolean comb.
+      </p>
+      <div id="autotest-grid" class="autotest-grid"></div>
+      <div style="text-align:center; margin-top:1rem;">
+        <button id="run-autotest" class="auto-test-btn">Run Auto-Test (50 random inputs)</button>
+        <span id="autotest-result" style="margin-left:1rem; font-family:monospace; font-size:0.85rem;"></span>
       </div>
     </section>
 
@@ -355,73 +355,93 @@ function showLanding() {
     el.classList.toggle('active', (el as HTMLElement).dataset.demo === 'home');
   });
 
-  // Wire up framework tab switching
-  landingEl.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      landingEl.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      landingEl.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-      tab.classList.add('active');
-      landingEl.querySelector(`[data-panel="${(tab as HTMLElement).dataset.tab}"]`)?.classList.add('active');
+  // Wire up framework tab switching (right pane only)
+  const tabsContainer = landingEl.querySelector('#framework-tabs');
+  const panelsContainer = landingEl.querySelector('#framework-panels');
+  if (tabsContainer && panelsContainer) {
+    tabsContainer.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabsContainer.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        panelsContainer.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        panelsContainer.querySelector(`[data-panel="${(tab as HTMLElement).dataset.tab}"]`)?.classList.add('active');
+      });
     });
-  });
-
-  // Build auto-test matrix grid
-  const matrixGrid = document.getElementById('matrix-grid')!;
-  const threshValues = [0, 20, 40, 60, 80, 100];
-  const avgValues = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
-  const matrixCells: HTMLDivElement[][] = [];
-
-  for (let ti = 0; ti < threshValues.length; ti++) {
-    const row: HTMLDivElement[] = [];
-    const rowEl = document.createElement('div');
-    rowEl.className = 'matrix-row';
-    const labelEl = document.createElement('span');
-    labelEl.className = 'matrix-row-label';
-    labelEl.textContent = String(threshValues[ti]);
-    rowEl.appendChild(labelEl);
-
-    for (let ai = 0; ai < avgValues.length; ai++) {
-      const cell = document.createElement('div');
-      cell.className = 'matrix-cell';
-      cell.title = `cpuAvg=${avgValues[ai]}, cpuThreshold=${threshValues[ti]}`;
-      row.push(cell);
-      rowEl.appendChild(cell);
-    }
-    matrixCells.push(row);
-    matrixGrid.appendChild(rowEl);
   }
 
-  // Auto-test button handler
+  // Auto-test button handler — fuzz all boolean combs
   document.getElementById('run-autotest')?.addEventListener('click', async () => {
     const btn = document.getElementById('run-autotest') as HTMLButtonElement;
     const resultEl = document.getElementById('autotest-result')!;
+    const gridEl = document.getElementById('autotest-grid')!;
     btn.disabled = true;
     btn.textContent = 'Running...';
 
     const { __test } = await import('./generated/monitor.js');
+    const NUM_TESTS = 50;
     let pass = 0;
     let fail = 0;
 
-    for (let ti = 0; ti < threshValues.length; ti++) {
-      for (let ai = 0; ai < avgValues.length; ai++) {
-        const t = __test();
-        const avg = avgValues[ai];
-        const thresh = threshValues[ti];
-        batch(() => {
-          t.signals.cpuAvg.set(avg);
-          t.signals.cpuThreshold.set(thresh);
-        });
-        const roundedAvg = Math.round(avg * 10) / 10;
-        const roundedThresh = Math.round(thresh * 10) / 10;
-        const expected = roundedAvg > roundedThresh;
-        const actual = t.combs.cpuHigh();
-        const correct = actual === expected;
-        matrixCells[ti][ai].className = `matrix-cell ${correct ? 'pass' : 'fail'}`;
-        matrixCells[ti][ai].textContent = actual ? 'H' : 'L';
-        if (correct) pass++; else fail++;
-        t.dispose();
-      }
+    // Build table
+    let html = '<table><thead><tr>';
+    html += '<th>#</th><th>cpuAvg</th><th>thresh</th><th>memAvg</th><th>disk</th>';
+    html += '<th>cpuHigh</th><th>memHigh</th><th>diskHigh</th><th>anyAlert</th>';
+    html += '</tr></thead><tbody>';
+
+    for (let i = 0; i < NUM_TESTS; i++) {
+      const t = __test();
+      const cpuAvg = Math.round(Math.random() * 100 * 10) / 10;
+      const thresh = Math.round(Math.random() * 100 * 10) / 10;
+      const memAvg = Math.round(Math.random() * 100 * 10) / 10;
+      const disk = Math.round(Math.random() * 100 * 10) / 10;
+
+      batch(() => {
+        t.signals.cpuAvg.set(cpuAvg);
+        t.signals.cpuThreshold.set(thresh);
+        t.signals.memAvg.set(memAvg);
+        t.signals.disk.set(disk);
+      });
+
+      const roundedCpuAvg = Math.round(cpuAvg * 10) / 10;
+      const roundedThresh = Math.round(thresh * 10) / 10;
+      const roundedMemAvg = Math.round(memAvg * 10) / 10;
+      const roundedDisk = Math.round(disk * 10) / 10;
+
+      const expectedCpuHigh = roundedCpuAvg > roundedThresh;
+      const expectedMemHigh = roundedMemAvg > 85;
+      const expectedDiskHigh = roundedDisk > 90;
+      const expectedAnyAlert = expectedCpuHigh || expectedMemHigh || expectedDiskHigh;
+
+      const actualCpuHigh = t.combs.cpuHigh();
+      const actualMemHigh = t.combs.memHigh();
+      const actualDiskHigh = t.combs.diskHigh();
+      const actualAnyAlert = t.combs.anyAlert();
+
+      const cpuOk = actualCpuHigh === expectedCpuHigh;
+      const memOk = actualMemHigh === expectedMemHigh;
+      const diskOk = actualDiskHigh === expectedDiskHigh;
+      const alertOk = actualAnyAlert === expectedAnyAlert;
+
+      const rowPass = cpuOk && memOk && diskOk && alertOk;
+      if (rowPass) pass++; else fail++;
+
+      const cell = (ok: boolean, val: boolean) =>
+        `<td class="${ok ? 'pass' : 'fail'}">${val ? '\u2713' : '\u2717'}</td>`;
+
+      html += `<tr>`;
+      html += `<td>${i + 1}</td>`;
+      html += `<td>${cpuAvg}</td><td>${thresh}</td><td>${memAvg}</td><td>${disk}</td>`;
+      html += cell(cpuOk, actualCpuHigh);
+      html += cell(memOk, actualMemHigh);
+      html += cell(diskOk, actualDiskHigh);
+      html += cell(alertOk, actualAnyAlert);
+      html += `</tr>`;
+
+      t.dispose();
     }
+
+    html += '</tbody></table>';
+    gridEl.innerHTML = html;
 
     resultEl.style.color = fail === 0 ? '#44ff44' : '#ff4444';
     resultEl.textContent = `${pass}/${pass + fail} passed` + (fail > 0 ? ` (${fail} failed)` : '');
