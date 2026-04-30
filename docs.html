@@ -312,11 +312,11 @@
 
       <h3>fn &mdash; custom functions</h3>
       <p>Functions are defined with <code>fn name(params) -&gt; returnType { body }</code>. The return type is optional. The last expression in the body is the implicit return value (like Rust). Explicit <code>return expr;</code> is also supported.</p>
-<pre class="docs-code"><span class="kw">fn</span> <span class="fn">clamp</span>(value: <span class="ty">int</span>, min: <span class="ty">int</span>, max: <span class="ty">int</span>) -> <span class="ty">int</span> {
-  value < min ? min : value > max ? max : value;
+<pre class="docs-code"><span class="kw">fn</span> <span class="fn">clamp</span>(value: <span class="ty">int</span>, min: <span class="ty">int</span>, max: <span class="ty">int</span>) -&gt; <span class="ty">int</span> {
+  value &lt; min ? min : value &gt; max ? max : value;
 }
 
-<span class="kw">fn</span> <span class="fn">formatPrice</span>(amount: <span class="ty">float</span>) -> <span class="ty">string</span> {
+<span class="kw">fn</span> <span class="fn">formatPrice</span>(amount: <span class="ty">float</span>) -&gt; <span class="ty">string</span> {
   <span class="str">"$"</span> + <span class="fn">str</span>(<span class="fn">round</span>(amount * <span class="num">100</span>) / <span class="num">100</span>);
 }</pre>
 
