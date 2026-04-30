@@ -21,32 +21,10 @@ function createLanding(): HTMLElement {
     </section>
 
     <section class="usecases-section">
-      <h2 class="section-title">What Can You Build?</h2>
-      <div class="usecase-card">
-        <div class="usecase-title">See why the submit button is disabled</div>
-        <div class="usecase-desc">Write <code>comb canSubmit = valid1 &amp;&amp; valid2</code>. The circuit diagram shows every signal feeding into it with live values. If you forgot a dependency, the compiler tells you.</div>
-        <a href="#registration" class="usecase-link">Try it &rarr;</a>
-      </div>
-      <div class="usecase-card">
-        <div class="usecase-title">Bidirectional color conversion without glue code</div>
-        <div class="usecase-desc">Declare constraints between RGB and HSV. Edit any slider, all others update. No <code>onChange</code> ping-pong.</div>
-        <a href="#color" class="usecase-link">Try it &rarr;</a>
-      </div>
-      <div class="usecase-card">
-        <div class="usecase-title">Drag-resize panels with constraint solving</div>
-        <div class="usecase-desc">Declare <code>sidebar + content == total</code>, <code>sidebar >= 200</code>. The Cassowary solver handles the math.</div>
-        <a href="#layout" class="usecase-link">Try it &rarr;</a>
-      </div>
-      <div class="usecase-card">
-        <div class="usecase-title">Replay every state change like a logic analyzer</div>
-        <div class="usecase-desc">Every signal records its history automatically. Scrub through time, see causality. No Redux setup.</div>
-        <a href="#ticker" class="usecase-link">Try it &rarr;</a>
-      </div>
-      <div class="usecase-card">
-        <div class="usecase-title">Refactor and know you didn't break dataflow</div>
-        <div class="usecase-desc">The compiler diffs the circuit graph before and after. Broken wires show in red.</div>
-        <a href="#diff" class="usecase-link">Try it &rarr;</a>
-      </div>
+      <h2 class="section-title">Why Comb?</h2>
+      <p class="why-comb-text">Every reactive framework has a dirty secret: your dependency graph is invisible. You write <code>useMemo(() =&gt; a + b, [a, b])</code> and React trusts you got the array right. Svelte infers deps at compile time &mdash; but throws that information away. The wiring between your signals, derived values, and effects exists only as an emergent property of execution.</p>
+      <p class="why-comb-text">Comb's compiler does something no other framework does: it extracts the reactive dependency graph and exports it as data. Every signal, every derived value, every event handler, every view binding &mdash; the compiler maps the connections and embeds the result as a JSON graph in the compiled output. This isn't a DevTools feature. It's a build artifact, like a type declaration file.</p>
+      <p class="why-comb-text">This one decision unlocks things that are structurally impossible in other frameworks: diffing the dependency graph between versions, verifying at compile time that a derived value doesn't read a signal it shouldn't, wiring <code>assert always (count &gt;= 0)</code> as a continuous invariant in the graph. The insight comes from hardware design &mdash; chip designers don't debug by stepping through execution, they look at schematics and diff netlists.</p>
     </section>
 
     <section class="pipeline-section">

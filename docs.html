@@ -96,6 +96,7 @@
     .docs-table th { color: #888; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
     .docs-table td { color: #bbb; }
     .docs-table td:first-child { font-family: 'SF Mono', 'Fira Code', monospace; color: #c084fc; white-space: nowrap; }
+    .why-comb-text { color: #bbb; line-height: 1.7; font-size: 0.9rem; max-width: 700px; margin: 0.5rem 0 1.5rem; }
 
     @media (max-width: 768px) {
       .docs-sidebar { display: none; }
@@ -141,22 +142,15 @@
 
       <!-- Why Comb -->
       <h2 id="why">Why Comb?</h2>
-      <p>Five things you can do in Comb that other frameworks make hard:</p>
+      <p class="why-comb-text">Every reactive framework has a dirty secret: your dependency graph is invisible. You can write <code>computed(() => a.value + b.value)</code> in Vue or a <code>useMemo</code> in React, but neither framework can tell you what depends on what at build time. The graph exists only at runtime, scattered across closures and hook slots. You can't query it, diff it, or verify it. When something goes wrong, you reach for browser DevTools and add <code>console.log</code> statements until you find the broken link.</p>
 
-      <h3>See why the submit button is disabled</h3>
-      <p>Write <code>comb canSubmit = usernameValid && emailValid && passwordStrong</code>. The compiler extracts every dependency statically. The circuit diagram renders them as a live schematic with real-time values flowing through wires. If you misspell a dependency or reference one that doesn't exist, it's a compile error &mdash; not a silent bug that ships to production. <a href="/#registration">Try the Dependency Debugger &rarr;</a></p>
+      <p class="why-comb-text">Comb's compiler does something no other framework does: it extracts the complete dependency graph as a static data structure at compile time. Every <code>signal</code>, <code>comb</code>, <code>cell</code>, event handler, view binding, and assertion becomes a node. Every dependency becomes an edge. The result is a JSON object called <code>__graph</code> that ships alongside your JavaScript &mdash; not as a debugging aid you opt into, but as a first-class build artifact that's always there.</p>
 
-      <h3>Bidirectional color conversion without glue code</h3>
-      <p>Declare 6 cells (R, G, B, H, S, V) and two constraints. The propagator network handles convergence automatically &mdash; edit any slider and all others update through the constraint solver. No <code>onChange</code> ping-pong, no manual state synchronization, no infinite loop guards. The compiler verifies that constraint inputs are cells and catches self-triggering writes. <a href="/#color">Try the Color Picker &rarr;</a></p>
+      <p class="why-comb-text">This one decision unlocks things that are structurally impossible in other frameworks. You can render a live circuit diagram where signals pulse through wires in real time (the playground does this). You can diff two versions of a component and see exactly which dependencies changed. You can write <code>assert canSubmit_valid: canSubmit == (usernameOk && emailOk && passwordOk)</code> and the compiler will verify the assertion's dependencies are a subset of the formula's dependencies. You can build a waveform debugger that plots signal values over time, like a logic analyzer for your UI. None of these require special tooling or plugins &mdash; they fall out of <code>__graph</code> for free.</p>
 
-      <h3>Drag-resize panels with constraint solving</h3>
-      <p>Declare <code>sidebar + content + inspector == total</code> and <code>sidebar >= 200</code>. Wire the constraints to reactive cells. The Kiwi.js Cassowary solver enforces the invariants while you drag dividers. The circuit graph shows the solver as a node with bidirectional edges to every pane width. <a href="/#layout">Try the Constraint Layout &rarr;</a></p>
+      <p class="why-comb-text">The insight comes from hardware design. In SystemVerilog, every wire and register is declared, every connection is explicit, and the synthesis tool can verify timing constraints before the chip is fabricated. Comb applies the same philosophy to UI: every reactive primitive is declared with its type and initial value, every dependency is extracted statically, and the compiler can catch entire categories of bugs (misspelled dependencies, circular definitions, self-triggering writes) that other frameworks only discover at runtime. The <code>&lt;=</code> operator for signal writes isn't syntactic sugar &mdash; it's a semantic marker that makes writes greppable and prevents accidental mutation outside event handlers.</p>
 
-      <h3>Replay every state change like a logic analyzer</h3>
-      <p>Every signal in the circuit graph records its history automatically. The waveform debugger plots signal traces over time &mdash; scrub through history, see causality between signals, watch how a threshold crossing triggers an alert. No Redux DevTools setup, no manual action logging. It falls out of the <code>__graph</code> for free. <a href="/#ticker">Try the Waveform Debugger &rarr;</a></p>
-
-      <h3>Refactor and know you didn't break dataflow</h3>
-      <p>The compiler extracts <code>__graph</code> from both the old and new version of your code. The circuit differ highlights added, removed, and changed nodes and edges. You can see at a glance whether a refactor preserved the reactive topology or introduced a breaking change. Zero prior art in web frameworks. <a href="/#diff">Try the Circuit Diff &rarr;</a></p>
+      <p class="why-comb-text">None of this requires you to adopt a new language forever. The compiler emits readable JavaScript that targets a 200-line reactive runtime. The generated code uses <code>createSignal</code>, <code>createComb</code>, <code>createEffect</code> &mdash; patterns you already know from Solid, Preact Signals, or Vue's composition API. If you outgrow Comb, you can read the generated code, understand it, and maintain it by hand. The <code>.comb</code> file is a better authoring format, not a lock-in.</p>
 
       <!-- Primitives -->
       <h2 id="primitives">Primitives</h2>
