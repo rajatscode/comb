@@ -188,3 +188,8 @@ exampleSelect.addEventListener('change', () => {
 // --- Init: load counter example ---
 editor.value = EXAMPLES.counter;
 runCompile();
+
+// Prevent full page reload on HMR — playground manages its own state
+if (import.meta.hot) {
+  import.meta.hot.accept();
+}
