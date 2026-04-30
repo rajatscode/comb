@@ -51,7 +51,7 @@ export function generate(mod: Module, graph: StaticGraph): string {
   const lines: string[] = [];
 
   // Imports
-  lines.push("import { createSignal, createComb, createEffect, batch } from '../runtime/signals.js';");
+  lines.push("import { createSignal, createComb, createEffect, batch, createScope } from '../runtime/signals.js';");
   lines.push('');
 
   // Static graph export
@@ -63,6 +63,7 @@ export function generate(mod: Module, graph: StaticGraph): string {
   const paramList = paramNames.length > 0 ? `{ ${paramNames.join(', ')} }, root` : 'root';
   lines.push(`export function ${mod.name}(${paramList}) {`);
   lines.push(`  const $m = '${mod.name}';`);
+  lines.push(`  const __scope = createScope();`);
   lines.push('');
 
   for (const decl of mod.body) {
@@ -70,6 +71,7 @@ export function generate(mod: Module, graph: StaticGraph): string {
     lines.push('');
   }
 
+  lines.push('  return { dispose: __scope.dispose };');
   lines.push('}');
   return lines.join('\n');
 }

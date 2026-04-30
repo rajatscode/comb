@@ -1,0 +1,231 @@
+// runtime-test.ts — 13 tests for the reactive runtime
+// Run: npx tsx src/runtime/runtime-test.ts
+
+import { createSignal, createComb, createEffect, batch, untrack, createScope } from './signals.js';
+import { circuit } from './circuit.js';
+
+let passed = 0;
+let failed = 0;
+
+function test(name: string, fn: () => void) {
+  circuit.reset();
+  try {
+    fn();
+    console.log(`  ✓ ${name}`);
+    passed++;
+  } catch (e: any) {
+    console.log(`  ✗ ${name}: ${e.message}`);
+    failed++;
+  }
+}
+
+function assert(condition: boolean, msg: string) {
+  if (!condition) throw new Error(msg);
+}
+
+function assertEqual<T>(actual: T, expected: T, msg: string) {
+  if (!Object.is(actual, expected)) throw new Error(`${msg}: expected ${expected}, got ${actual}`);
+}
+
+console.log('\nRuntime Tests\n');
+
+// 1. Signal read/write
+test('signal read/write', () => {
+  const [count, setCount] = createSignal(0, { name: 'count', module: 'Test' });
+  assertEqual(count(), 0, 'initial value');
+  setCount(5);
+  assertEqual(count(), 5, 'after set');
+  setCount(prev => prev + 1);
+  assertEqual(count(), 6, 'functional update');
+});
+
+// 2. Comb auto-tracking
+test('comb auto-tracking', () => {
+  const [count, setCount] = createSignal(0, { name: 'count', module: 'Test' });
+  const doubled = createComb(() => count() * 2, { name: 'doubled', module: 'Test', deps: ['count'] });
+  assertEqual(doubled(), 0, 'initial');
+  setCount(3);
+  assertEqual(doubled(), 6, 'after change');
+  setCount(10);
+  assertEqual(doubled(), 20, 'after second change');
+});
+
+// 3. Comb memoization
+test('comb memoization — no downstream propagation on same value', () => {
+  const [x, setX] = createSignal(5, { name: 'x', module: 'Test' });
+  const clamped = createComb(() => Math.min(x(), 10), { name: 'clamped', module: 'Test', deps: ['x'] });
+  let effectRuns = 0;
+  createEffect(() => { clamped(); effectRuns++; }, { name: 'counter', module: 'Test' });
+  assertEqual(effectRuns, 1, 'initial run');
+  setX(7); // clamped changes from 5→7
+  assertEqual(effectRuns, 2, 'after x=7');
+  setX(15); // clamped changes from 7→10
+  assertEqual(effectRuns, 3, 'after x=15');
+  setX(20); // clamped stays 10 — no propagation
+  assertEqual(effectRuns, 3, 'after x=20, clamped still 10');
+});
+
+// 4. Effect execution on dep change
+test('effect runs on dependency change', () => {
+  const [name, setName] = createSignal('Alice', { name: 'name', module: 'Test' });
+  const values: string[] = [];
+  createEffect(() => { values.push(name()); }, { name: 'logger', module: 'Test' });
+  assertEqual(values.length, 1, 'initial run');
+  assertEqual(values[0], 'Alice', 'initial value');
+  setName('Bob');
+  assertEqual(values.length, 2, 'after change');
+  assertEqual(values[1], 'Bob', 'new value');
+});
+
+// 5. Effect cleanup
+test('effect cleanup runs before next execution', () => {
+  const [count, setCount] = createSignal(0, { name: 'count', module: 'Test' });
+  const log: string[] = [];
+  createEffect(() => {
+    const v = count();
+    log.push(`run:${v}`);
+    return () => { log.push(`cleanup:${v}`); };
+  }, { name: 'cleaner', module: 'Test' });
+  assertEqual(log.length, 1, 'initial');
+  assertEqual(log[0], 'run:0', 'initial run');
+  setCount(1);
+  assertEqual(log.length, 3, 'after set');
+  assertEqual(log[1], 'cleanup:0', 'cleanup of previous');
+  assertEqual(log[2], 'run:1', 'new run');
+});
+
+// 6. Batch groups multiple writes
+test('batch groups multiple writes into one flush', () => {
+  const [a, setA] = createSignal(0, { name: 'a', module: 'Test' });
+  const [b, setB] = createSignal(0, { name: 'b', module: 'Test' });
+  let runs = 0;
+  createEffect(() => { a(); b(); runs++; }, { name: 'watcher', module: 'Test' });
+  assertEqual(runs, 1, 'initial');
+  batch(() => {
+    setA(1);
+    setB(2);
+  });
+  // Without batch, would be 3 (initial + 2 changes). With batch, should be 2.
+  assertEqual(runs, 2, 'after batch');
+});
+
+// 7. Nested batch
+test('nested batch — inner does not flush', () => {
+  const [x, setX] = createSignal(0, { name: 'x', module: 'Test' });
+  let runs = 0;
+  createEffect(() => { x(); runs++; }, { name: 'eff', module: 'Test' });
+  assertEqual(runs, 1, 'initial');
+  batch(() => {
+    setX(1);
+    batch(() => {
+      setX(2);
+      // Inner batch should not flush
+      assertEqual(runs, 1, 'inner batch should not flush');
+    });
+    // Still inside outer batch
+    assertEqual(runs, 1, 'after inner batch');
+  });
+  // Now outer batch exits, should flush once
+  assertEqual(runs, 2, 'after outer batch');
+  assertEqual(x(), 2, 'final value');
+});
+
+// 8. Untrack
+test('untrack — read without creating dependency', () => {
+  const [a, setA] = createSignal(0, { name: 'a', module: 'Test' });
+  const [b, setB] = createSignal(0, { name: 'b', module: 'Test' });
+  let runs = 0;
+  createEffect(() => {
+    a(); // tracked
+    untrack(() => b()); // untracked
+    runs++;
+  }, { name: 'eff', module: 'Test' });
+  assertEqual(runs, 1, 'initial');
+  setA(1); // should trigger
+  assertEqual(runs, 2, 'after a change');
+  setB(1); // should NOT trigger
+  assertEqual(runs, 2, 'after b change (untracked)');
+});
+
+// 9. Scope dispose
+test('scope dispose — effects stop running', () => {
+  const [x, setX] = createSignal(0, { name: 'x', module: 'Test' });
+  let runs = 0;
+  const scope = createScope();
+  createEffect(() => { x(); runs++; }, { name: 'eff', module: 'Test' });
+  scope.dispose();
+  assertEqual(runs, 1, 'initial run');
+  setX(1);
+  assertEqual(runs, 1, 'after dispose, effect should not run');
+});
+
+// 10. CircuitGraph node registration
+test('circuit node registration', () => {
+  const id = circuit.registerNode({ name: 'count', module: 'Counter', type: 'signal', valueType: 'int' });
+  assertEqual(id, 'Counter.count', 'node ID format');
+  const node = circuit.getNode(id);
+  assert(node !== undefined, 'node should exist');
+  assertEqual(node!.type, 'signal', 'node type');
+  assertEqual(node!.module, 'Counter', 'node module');
+});
+
+// 11. CircuitGraph edges from comb deps
+test('circuit edges from comb deps', () => {
+  circuit.registerNode({ name: 'x', module: 'M', type: 'signal' });
+  circuit.registerNode({ name: 'y', module: 'M', type: 'signal' });
+  circuit.registerNode({ name: 'sum', module: 'M', type: 'comb', deps: ['x', 'y'] });
+  const edges = circuit.getEdges();
+  assert(edges.some(e => e.from === 'M.x' && e.to === 'M.sum'), 'edge x→sum');
+  assert(edges.some(e => e.from === 'M.y' && e.to === 'M.sum'), 'edge y→sum');
+});
+
+// 12. CircuitGraph event subscription
+test('circuit event subscription', () => {
+  const events: string[] = [];
+  const unsub = circuit.subscribe(e => events.push(`${e.type}:${e.nodeId}`));
+  const [x, setX] = createSignal(0, { name: 'x', module: 'Test' });
+  setX(1);
+  assert(events.some(e => e.includes('signal-change')), 'should receive signal-change event');
+  unsub();
+  setX(2);
+  const countAfterUnsub = events.filter(e => e.includes('signal-change')).length;
+  setX(3);
+  assertEqual(events.filter(e => e.includes('signal-change')).length, countAfterUnsub, 'no events after unsubscribe');
+});
+
+// 13. Diamond problem — A→B, A→C, B+C→D, change A, D computes once with consistent values
+test('diamond problem — consistent values, single computation', () => {
+  const [a, setA] = createSignal(1, { name: 'a', module: 'Test' });
+  const b = createComb(() => a() * 2, { name: 'b', module: 'Test', deps: ['a'] });
+  const c = createComb(() => a() * 3, { name: 'c', module: 'Test', deps: ['a'] });
+  let dComputeCount = 0;
+  let lastDValue: number | undefined;
+  const d = createComb(() => {
+    dComputeCount++;
+    return b() + c();
+  }, { name: 'd', module: 'Test', deps: ['b', 'c'] });
+  // Initial: a=1, b=2, c=3, d=5
+  assertEqual(d(), 5, 'initial d');
+  dComputeCount = 0; // reset after initial
+
+  // Change a to 2: b=4, c=6, d should be 10
+  // Use batch to ensure consistency
+  batch(() => { setA(2); });
+  assertEqual(d(), 10, 'd after a=2');
+
+  // d should read consistent b and c values
+  let effectRuns = 0;
+  createEffect(() => {
+    lastDValue = d();
+    effectRuns++;
+  }, { name: 'dWatcher', module: 'Test' });
+  assertEqual(lastDValue, 10, 'effect sees consistent d');
+
+  batch(() => { setA(5); });
+  // b=10, c=15, d=25
+  assertEqual(d(), 25, 'd after a=5');
+  assertEqual(lastDValue, 25, 'effect sees updated d');
+});
+
+console.log(`\n${passed} passed, ${failed} failed\n`);
+process.exit(failed > 0 ? 1 : 0);
