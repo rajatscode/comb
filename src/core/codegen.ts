@@ -217,7 +217,14 @@ export function generateWithSourceMap(mod: Module, graph: StaticGraph): Generate
   const hasCells = mod.body.some(d => d.kind === 'cell');
   const hasConstraints = mod.body.some(d => d.kind === 'constraint');
   const hasEdgeTriggers = mod.body.some(d => d.kind === 'always' && (d.triggerKind === 'posedge' || d.triggerKind === 'negedge'));
-  const hasEdgeCounters = mod.body.some(d => d.kind === 'comb' && d.expr.kind === 'call' && d.expr.callee.kind === 'identifier' && (d.expr.callee.name === 'edgeCount' || d.expr.callee.name === 'negedgeCount'));
+  function exprContainsEdgeCount(expr: Expr): boolean {
+    if (expr.kind === 'call' && expr.callee.kind === 'identifier' && (expr.callee.name === 'edgeCount' || expr.callee.name === 'negedgeCount')) return true;
+    if (expr.kind === 'binary') return exprContainsEdgeCount(expr.left) || exprContainsEdgeCount(expr.right);
+    if (expr.kind === 'unary') return exprContainsEdgeCount(expr.operand);
+    if (expr.kind === 'ternary') return exprContainsEdgeCount(expr.condition) || exprContainsEdgeCount(expr.then) || exprContainsEdgeCount(expr.else_);
+    return false;
+  }
+  const hasEdgeCounters = mod.body.some(d => d.kind === 'comb' && exprContainsEdgeCount(d.expr));
   const hasTemporalAsserts = mod.body.some(d => d.kind === 'temporal_assert');
   const hasKeyedFor = hasKeyedForDirective(mod);
   const importParts = ['createSignal', 'createComb', 'createEffect', 'batch', 'createScope', 'circuit', 'X'];

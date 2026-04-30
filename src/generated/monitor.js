@@ -1,4 +1,4 @@
-import { createSignal, createComb, createEffect, batch, createScope, circuit, X, createEdgeEffect } from '../runtime/index.js';
+import { createSignal, createComb, createEffect, batch, createScope, circuit, X, createEdgeEffect, createEdgeCounter } from '../runtime/index.js';
 
 export const __graph = {
   "nodes": [
