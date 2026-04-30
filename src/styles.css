@@ -1218,3 +1218,11 @@ a:hover { text-decoration: underline; }
 .threshold-controls label { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: #aaa; font-family: monospace; }
 .threshold-controls input[type="range"] { width: 120px; accent-color: #7b8cff; }
 
+
+.coverage-matrix-wrapper { max-width: 600px; margin: 0 auto; }
+.heatmap-labels { display: flex; justify-content: center; gap: 2rem; margin-bottom: 0.5rem; font-size: 0.75rem; color: #7b8cff; font-family: monospace; text-transform: uppercase; letter-spacing: 1px; }
+.heatmap-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; margin-bottom: 0.75rem; }
+.heatmap-cell { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 6px; font-size: 0.65rem; font-family: monospace; color: #555; cursor: default; transition: all 0.3s; }
+.heatmap-cell.hit { background: #1a3a1a; border-color: #4ae04a; color: #4ae04a; font-weight: 700; }
+.heatmap-count { text-align: center; font-size: 0.85rem; color: #888; font-family: monospace; }
+

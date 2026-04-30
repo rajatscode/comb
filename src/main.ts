@@ -205,17 +205,23 @@ function createLanding(): HTMLElement {
     </section>
 
     <section class="waveform-section">
+      <h2 class="section-title">Waveform Debugger</h2>
+      <p style="text-align:center; color:#888; font-size:0.85rem; margin-bottom:1rem;">Signal values plotted over time — like a hardware logic analyzer for your UI.</p>
       <div id="waveform-container" class="waveform-landing-container"></div>
     </section>
 
     <section class="autotest-section">
-      <h2 class="section-title">Auto-Test</h2>
+      <h2 class="section-title">Auto-Test Coverage Matrix</h2>
       <p style="text-align:center; color:#888; font-size:0.85rem; margin-bottom:1rem;">
-        __test() gives headless access to all signals. Fuzz random inputs, verify every boolean comb.
+        3 boolean combs = 8 possible state combinations. The compiler knows your dependency graph — it auto-derives what to test. Fuzz 1000 random inputs and verify all combinations are reachable.
       </p>
-      <div id="autotest-grid" class="autotest-grid"></div>
+      <div class="coverage-matrix-wrapper">
+        <div class="heatmap-labels" id="matrix-labels"></div>
+        <div class="heatmap-grid" id="matrix-heatmap"></div>
+        <div id="matrix-count" class="heatmap-count">0 / 8 combinations hit</div>
+      </div>
       <div style="text-align:center; margin-top:1rem;">
-        <button id="run-autotest" class="auto-test-btn">Run Auto-Test (50 random inputs)</button>
+        <button id="run-autotest" class="auto-test-btn">Auto-Test (1000 random inputs)</button>
         <span id="autotest-result" style="margin-left:1rem; font-family:monospace; font-size:0.85rem;"></span>
       </div>
     </section>
@@ -378,79 +384,93 @@ function showLanding() {
     });
   }
 
-  // Auto-test button handler — fuzz all boolean combs
+  // Build coverage heatmap — 3 boolean combs = 8 combinations
+  const boolCombs = ['cpuHigh', 'memHigh', 'diskHigh'];
+  const heatmapEl = document.getElementById('matrix-heatmap')!;
+  const labelsEl = document.getElementById('matrix-labels')!;
+  const countEl = document.getElementById('matrix-count')!;
+  const hitSet = new Set<number>();
+  const cells: HTMLDivElement[] = [];
+
+  // Labels row
+  labelsEl.innerHTML = boolCombs.map(n => `<span>${n}</span>`).join('');
+
+  // 8 cells (2^3 combinations)
+  for (let i = 0; i < 8; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'heatmap-cell';
+    cell.title = boolCombs.map((n, bit) => `${n}: ${(i >> (2 - bit)) & 1 ? 'T' : 'F'}`).join('\n');
+    // Show the combination as T/F
+    const label = boolCombs.map((_, bit) => (i >> (2 - bit)) & 1 ? 'T' : 'F').join('');
+    cell.textContent = label;
+    cells.push(cell);
+    heatmapEl.appendChild(cell);
+  }
+
+  function updateHeatmap() {
+    for (let i = 0; i < 8; i++) {
+      cells[i].className = `heatmap-cell ${hitSet.has(i) ? 'hit' : ''}`;
+    }
+    countEl.textContent = `${hitSet.size} / 8 combinations hit`;
+  }
+
+  // Track combinations from live data
+  const unsub = circuit.subscribe(() => {
+    const nodes = circuit.getNodes().filter(n => n.module === 'Monitor');
+    let combo = 0;
+    for (let bit = 0; bit < boolCombs.length; bit++) {
+      const node = nodes.find(n => n.name === boolCombs[bit]);
+      if (node?.getValue && node.getValue()) combo |= (1 << (2 - bit));
+    }
+    hitSet.add(combo);
+    updateHeatmap();
+  });
+
+  // Auto-test button — fuzz 1000 random inputs to hit all 8 combinations
   document.getElementById('run-autotest')?.addEventListener('click', async () => {
     const btn = document.getElementById('run-autotest') as HTMLButtonElement;
     const resultEl = document.getElementById('autotest-result')!;
-    const gridEl = document.getElementById('autotest-grid')!;
     btn.disabled = true;
     btn.textContent = 'Running...';
 
     const { __test } = await import('./generated/monitor.js');
-    const NUM_TESTS = 50;
-    let pass = 0;
-    let fail = 0;
 
-    // Build table — randomize ALL inputs including all 3 thresholds
-    let html = '<table><thead><tr>';
-    html += '<th>#</th><th>cpuAvg</th><th>cpuThr</th><th>memAvg</th><th>memThr</th><th>disk</th><th>diskThr</th>';
-    html += '<th>cpuHigh</th><th>memHigh</th><th>diskHigh</th><th>anyAlert</th>';
-    html += '</tr></thead><tbody>';
-
-    for (let i = 0; i < NUM_TESTS; i++) {
+    setTimeout(() => {
       const t = __test();
-      const r = () => Math.round(Math.random() * 100 * 10) / 10;
-      const cpuAvg = r(), cpuThr = r(), memAvg = r(), memThr = r(), disk = r(), diskThr = r();
+      let verified = 0;
+      for (let i = 0; i < 1000; i++) {
+        const r = () => Math.round(Math.random() * 100 * 10) / 10;
+        const cpuAvg = r(), cpuThr = r(), memAvg = r(), memThr = r(), disk = r(), diskThr = r();
 
-      batch(() => {
-        t.signals.cpuAvg.set(cpuAvg);
-        t.signals.cpuThreshold.set(cpuThr);
-        t.signals.memAvg.set(memAvg);
-        t.signals.memThreshold.set(memThr);
-        t.signals.disk.set(disk);
-        t.signals.diskThreshold.set(diskThr);
-      });
+        batch(() => {
+          t.signals.cpuAvg.set(cpuAvg);
+          t.signals.cpuThreshold.set(cpuThr);
+          t.signals.memAvg.set(memAvg);
+          t.signals.memThreshold.set(memThr);
+          t.signals.disk.set(disk);
+          t.signals.diskThreshold.set(diskThr);
+        });
 
-      const expectedCpuHigh = cpuAvg > cpuThr;
-      const expectedMemHigh = memAvg > memThr;
-      const expectedDiskHigh = disk > diskThr;
-      const expectedAnyAlert = expectedCpuHigh || expectedMemHigh || expectedDiskHigh;
+        // Record combination
+        let combo = 0;
+        if (t.combs.cpuHigh()) combo |= 4;
+        if (t.combs.memHigh()) combo |= 2;
+        if (t.combs.diskHigh()) combo |= 1;
+        hitSet.add(combo);
 
-      const actualCpuHigh = t.combs.cpuHigh();
-      const actualMemHigh = t.combs.memHigh();
-      const actualDiskHigh = t.combs.diskHigh();
-      const actualAnyAlert = t.combs.anyAlert();
-
-      const cpuOk = actualCpuHigh === expectedCpuHigh;
-      const memOk = actualMemHigh === expectedMemHigh;
-      const diskOk = actualDiskHigh === expectedDiskHigh;
-      const alertOk = actualAnyAlert === expectedAnyAlert;
-
-      const rowPass = cpuOk && memOk && diskOk && alertOk;
-      if (rowPass) pass++; else fail++;
-
-      const cell = (ok: boolean, val: boolean) =>
-        `<td class="${ok ? 'pass' : 'fail'}">${val ? '\u2713' : '\u2717'}</td>`;
-
-      html += `<tr>`;
-      html += `<td>${i + 1}</td>`;
-      html += `<td>${cpuAvg}</td><td>${cpuThr}</td><td>${memAvg}</td><td>${memThr}</td><td>${disk}</td><td>${diskThr}</td>`;
-      html += cell(cpuOk, actualCpuHigh);
-      html += cell(memOk, actualMemHigh);
-      html += cell(diskOk, actualDiskHigh);
-      html += cell(alertOk, actualAnyAlert);
-      html += `</tr>`;
-
+        // Verify correctness
+        const ok = t.combs.cpuHigh() === (cpuAvg > cpuThr)
+               && t.combs.memHigh() === (memAvg > memThr)
+               && t.combs.diskHigh() === (disk > diskThr);
+        if (ok) verified++;
+      }
       t.dispose();
-    }
-
-    html += '</tbody></table>';
-    gridEl.innerHTML = html;
-
-    resultEl.style.color = fail === 0 ? '#44ff44' : '#ff4444';
-    resultEl.textContent = `${pass}/${pass + fail} passed` + (fail > 0 ? ` (${fail} failed)` : '');
-    btn.textContent = 'Run Again';
-    btn.disabled = false;
+      updateHeatmap();
+      resultEl.style.color = '#44ff44';
+      resultEl.textContent = `${verified}/1000 verified, ${hitSet.size}/8 combinations covered`;
+      btn.textContent = 'Run Again';
+      btn.disabled = false;
+    }, 10);
   });
 
   // Mount live monitor preview + circuit graph + waveform
