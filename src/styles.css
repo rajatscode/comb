@@ -840,6 +840,16 @@ a:hover { text-decoration: underline; }
 .nav-home:hover { color: #fff !important; }
 .nav-home.active { color: #4a9eff !important; border-bottom-color: transparent !important; }
 
+/* Resizable layout demo */
+.resizable-layout { display: flex; height: 400px; border-radius: 8px; overflow: hidden; border: 1px solid #3a3a5a; }
+.resizable-layout .pane { overflow: hidden; padding: 1rem; flex-shrink: 0; }
+.resizable-layout .sidebar { background: #1e1e35; }
+.resizable-layout .main { background: #1a1a2e; flex: 1; }
+.resizable-layout .inspector { background: #1e1e35; }
+.resizable-layout .divider { width: 6px; background: #3a3a5a; cursor: col-resize; flex-shrink: 0; transition: background 0.15s; }
+.resizable-layout .divider:hover { background: #4a9eff; }
+.resizable-layout .divider:active { background: #6ab4ff; }
+
 @media (max-width: 640px) {
   .hero-title { font-size: 3rem; }
   .demo-cards { grid-template-columns: 1fr; }

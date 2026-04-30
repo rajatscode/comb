@@ -119,6 +119,10 @@ function createLanding(): HTMLElement {
           <h3>Color Picker</h3>
           <p>Bidirectional constraints via propagator networks. Try doing this in React.</p>
         </a>
+        <a href="#layout" class="demo-card">
+          <h3>Constraint Layout</h3>
+          <p>Cassowary solver (kiwi.js) enforces min/max constraints on a resizable three-pane layout.</p>
+        </a>
         <a href="/playground.html" class="demo-card demo-card-highlight">
           <h3>Playground</h3>
           <p>Write .comb code in the browser. Live compile, preview, and circuit visualization.</p>
@@ -142,6 +146,7 @@ nav.innerHTML = `
   <a href="#ticker" class="nav-link" data-demo="ticker">Waveform Debugger</a>
   <a href="#diff" class="nav-link" data-demo="diff">Circuit Diff</a>
   <a href="#color" class="nav-link" data-demo="color">Color Picker</a>
+  <a href="#layout" class="nav-link" data-demo="layout">Constraint Layout</a>
 `;
 app.appendChild(nav);
 
@@ -198,6 +203,8 @@ function loadDemo(name: string) {
     loadDiff(demoWrap);
   } else if (name === 'color') {
     loadColor(demoWrap);
+  } else if (name === 'layout') {
+    loadLayout(demoWrap);
   }
 }
 
@@ -355,6 +362,12 @@ async function loadDiff(container: HTMLElement) {
 async function loadColor(container: HTMLElement) {
   const { mountColorPicker } = await import('./demos/color-picker.js');
   const result = mountColorPicker(container);
+  currentDispose = result.dispose;
+}
+
+async function loadLayout(container: HTMLElement) {
+  const { mountResizableLayout } = await import('./demos/resizable-layout.js');
+  const result = mountResizableLayout(container);
   currentDispose = result.dispose;
 }
 
