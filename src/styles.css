@@ -1,13 +1,40 @@
+* { box-sizing: border-box; }
+
 body {
   font-family: system-ui, sans-serif;
   background: #1a1a2e;
   color: #e0e0e0;
-  display: flex;
-  justify-content: center;
-  padding-top: 4rem;
   margin: 0;
+  overflow: hidden;
 }
+
+#app {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+}
+
+.pane {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  min-width: 0;
+}
+
+.pane-app {
+  flex: 0 0 340px;
+}
+
+.pane-circuit {
+  flex: 1;
+  border-left: 1px solid #2a2a4a;
+  position: relative;
+}
+
+/* Counter styles */
 .counter { text-align: center; }
+.counter h1 { margin-top: 0; }
 .counter button {
   font-size: 1.5rem;
   padding: 0.5rem 1.5rem;
@@ -17,6 +44,41 @@ body {
   color: #e0e0e0;
   border: 1px solid #3a3a5a;
   border-radius: 4px;
+  transition: background 0.15s;
 }
 .counter button:hover { background: #3a3a5e; }
+.counter button:active { background: #4a4a6e; }
 .display { font-size: 2rem; font-weight: bold; margin: 1rem 0; }
+.detail { color: #888; margin: 0.5rem 0 1.5rem; }
+
+/* Circuit node styles */
+.circuit-node {
+  background: #20203a;
+  border-radius: 6px;
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  transition: box-shadow 0.3s ease;
+  z-index: 1;
+}
+
+.circuit-node.active {
+  box-shadow: 0 0 12px currentColor;
+}
+
+.circuit-node-name {
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  opacity: 0.7;
+  margin-bottom: 2px;
+}
+
+.circuit-node-value {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
