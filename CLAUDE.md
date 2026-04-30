@@ -83,5 +83,5 @@ npm run dev                    # Visual testing in browser
 ## Known Limitations
 
 - No source maps
-- List rendering uses full re-render (no keyed reconciliation)
+- List rendering without `key` uses full re-render; use `@for item in items key=item.id { ... }` for keyed reconciliation
 - No SSR support

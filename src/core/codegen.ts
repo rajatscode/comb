@@ -99,13 +99,23 @@ export function generate(mod: Module, graph: StaticGraph): string {
   // Imports
   const hasCells = mod.body.some(d => d.kind === 'cell');
   const hasConstraints = mod.body.some(d => d.kind === 'constraint');
+<<<<<<< HEAD
   const hasEdgeTriggers = mod.body.some(d => d.kind === 'always' && (d.triggerKind === 'posedge' || d.triggerKind === 'negedge'));
   const hasTemporalAsserts = mod.body.some(d => d.kind === 'temporal_assert');
+||||||| b68c2e9
+=======
+  const hasKeyedFor = hasKeyedForDirective(mod);
+>>>>>>> worktree-agent-ae75abc4
   const importParts = ['createSignal', 'createComb', 'createEffect', 'batch', 'createScope', 'circuit'];
   if (hasCells) importParts.push('createCell');
   if (hasConstraints) importParts.push('createPropagator');
+<<<<<<< HEAD
   if (hasEdgeTriggers) importParts.push('createEdgeEffect');
   if (hasTemporalAsserts) importParts.push('createTemporalAssert');
+||||||| b68c2e9
+=======
+  if (hasKeyedFor) importParts.push('reconcileKeyed');
+>>>>>>> worktree-agent-ae75abc4
   lines.push(`import { ${importParts.join(', ')} } from '../runtime/index.js';`);
 
   // Conditional color utility import
@@ -825,6 +835,13 @@ function emitVIf(node: VIf, parent: string, ctx: GenContext, parentDesc: string)
 }
 
 function emitVFor(node: VFor, parent: string, ctx: GenContext, parentDesc: string): string[] {
+  if (node.keyExpr) {
+    return emitVForKeyed(node, parent, ctx, parentDesc);
+  }
+  return emitVForUnkeyed(node, parent, ctx, parentDesc);
+}
+
+function emitVForUnkeyed(node: VFor, parent: string, ctx: GenContext, parentDesc: string): string[] {
   const i = ind(ctx);
   const anchor = nextEl(ctx);
   const container = nextEl(ctx);
@@ -859,6 +876,7 @@ function emitVFor(node: VFor, parent: string, ctx: GenContext, parentDesc: strin
   return lines;
 }
 
+<<<<<<< HEAD
 function emitVSlot(_node: VSlot, parent: string, ctx: GenContext): string[] {
   const i = ind(ctx);
   return [
@@ -866,6 +884,134 @@ function emitVSlot(_node: VSlot, parent: string, ctx: GenContext): string[] {
   ];
 }
 
+||||||| b68c2e9
+=======
+function emitVForKeyed(node: VFor, parent: string, ctx: GenContext, parentDesc: string): string[] {
+  const i = ind(ctx);
+  const anchor = nextEl(ctx);
+  const stateVar = `__forState${ctx.elCount++}`;
+  const itemVar = `__item`;
+  const idxVar = `__i`;
+  const containerVar = `__c`;
+
+  // Emit the key expression with the loop variable name replaced by the lambda parameter
+  const keyExprStr = emitExprWithReplacement(node.keyExpr!, node.variable, itemVar, ctx);
+
+  // Emit the body nodes into a container, using a temporary variable name for the item
+  const savedElCount = ctx.elCount;
+  const savedTxtCount = ctx.txtCount;
+
+  // Generate body code for createFn — builds DOM from scratch
+  // Indent: base + 1 (createEffect) + 2 (closure body inside reconcileKeyed args) = +3
+  ctx.indent += 3;
+  const bodyLines: string[] = [];
+  for (const child of node.body) {
+    bodyLines.push(...emitVNodeWithReplacement(child, containerVar, ctx, parentDesc, node.variable, itemVar));
+  }
+  ctx.indent -= 3;
+
+  // Generate body code for updateFn — clears and rebuilds
+  ctx.elCount = savedElCount + 100; // offset to avoid var name collisions
+  ctx.txtCount = savedTxtCount + 100;
+  ctx.indent += 3;
+  const updateBodyLines: string[] = [];
+  for (const child of node.body) {
+    updateBodyLines.push(...emitVNodeWithReplacement(child, containerVar, ctx, parentDesc, node.variable, itemVar));
+  }
+  ctx.indent -= 3;
+
+  const iterableExpr = emitExpr(node.iterable, ctx);
+
+  const lines = [
+    `${i}const ${stateVar} = { keyMap: new Map(), disposers: new Map() };`,
+    `${i}const ${anchor} = document.createComment('@for');`,
+    `${i}${parent}.appendChild(${anchor});`,
+    `${i}createEffect(() => {`,
+  ];
+  ctx.indent++;
+  const ii = ind(ctx);
+  lines.push(`${ii}const __items = ${iterableExpr};`);
+  lines.push(`${ii}reconcileKeyed(`);
+  lines.push(`${ii}  ${parent},`);
+  lines.push(`${ii}  ${anchor},`);
+  lines.push(`${ii}  __items,`);
+  lines.push(`${ii}  (${itemVar}, ${idxVar}) => ${keyExprStr},`);
+  lines.push(`${ii}  (${itemVar}, ${idxVar}) => {`);
+  lines.push(`${ii}    const ${containerVar} = document.createElement('span');`);
+  lines.push(`${ii}    ${containerVar}.style.display = 'contents';`);
+  for (const line of bodyLines) lines.push(line);
+  lines.push(`${ii}    return ${containerVar};`);
+  lines.push(`${ii}  },`);
+  lines.push(`${ii}  (__node, ${itemVar}, ${idxVar}) => {`);
+  lines.push(`${ii}    const ${containerVar} = __node;`);
+  lines.push(`${ii}    ${containerVar}.innerHTML = '';`);
+  for (const line of updateBodyLines) lines.push(line);
+  lines.push(`${ii}  },`);
+  lines.push(`${ii}  ${stateVar},`);
+  lines.push(`${ii});`);
+  ctx.indent--;
+  lines.push(`${i}}, { name: 'for:${anchor}', module: $m });`);
+  return lines;
+}
+
+/** Emit an expression, replacing occurrences of `oldName` identifier with `newName` */
+function emitExprWithReplacement(expr: Expr, oldName: string, newName: string, ctx: GenContext): string {
+  // Create a temporary context that maps the old variable name
+  // We need to avoid signal() wrapping for the loop variable
+  switch (expr.kind) {
+    case 'literal':
+      if (expr.type === 'string') return JSON.stringify(expr.value);
+      return String(expr.value);
+    case 'identifier':
+      if (expr.name === oldName) return newName;
+      if (ctx.signals.has(expr.name) || ctx.combs.has(expr.name)) return `${expr.name}()`;
+      return expr.name;
+    case 'binary': {
+      const op = expr.op === '<=' ? '<=' : expr.op;
+      return `(${emitExprWithReplacement(expr.left, oldName, newName, ctx)} ${op} ${emitExprWithReplacement(expr.right, oldName, newName, ctx)})`;
+    }
+    case 'member':
+      return `${emitExprWithReplacement(expr.object, oldName, newName, ctx)}.${expr.property}`;
+    case 'index':
+      return `${emitExprWithReplacement(expr.object, oldName, newName, ctx)}[${emitExprWithReplacement(expr.index, oldName, newName, ctx)}]`;
+    case 'call': {
+      const callee = emitExprWithReplacement(expr.callee, oldName, newName, ctx);
+      const args = expr.args.map(a => emitExprWithReplacement(a, oldName, newName, ctx)).join(', ');
+      return `${callee}(${args})`;
+    }
+    default:
+      return emitExpr(expr, ctx);
+  }
+}
+
+/** Emit a VNode tree, replacing the loop variable name with a different identifier */
+function emitVNodeWithReplacement(node: VNode, parent: string, ctx: GenContext, parentDesc: string, oldName: string, newName: string): string[] {
+  // For the keyed for body, the loop variable is a plain value (not a signal).
+  // We temporarily add and remove it from signals so emitExpr doesn't add () calls.
+  // Actually, the loop variable is NOT in signals/combs, so emitExpr will emit it as-is.
+  // We just need to rename references from oldName to newName.
+  // The simplest approach: emit normally, then do string replacement.
+  // But that could cause false replacements. Instead, let's use a scoped approach.
+
+  // Save the old signals state and temporarily exclude the loop variable
+  const wasSignal = ctx.signals.has(oldName);
+  const wasComb = ctx.combs.has(oldName);
+  ctx.signals.delete(oldName);
+  ctx.combs.delete(oldName);
+
+  const lines = emitVNode(node, parent, ctx, parentDesc);
+
+  // Restore
+  if (wasSignal) ctx.signals.add(oldName);
+  if (wasComb) ctx.combs.add(oldName);
+
+  // Replace the old variable name with the new one in the generated code
+  // We need to be careful to only replace whole-word occurrences
+  const regex = new RegExp(`\\b${oldName}\\b`, 'g');
+  return lines.map(line => line.replace(regex, newName));
+}
+
+>>>>>>> worktree-agent-ae75abc4
 function emitEventAttr(attr: VAttr, elVar: string, ctx: GenContext): string[] {
   const i = ind(ctx);
   const event = attr.name;
@@ -1036,6 +1182,26 @@ function emitCall(expr: Expr & { kind: 'call' }, ctx: GenContext): string {
 }
 
 // Helpers
+
+function hasKeyedForDirective(mod: Module): boolean {
+  function scanVNodes(nodes: VNode[]): boolean {
+    for (const node of nodes) {
+      if (node.kind === 'for' && node.keyExpr) return true;
+      if (node.kind === 'for') { if (scanVNodes(node.body)) return true; }
+      if (node.kind === 'element') { if (scanVNodes(node.children)) return true; }
+      if (node.kind === 'component') { if (scanVNodes(node.children)) return true; }
+      if (node.kind === 'if') {
+        if (scanVNodes(node.then)) return true;
+        if (node.else_ && scanVNodes(node.else_)) return true;
+      }
+    }
+    return false;
+  }
+  for (const decl of mod.body) {
+    if (decl.kind === 'view' && scanVNodes(decl.children)) return true;
+  }
+  return false;
+}
 
 function isReactive(expr: Expr, ctx: GenContext): boolean {
   switch (expr.kind) {
