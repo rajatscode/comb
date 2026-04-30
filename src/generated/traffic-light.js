@@ -1,4 +1,4 @@
-import { createSignal, createComb, createEffect, batch } from '../runtime/signals.js';
+import { createSignal, createComb, createEffect, batch, createScope, circuit } from '../runtime/index.js';
 
 export const __graph = {
   "nodes": [
@@ -43,9 +43,67 @@ export const __graph = {
       "type": "event"
     },
     {
-      "id": "view",
-      "name": "view",
-      "type": "view-binding"
+      "id": "view:attr:class",
+      "name": "view:attr:class",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "div",
+        "binding": "attr:class"
+      }
+    },
+    {
+      "id": "view:attr:class",
+      "name": "view:attr:class",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "div",
+        "binding": "attr:class"
+      }
+    },
+    {
+      "id": "view:attr:class",
+      "name": "view:attr:class",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "div",
+        "binding": "attr:class"
+      }
+    },
+    {
+      "id": "view:color",
+      "name": "view:color",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "p",
+        "binding": "text"
+      }
+    },
+    {
+      "id": "view:if:can_walk",
+      "name": "view:if:can_walk",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "div.status",
+        "binding": "if"
+      }
+    },
+    {
+      "id": "view:if:emergency",
+      "name": "view:if:emergency",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "div.status",
+        "binding": "if"
+      }
+    },
+    {
+      "id": "view:emergency",
+      "name": "view:emergency",
+      "type": "view-effect",
+      "viewTarget": {
+        "element": "button",
+        "binding": "text"
+      }
     }
   ],
   "edges": [
@@ -75,21 +133,6 @@ export const __graph = {
       "type": "write"
     },
     {
-      "from": "emergency",
-      "to": "event:next_phase",
-      "type": "data"
-    },
-    {
-      "from": "Phase",
-      "to": "event:next_phase",
-      "type": "data"
-    },
-    {
-      "from": "phase",
-      "to": "event:next_phase",
-      "type": "data"
-    },
-    {
       "from": "event:request_walk",
       "to": "walk_requested",
       "type": "write"
@@ -100,23 +143,38 @@ export const __graph = {
       "type": "write"
     },
     {
-      "from": "emergency",
-      "to": "event:toggle_emergency",
+      "from": "color",
+      "to": "view:attr:class",
       "type": "data"
     },
     {
       "from": "color",
-      "to": "view",
+      "to": "view:attr:class",
+      "type": "data"
+    },
+    {
+      "from": "color",
+      "to": "view:attr:class",
+      "type": "data"
+    },
+    {
+      "from": "color",
+      "to": "view:color",
       "type": "data"
     },
     {
       "from": "can_walk",
-      "to": "view",
+      "to": "view:if:can_walk",
       "type": "data"
     },
     {
       "from": "emergency",
-      "to": "view",
+      "to": "view:if:emergency",
+      "type": "data"
+    },
+    {
+      "from": "emergency",
+      "to": "view:emergency",
       "type": "data"
     }
   ]
@@ -124,6 +182,8 @@ export const __graph = {
 
 export function TrafficLight(root) {
   const $m = 'TrafficLight';
+  circuit.loadStaticGraph(__graph);
+  const __scope = createScope();
 
   const Phase = Object.freeze({
     Red: 'Phase.Red',
@@ -173,13 +233,13 @@ export function TrafficLight(root) {
   const el2 = document.createElement('div');
   el2.setAttribute('class', 'light-housing');
   const el3 = document.createElement('div');
-  createEffect(() => { el3.setAttribute('class', ("lamp red " + ((color() == "red") ? "active" : ""))); }, { name: 'attr:class', module: $m });
+  createEffect(() => { el3.setAttribute('class', ("lamp red " + ((color() == "red") ? "active" : ""))); }, { name: 'view:attr:color', module: $m, viewTarget: { element: 'div', binding: 'attr:class' } });
   el2.appendChild(el3);
   const el4 = document.createElement('div');
-  createEffect(() => { el4.setAttribute('class', ("lamp yellow " + ((color() == "yellow") ? "active" : ""))); }, { name: 'attr:class', module: $m });
+  createEffect(() => { el4.setAttribute('class', ("lamp yellow " + ((color() == "yellow") ? "active" : ""))); }, { name: 'view:attr:color', module: $m, viewTarget: { element: 'div', binding: 'attr:class' } });
   el2.appendChild(el4);
   const el5 = document.createElement('div');
-  createEffect(() => { el5.setAttribute('class', ("lamp green " + ((color() == "green") ? "active" : ""))); }, { name: 'attr:class', module: $m });
+  createEffect(() => { el5.setAttribute('class', ("lamp green " + ((color() == "green") ? "active" : ""))); }, { name: 'view:attr:color', module: $m, viewTarget: { element: 'div', binding: 'attr:class' } });
   el2.appendChild(el5);
   el0.appendChild(el2);
   const el6 = document.createElement('div');
@@ -188,7 +248,7 @@ export function TrafficLight(root) {
   const txt1 = document.createTextNode('Phase:');
   el7.appendChild(txt1);
   const txt2 = document.createTextNode('');
-  createEffect(() => { txt2.data = String(color()); }, { name: 'view:txt2', module: $m });
+  createEffect(() => { txt2.data = String(color()); }, { name: 'view:color', module: $m, viewTarget: { element: 'p', binding: 'text' } });
   el7.appendChild(txt2);
   el6.appendChild(el7);
   const el8 = document.createComment('@if');
@@ -239,10 +299,40 @@ export function TrafficLight(root) {
   const el17 = document.createElement('button');
   el17.addEventListener('click', toggle_emergency);
   const txt7 = document.createTextNode('');
-  createEffect(() => { txt7.data = String((emergency() ? "clear emergency" : "emergency")); }, { name: 'view:txt7', module: $m });
+  createEffect(() => { txt7.data = String((emergency() ? "clear emergency" : "emergency")); }, { name: 'view:emergency', module: $m, viewTarget: { element: 'button', binding: 'text' } });
   el17.appendChild(txt7);
   el14.appendChild(el17);
   el0.appendChild(el14);
   root.appendChild(el0);
 
+  return { dispose: __scope.dispose };
 }
+
+export function __test() {
+  const $m = 'TrafficLight';
+  circuit.loadStaticGraph(__graph);
+  const __scope = createScope();
+
+  const Phase = Object.freeze({
+    Red: 'Phase.Red',
+    Green: 'Phase.Green',
+    Yellow: 'Phase.Yellow',
+  });
+
+  const [phase, setPhase] = createSignal(Phase.Red, { name: 'phase', module: $m, type: 'Phase' });
+
+  const [walk_requested, setWalk_requested] = createSignal(false, { name: 'walk_requested', module: $m, type: 'bool' });
+
+  const [emergency, setEmergency] = createSignal(false, { name: 'emergency', module: $m, type: 'bool' });
+
+  const color = createComb(() => ((phase() == Phase.Red) ? "red" : ((phase() == Phase.Green) ? "green" : "yellow")), { name: 'color', module: $m, deps: ["phase"] });
+
+  const can_walk = createComb(() => ((phase() == Phase.Red) && walk_requested()), { name: 'can_walk', module: $m, deps: ["phase","walk_requested"] });
+
+  return {
+    signals: { phase: { get: phase, set: setPhase }, walk_requested: { get: walk_requested, set: setWalk_requested }, emergency: { get: emergency, set: setEmergency } },
+    combs: { color, can_walk },
+    dispose: __scope.dispose,
+  };
+}
+//# sourceMappingURL=traffic-light.js.map

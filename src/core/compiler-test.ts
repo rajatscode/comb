@@ -678,5 +678,90 @@ module Simple {
   assert(!js.includes('createPropagator'), 'Should not import createPropagator when no constraints');
 });
 
+// --- Test 32: Source map — not produced without sourceFile ---
+test('source map — not produced without sourceFile option', () => {
+  const source = `
+module Tiny {
+  signal x: int = 0;
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors`);
+  assert(result.sourceMap === undefined, 'sourceMap should be undefined when sourceFile not provided');
+});
+
+// --- Test 33: Source map — produced with sourceFile ---
+test('source map — produced with sourceFile option', () => {
+  const source = `
+module Counter {
+  signal count: int = 0;
+  comb label = "Count: " + str(count);
+  comb doubled = count * 2;
+  always @(increment) { count <= count + 1; }
+  view {
+    <p>{label}</p>
+  }
+}`;
+  const result = compile(source, { sourceFile: 'counter.comb' });
+  assert(result.errors.length === 0, `Expected no errors`);
+  assert(typeof result.sourceMap === 'string', 'sourceMap should be a string');
+  assert(result.sourceMap!.length > 0, 'sourceMap should be non-empty');
+});
+
+// --- Test 34: Source map — valid JSON with version 3 ---
+test('source map — valid v3 JSON structure', () => {
+  const source = `
+module Counter {
+  signal count: int = 0;
+  comb doubled = count * 2;
+  always @(inc) { count <= count + 1; }
+  view {
+    <p>{doubled}</p>
+  }
+}`;
+  const result = compile(source, { sourceFile: 'counter.comb' });
+  assert(result.errors.length === 0, `Expected no errors`);
+
+  const map = JSON.parse(result.sourceMap!);
+  assert(map.version === 3, 'version should be 3');
+  assert(map.file === 'counter.js', `file should be counter.js, got ${map.file}`);
+  assert(Array.isArray(map.sources), 'sources should be an array');
+  assert(map.sources[0] === 'counter.comb', `sources[0] should be counter.comb, got ${map.sources[0]}`);
+  assert(typeof map.mappings === 'string', 'mappings should be a string');
+  assert(map.mappings.length > 0, 'mappings should be non-empty');
+  assert(Array.isArray(map.sourcesContent), 'sourcesContent should be an array');
+  assert(map.sourcesContent[0] === source, 'sourcesContent should contain original source');
+});
+
+// --- Test 35: Source map — has mappings for signal declarations ---
+test('source map — has mappings for signal declarations', () => {
+  const source = `
+module Counter {
+  signal count: int = 0;
+  comb doubled = count * 2;
+}`;
+  const result = compile(source, { sourceFile: 'counter.comb' });
+  assert(result.errors.length === 0, `Expected no errors`);
+
+  const map = JSON.parse(result.sourceMap!);
+  // Mappings should have multiple lines (semicolon-separated)
+  const mappingLines = map.mappings.split(';');
+  assert(mappingLines.length > 1, `Should have multiple mapping lines, got ${mappingLines.length}`);
+  const nonEmpty = mappingLines.filter((l: string) => l.length > 0);
+  assert(nonEmpty.length > 0, 'At least some mapping lines should have data');
+});
+
+// --- Test 36: Source map — counter.comb from file ---
+test('counter.comb — source map from file compilation', () => {
+  const counterSrc = fs.readFileSync(path.resolve('examples/counter.comb'), 'utf-8');
+  const result = compile(counterSrc, { sourceFile: 'counter.comb' });
+  assert(result.errors.length === 0, `Expected no errors`);
+  assert(result.sourceMap !== undefined, 'Should produce source map');
+
+  const map = JSON.parse(result.sourceMap!);
+  assert(map.version === 3, 'Source map version 3');
+  assert(map.sources[0] === 'counter.comb', 'Source is counter.comb');
+  assert(map.mappings.length > 0, 'Non-empty mappings');
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

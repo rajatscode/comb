@@ -17,7 +17,8 @@ try {
 
 console.log(`Compiling ${input}...`);
 
-const result = compile(source);
+const sourceFile = basename(input);
+const result = compile(source, { sourceFile });
 
 if (result.errors.length > 0) {
   for (const err of result.errors) {
@@ -30,7 +31,15 @@ const outDir = 'src/generated';
 mkdirSync(outDir, { recursive: true });
 
 const outFile = basename(input, '.comb') + '.js';
-writeFileSync(join(outDir, outFile), result.js!);
+const mapFile = outFile + '.map';
+
+// Append source map reference and write JS
+let jsOutput = result.js!;
+if (result.sourceMap) {
+  jsOutput += `\n//# sourceMappingURL=${mapFile}\n`;
+  writeFileSync(join(outDir, mapFile), result.sourceMap);
+}
+writeFileSync(join(outDir, outFile), jsOutput);
 
 const graph = result.graph!;
 const signals = graph.nodes.filter(n => n.type === 'signal');
@@ -38,6 +47,9 @@ const combs = graph.nodes.filter(n => n.type === 'comb');
 const events = graph.nodes.filter(n => n.type === 'event');
 
 console.log(`✓ Compiled successfully → ${join(outDir, outFile)}`);
+if (result.sourceMap) {
+  console.log(`  Source map → ${join(outDir, mapFile)}`);
+}
 console.log(`  Module: ${result.ast!.name}`);
 console.log(`  Signals: ${signals.map(s => s.name).join(', ') || 'none'}`);
 console.log(`  Combs: ${combs.map(c => c.name).join(', ') || 'none'}`);

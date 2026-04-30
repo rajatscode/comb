@@ -67,6 +67,4 @@ npm run dev                    # Visual testing in browser
 ## Known Limitations
 
 - Generated code for minesweeper/chat references helper functions not emitted by codegen (hand-written demos work fine)
-- No source maps
 - List rendering uses full re-render (no keyed reconciliation)
-- No SSR support
