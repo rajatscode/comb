@@ -1,6 +1,6 @@
 // verify.ts — Verification pass: dependency extraction, resolution, cycle detection, type checking
 
-import type { Module, Declaration, CombDecl, AlwaysBlock, AssertDecl, TemporalAssertDecl, ConstraintDecl, Expr, Statement, VNode, VSlot, TypeExpr } from './ast.js';
+import type { Module, Declaration, CombDecl, AlwaysBlock, AssertDecl, TemporalAssertDecl, ConstraintDecl, Expr, Statement, VNode, VSlot, AsyncStmt, TypeExpr } from './ast.js';
 import type { StaticGraph, GraphNode, GraphEdge } from './graph.js';
 
 export interface CompileError {
@@ -170,7 +170,7 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
   const symbols = new Map<string, SymbolKind>();
   const enumValues = new Set<string>(); // e.g. "Phase.Red"
   const enumDefs = new Map<string, string[]>();
-  const builtins = new Set(['str', 'int', 'float', 'len', 'contains', 'append', 'push', 'pop', 'slice', 'map', 'filter', 'concat', 'Math', 'JSON', 'console', 'Object', 'parseInt', 'parseFloat', 'toString', 'rgbToHsv', 'hsvToRgb', 'rgbToHex', 'reduce', 'floor', 'round', 'min', 'max', 'abs']);
+  const builtins = new Set(['str', 'int', 'float', 'len', 'contains', 'append', 'push', 'pop', 'slice', 'map', 'filter', 'concat', 'Math', 'JSON', 'console', 'Object', 'parseInt', 'parseFloat', 'toString', 'rgbToHsv', 'hsvToRgb', 'rgbToHex', 'reduce', 'floor', 'round', 'min', 'max', 'abs', 'fetch', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval']);
 
   // Method names that are valid on arrays/objects/strings — should not trigger undefined reference errors
   const knownMethods = new Set([
@@ -619,6 +619,20 @@ function collectAlwaysReadsWrites(
       if (stmt.catchParam) localScope.add(stmt.catchParam);
       collectAlwaysReadsWrites(stmt.catchBody, reads, writes, symbols, localScope);
     }
+    if (stmt.kind === 'async') {
+      collectAlwaysReadsWrites(stmt.body, reads, writes, symbols, localScope);
+      if (stmt.catchBody) collectAlwaysReadsWrites(stmt.catchBody, reads, writes, symbols, localScope);
+    }
+    if (stmt.kind === 'const_decl') {
+      // const declarations introduce local variables; track reads from the initializer
+      walkExpr(stmt.init, e => {
+        if (e.kind === 'identifier' && symbols.has(e.name) && isReactiveKind(symbols.get(e.name)!)) {
+          reads.add(e.name);
+        }
+      });
+      // Add to local scope so it's not flagged as undefined
+      localScope.add(stmt.name);
+    }
   }
 }
 
@@ -884,5 +898,6 @@ function walkExpr(expr: Expr, fn: (e: Expr) => void): void {
     case 'range': walkExpr(expr.start, fn); walkExpr(expr.end, fn); break;
     case 'object': expr.properties.forEach(p => walkExpr(p.value, fn)); break;
     case 'template': expr.parts.forEach(p => { if (typeof p !== 'string') walkExpr(p, fn); }); break;
+    case 'await': walkExpr(expr.expr, fn); break;
   }
 }

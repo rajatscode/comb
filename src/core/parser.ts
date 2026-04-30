@@ -6,10 +6,10 @@ import type {
   CombDecl, ConstraintDecl, ConstraintClause, FnDecl,
   AlwaysBlock, ViewBlock, StyleBlock, EnumDecl, AssertDecl, TemporalAssertDecl, EventTrigger, Statement,
   SignalAssign, IfStatement, ExprStatement, ReturnStmt, DestructureStmt, DestructurePattern,
-  TryStmt, VNode, VElement, VText, VExpr, VIf, VFor,
+  TryStmt, AsyncStmt, ConstDeclStmt, VNode, VElement, VText, VExpr, VIf, VFor,
   VComponent, VSlot, VAttr, Expr, Literal, Identifier, BinaryExpr, UnaryExpr,
   TernaryExpr, CallExpr, MemberExpr, IndexExpr, ArrayExpr, ObjectExpr,
-  SpreadExpr, LambdaExpr, RangeExpr, TemplateExpr, TypeExpr, ObjectType, RangeType, UnionType, SourceLoc,
+  SpreadExpr, LambdaExpr, RangeExpr, TemplateExpr, AwaitExpr, TypeExpr, ObjectType, RangeType, UnionType, SourceLoc,
 } from './ast.js';
 
 export class ParseError extends Error {
@@ -25,6 +25,7 @@ export function parse(tokens: Token[]): Module[] {
 class Parser {
   private pos = 0;
   private inStatementContext = false;
+  private inAsyncBlock = false;
 
   constructor(private tokens: Token[]) {}
 
@@ -495,6 +496,7 @@ class Parser {
     if (this.check(TokenType.Return)) return this.parseReturnStmt();
     if (this.check(TokenType.Const)) return this.parseDestructureStmt();
     if (this.check(TokenType.Try)) return this.parseTryStmt();
+    if (this.check(TokenType.Async)) return this.parseAsyncStmt();
 
     const loc = this.loc();
     this.inStatementContext = true;
@@ -512,6 +514,45 @@ class Parser {
 
     this.match(TokenType.Semicolon);
     return { kind: 'expr_stmt', expr, loc };
+  }
+
+  private parseAsyncStmt(): AsyncStmt {
+    const loc = this.loc();
+    this.expect(TokenType.Async, 'async block');
+    this.expect(TokenType.LBrace, 'async body');
+    const prevInAsync = this.inAsyncBlock;
+    this.inAsyncBlock = true;
+    const body: Statement[] = [];
+    while (!this.check(TokenType.RBrace) && !this.check(TokenType.EOF)) {
+      body.push(this.parseStatement());
+    }
+    this.expect(TokenType.RBrace, 'async body end');
+    this.inAsyncBlock = prevInAsync;
+
+    let catchBody: Statement[] | undefined;
+    if (this.check(TokenType.Catch)) {
+      this.advance();
+      this.expect(TokenType.LBrace, 'catch body');
+      catchBody = [];
+      while (!this.check(TokenType.RBrace) && !this.check(TokenType.EOF)) {
+        catchBody.push(this.parseStatement());
+      }
+      this.expect(TokenType.RBrace, 'catch body end');
+    }
+
+    return { kind: 'async', body, catchBody, loc };
+  }
+
+  private parseConstDeclStmt(): ConstDeclStmt {
+    const loc = this.loc();
+    this.expect(TokenType.Const, 'const declaration');
+    const name = this.expect(TokenType.Identifier, 'const name').value;
+    this.expect(TokenType.Assign, 'const initializer');
+    this.inStatementContext = true;
+    const init = this.parseExpr();
+    this.inStatementContext = false;
+    this.expect(TokenType.Semicolon, 'const declaration');
+    return { kind: 'const_decl', name, init, loc };
   }
 
   private parseIfStatement(): IfStatement {
@@ -553,9 +594,20 @@ class Parser {
     return { kind: 'return', value, loc };
   }
 
-  private parseDestructureStmt(): DestructureStmt {
+  private parseDestructureStmt(): DestructureStmt | ConstDeclStmt {
     const loc = this.loc();
     this.expect(TokenType.Const);
+
+    // Simple const declaration: const x = expr;
+    if (this.check(TokenType.Identifier)) {
+      const name = this.expect(TokenType.Identifier, 'const name').value;
+      this.expect(TokenType.Assign, 'const initializer');
+      this.inStatementContext = true;
+      const init = this.parseExpr();
+      this.inStatementContext = false;
+      this.expect(TokenType.Semicolon, 'const declaration');
+      return { kind: 'const_decl', name, init, loc };
+    }
 
     let pattern: DestructurePattern;
     if (this.check(TokenType.LBrace)) {
@@ -895,6 +947,11 @@ class Parser {
     const loc = this.loc();
     if (this.peek().type === TokenType.Not) { this.advance(); return { kind: 'unary', op: '!', operand: this.parseUnary(), loc }; }
     if (this.peek().type === TokenType.Minus) { this.advance(); return { kind: 'unary', op: '-', operand: this.parseUnary(), loc }; }
+    if (this.peek().type === TokenType.Await) {
+      if (!this.inAsyncBlock) this.error('await can only be used inside async { } blocks');
+      this.advance();
+      return { kind: 'await', expr: this.parseUnary(), loc };
+    }
     return this.parsePrimary();
   }
 

@@ -5,7 +5,7 @@ import type {
   Module, Declaration, InputDecl, OutputDecl, SignalDecl, TokenDecl, CombDecl, CellDecl,
   ConstraintDecl, AlwaysBlock, ViewBlock, StyleBlock, EnumDecl, AssertDecl, TemporalAssertDecl, FnDecl,
   Statement, SignalAssign, IfStatement, ExprStatement, ReturnStmt, DestructureStmt, TryStmt,
-  VNode, VElement, VText, VExpr, VIf, VFor,
+  AsyncStmt, ConstDeclStmt, VNode, VElement, VText, VExpr, VIf, VFor,
   VComponent, VSlot, VAttr, Expr,
 } from './ast.js';
 import type { StaticGraph } from './graph.js';
@@ -455,6 +455,8 @@ function emitStmt(stmt: Statement, ctx: GenContext): string[] {
     case 'return': return emitReturn(stmt, ctx);
     case 'destructure': return emitDestructure(stmt, ctx);
     case 'try': return emitTry(stmt, ctx);
+    case 'async': return emitAsync(stmt, ctx);
+    case 'const_decl': return emitConstDecl(stmt, ctx);
   }
 }
 
@@ -546,6 +548,54 @@ function emitTry(stmt: TryStmt, ctx: GenContext): string[] {
   return lines;
 }
 
+function emitAsync(stmt: AsyncStmt, ctx: GenContext): string[] {
+  const i = ind(ctx);
+  const lines: string[] = [];
+  if (stmt.catchBody && stmt.catchBody.length > 0) {
+    lines.push(`${i}(async () => {`);
+    lines.push(`${i}  try {`);
+    ctx.indent += 2;
+    for (const s of stmt.body) lines.push(...emitAsyncBodyStmt(s, ctx));
+    ctx.indent -= 2;
+    lines.push(`${i}  } catch (__err) {`);
+    lines.push(`${i}    batch(() => {`);
+    ctx.indent += 3;
+    for (const s of stmt.catchBody) lines.push(...emitStmt(s, ctx));
+    ctx.indent -= 3;
+    lines.push(`${i}    });`);
+    lines.push(`${i}  }`);
+    lines.push(`${i}})();`);
+  } else {
+    lines.push(`${i}(async () => {`);
+    ctx.indent += 1;
+    for (const s of stmt.body) lines.push(...emitAsyncBodyStmt(s, ctx));
+    ctx.indent -= 1;
+    lines.push(`${i}})();`);
+  }
+  return lines;
+}
+
+// Emit statements inside async blocks. Signal assignments are wrapped in batch().
+function emitAsyncBodyStmt(stmt: Statement, ctx: GenContext): string[] {
+  if (stmt.kind === 'assign') {
+    const i = ind(ctx);
+    return [
+      `${i}batch(() => {`,
+      ...emitStmt(stmt, { ...ctx, indent: ctx.indent + 1 }),
+      `${i}});`,
+    ];
+  }
+  if (stmt.kind === 'const_decl') return emitConstDecl(stmt, ctx);
+  if (stmt.kind === 'expr_stmt') return emitStmt(stmt, ctx);
+  if (stmt.kind === 'if') return emitStmt(stmt, ctx);
+  if (stmt.kind === 'async') return emitStmt(stmt, ctx);
+  return emitStmt(stmt, ctx);
+}
+
+function emitConstDecl(stmt: ConstDeclStmt, ctx: GenContext): string[] {
+  const i = ind(ctx);
+  return [`${i}const ${stmt.name} = ${emitExpr(stmt.init, ctx)};`];
+}
 // View
 
 function emitView(decl: ViewBlock, ctx: GenContext): string[] {
@@ -947,6 +997,8 @@ function emitExpr(expr: Expr, ctx: GenContext): string {
       result += '`';
       return result;
     }
+    case 'await':
+      return `await ${emitExpr(expr.expr, ctx)}`;
   }
 }
 
@@ -997,6 +1049,7 @@ function isReactive(expr: Expr, ctx: GenContext): boolean {
     case 'array': return expr.elements.some(e => isReactive(e, ctx));
     case 'object': return expr.properties.some(p => isReactive(p.value, ctx));
     case 'template': return expr.parts.some(p => typeof p !== 'string' && isReactive(p, ctx));
+    case 'await': return isReactive(expr.expr, ctx);
     default: return false;
   }
 }

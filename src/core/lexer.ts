@@ -32,6 +32,8 @@ export enum TokenType {
   Const = 'const',
   Try = 'try',
   Catch = 'catch',
+  Async = 'async',
+  Await = 'await',
 
   // Directives
   AtIf = '@if',
@@ -126,6 +128,8 @@ const KEYWORDS: Record<string, TokenType> = {
   const: TokenType.Const,
   try: TokenType.Try,
   catch: TokenType.Catch,
+  async: TokenType.Async,
+  await: TokenType.Await,
 };
 
 export function tokenize(source: string): Token[] {

@@ -1266,5 +1266,153 @@ module LambdaTest {
   assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
 });
 
+// --- Test 62: async block parses and emits correct async IIFE ---
+test('async block — parses and emits async IIFE with try/catch', () => {
+  const source = `
+module UserList {
+  signal users: string[] = [];
+  signal loading: bool = false;
+  signal error: string = "";
+
+  always @(loadUsers) {
+    loading <= true;
+    error <= "";
+    async {
+      const response = await fetch("/api/users");
+      const data = await response.json();
+      users <= data;
+      loading <= false;
+    } catch {
+      error <= "Failed to load users";
+      loading <= false;
+    }
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  // Should contain async IIFE
+  assert(js.includes('(async () => {'), 'Should emit async IIFE');
+  assert(js.includes('try {'), 'Should emit try block');
+  assert(js.includes('catch (__err)'), 'Should emit catch block');
+  assert(js.includes('await fetch'), 'Should emit await expression');
+  assert(js.includes('await response.json()'), 'Should emit chained await');
+  assert(js.includes('batch('), 'Should wrap signal writes in batch');
+  assert(js.includes('setUsers('), 'Should emit setUsers');
+  assert(js.includes('setLoading('), 'Should emit setLoading');
+  assert(js.includes('setError('), 'Should emit setError');
+});
+
+// --- Test 63: await outside async block produces parse error ---
+test('await outside async block — produces error', () => {
+  const source = `
+module Bad {
+  signal data: string = "";
+  always @(load) {
+    const x = await fetch("/api");
+    data <= x;
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length > 0, 'Expected error for await outside async block');
+  assert(result.errors.some(e => e.message.includes('await')), `Error should mention await, got: ${result.errors.map(e => e.message)}`);
+});
+
+// --- Test 64: fetch, console.log, JSON.parse don't produce undefined reference errors ---
+test('browser globals — no undefined reference errors', () => {
+  const source = `
+module Globals {
+  signal data: string = "";
+  always @(test) {
+    async {
+      const r = await fetch("/api");
+      const d = await r.json();
+      data <= d;
+    }
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+});
+
+// --- Test 65: const declaration inside always block ---
+test('const declaration — compiles to JS const', () => {
+  const source = `
+module ConstTest {
+  signal x: int = 0;
+  always @(compute) {
+    const y = 42;
+    x <= y;
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+  const js = result.js!;
+  assert(js.includes('const y = 42'), 'Should emit const declaration');
+  assert(js.includes('setX(y)'), 'Should use const variable in assignment');
+});
+
+// --- Test 66: async block without catch ---
+test('async block — without catch compiles cleanly', () => {
+  const source = `
+module Simple {
+  signal data: string = "";
+  always @(load) {
+    async {
+      const r = await fetch("/api");
+      const d = await r.json();
+      data <= d;
+    }
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('(async () => {'), 'Should emit async IIFE');
+  assert(!js.includes('try {'), 'Should NOT emit try block when no catch');
+  assert(!js.includes('catch'), 'Should NOT emit catch when no catch body');
+});
+
+// --- Test 67: setTimeout compiles as global function call ---
+test('setTimeout — compiles as global function call', () => {
+  const source = `
+module Timer {
+  signal fired: bool = false;
+  always @(startTimer) {
+    setTimeout(|_| fired, 1000);
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+  const js = result.js!;
+  assert(js.includes('setTimeout('), 'Should emit setTimeout call');
+});
+
+// --- Test 68: async block reads/writes tracked in always block ---
+test('async block — reads and writes tracked correctly', () => {
+  const source = `
+module AsyncRW {
+  signal loading: bool = false;
+  signal data: string = "";
+  always @(load) {
+    loading <= true;
+    async {
+      const r = await fetch("/api");
+      data <= "loaded";
+      loading <= false;
+    }
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const ast = result.ast!;
+  const always = ast.body.find(d => d.kind === 'always') as any;
+  assert(always.writes.includes('loading'), 'Should write to loading');
+  assert(always.writes.includes('data'), 'Should write to data');
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);
