@@ -4,10 +4,12 @@ import { compile } from '../core/compiler.js';
 import { renderCircuitGraph } from '../visualizer.js';
 import counterSrc from '../../examples/counter.comb?raw';
 import registrationSrc from '../../examples/registration.comb?raw';
+import colorPickerSrc from '../../examples/color-picker.comb?raw';
 
 const EXAMPLES: Record<string, string> = {
   counter: counterSrc,
   registration: registrationSrc,
+  'color-picker': colorPickerSrc,
   blank: `module App {\n  signal count: int = 0;\n\n  comb label = "Count: " + str(count);\n\n  always @(click) {\n    count <= count + 1;\n  }\n\n  view {\n    <div>\n      <p>{label}</p>\n      <button @click=click>+1</button>\n    </div>\n  }\n}\n`,
 };
 
@@ -102,9 +104,15 @@ function runCompile() {
   .field input { display: block; width: 100%; margin-top: 0.2rem; }
   .reg-form h2 { margin-top: 0; }
   form { display: flex; flex-direction: column; gap: 0.5rem; }
+  .color-picker { display: flex; flex-direction: column; gap: 0.8rem; }
+  .color-preview { width: 100%; height: 60px; border-radius: 6px; border: 1px solid #3a3a5a; }
+  .hex-display { font-family: monospace; font-size: 1.2rem; text-align: center; }
+  .slider-group h3 { font-size: 0.75rem; color: #888; margin: 0 0 0.4rem; text-transform: uppercase; }
+  .slider-group label { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
+  .slider-group input[type="range"] { flex: 1; }
 </style>
 <script type="importmap">
-{ "imports": { "../runtime/index.js": "/src/runtime/index.ts" } }
+{ "imports": { "../runtime/index.js": "/src/runtime/index.ts", "../runtime/color.js": "/src/runtime/color.ts" } }
 </script>
 </head>
 <body>

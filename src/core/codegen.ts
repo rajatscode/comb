@@ -82,6 +82,14 @@ export function generate(mod: Module, graph: StaticGraph): string {
   if (hasCells) importParts.push('createCell');
   if (hasConstraints) importParts.push('createPropagator');
   lines.push(`import { ${importParts.join(', ')} } from '../runtime/index.js';`);
+
+  // Conditional color utility import
+  const colorBuiltins = ['rgbToHsv', 'hsvToRgb', 'rgbToHex'];
+  const src = JSON.stringify(mod);
+  const usedColorFns = colorBuiltins.filter(fn => src.includes(fn));
+  if (usedColorFns.length > 0) {
+    lines.push(`import { ${usedColorFns.join(', ')} } from '../runtime/color.js';`);
+  }
   lines.push('');
 
   // Static graph export
@@ -456,7 +464,9 @@ function emitVElement(node: VElement, parent: string, ctx: GenContext, parentDes
     if (attr.isEvent) {
       lines.push(...emitEventAttr(attr, v, ctx));
     } else if (attr.isBind) {
-      lines.push(...emitBindAttr(attr, v, ctx, elDesc));
+      const typeAttr = node.attrs.find(a => a.name === 'type' && a.value?.kind === 'literal');
+      const inputType = (typeAttr && typeAttr.value?.kind === 'literal') ? String(typeAttr.value.value) : '';
+      lines.push(...emitBindAttr(attr, v, ctx, elDesc, inputType));
     } else if (attr.value) {
       if (attr.value.kind === 'literal' && attr.value.type === 'string') {
         let attrVal = String(attr.value.value);
@@ -667,15 +677,16 @@ function emitEventAttr(attr: VAttr, elVar: string, ctx: GenContext): string[] {
   return [`${i}${elVar}.addEventListener('${event}', ${handler});`];
 }
 
-function emitBindAttr(attr: VAttr, elVar: string, ctx: GenContext, elDesc: string = ''): string[] {
+function emitBindAttr(attr: VAttr, elVar: string, ctx: GenContext, elDesc: string = '', inputType: string = ''): string[] {
   const i = ind(ctx);
   if (!attr.value || attr.value.kind !== 'identifier') return [];
   const name = attr.value.name;
   const setter = 'set' + capitalize(name);
+  const coerce = (inputType === 'range' || inputType === 'number') ? 'Number(e.target.value)' : 'e.target.value';
   return [
     `${i}${elVar}.value = ${name}();`,
     `${i}createEffect(() => { ${elVar}.value = ${name}(); }, { name: 'view:bind:${name}', module: $m, viewTarget: { element: '${escapeStr(elDesc)}', binding: 'bind:value' } });`,
-    `${i}${elVar}.addEventListener('input', (e) => { ${setter}(e.target.value); });`,
+    `${i}${elVar}.addEventListener('input', (e) => { ${setter}(${coerce}); });`,
   ];
 }
 

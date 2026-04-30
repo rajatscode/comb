@@ -1,0 +1,46 @@
+module ColorPicker {
+  cell r: int = 255;
+  cell g: int = 0;
+  cell b: int = 0;
+  cell h: int = 0;
+  cell s: int = 100;
+  cell v: int = 100;
+
+  constraint rgbToHsvProp {
+    (r, g, b) => {
+      h <= rgbToHsv(r, g, b).h;
+      s <= rgbToHsv(r, g, b).s;
+      v <= rgbToHsv(r, g, b).v;
+    }
+  }
+
+  constraint hsvToRgbProp {
+    (h, s, v) => {
+      r <= hsvToRgb(h, s, v).r;
+      g <= hsvToRgb(h, s, v).g;
+      b <= hsvToRgb(h, s, v).b;
+    }
+  }
+
+  comb hexColor = rgbToHex(r, g, b);
+  comb previewStyle = "background-color: rgb(" + str(r) + ", " + str(g) + ", " + str(b) + ")";
+
+  view {
+    <div class="color-picker">
+      <div class="color-preview" style={previewStyle}></div>
+      <p class="hex-display">{hexColor}</p>
+      <div class="slider-group">
+        <h3>RGB</h3>
+        <label>R <input type="range" min="0" max="255" @bind=r /></label>
+        <label>G <input type="range" min="0" max="255" @bind=g /></label>
+        <label>B <input type="range" min="0" max="255" @bind=b /></label>
+      </div>
+      <div class="slider-group">
+        <h3>HSV</h3>
+        <label>H <input type="range" min="0" max="360" @bind=h /></label>
+        <label>S <input type="range" min="0" max="100" @bind=s /></label>
+        <label>V <input type="range" min="0" max="100" @bind=v /></label>
+      </div>
+    </div>
+  }
+}

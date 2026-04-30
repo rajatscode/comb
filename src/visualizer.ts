@@ -35,6 +35,7 @@ const COLORS: Record<string, string> = {
   sensitivity: '#f472b6',
   cell: '#5bc0de',
   propagator: '#e8915a',
+  constraint: '#e8915a',
 };
 
 export interface HighlightSet {
@@ -98,7 +99,8 @@ function buildLayout(
     'view-binding': [],
   };
   for (const node of graph.nodes) {
-    (columns[node.type] ?? columns['event']).push(node);
+    const col = node.type === 'constraint' ? 'propagator' : node.type;
+    (columns[col] ?? columns['event']).push(node);
   }
 
   const colOrder = ['signal', 'cell', 'propagator', 'comb', 'assert', 'sensitivity', 'event', 'view-effect', 'view-binding'];
