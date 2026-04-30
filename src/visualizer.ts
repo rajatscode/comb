@@ -89,10 +89,11 @@ function buildLayout(
   const NODE_W = Math.min(120, Math.max(80, Math.floor(availW / nCols * 0.5)));
   const COL_GAP = nCols > 1 ? Math.floor((availW - nCols * NODE_W) / (nCols - 1)) : 0;
 
-  // Compute NODE_H to fit tallest column in container
+  // Compute NODE_H and gap to fit tallest column in container
   const maxRows = Math.max(...activeCols.map(c => columns[c].length));
   const availH = ch - 40; // 40px for headers + padding
-  const NODE_H = Math.min(50, Math.max(36, Math.floor((availH - (maxRows - 1) * ROW_GAP) / maxRows)));
+  const rowGap = maxRows > 4 ? Math.min(ROW_GAP, Math.floor(availH / maxRows * 0.15)) : ROW_GAP;
+  const NODE_H = Math.min(50, Math.max(20, Math.floor((availH - (maxRows - 1) * rowGap) / maxRows)));
 
   const nodeLayouts = new Map<string, NodeLayout>();
   const edgeLayouts: EdgeLayout[] = [];
@@ -101,12 +102,12 @@ function buildLayout(
     const colType = activeCols[ci];
     const colNodes = columns[colType];
     const x = PAD_X + ci * (NODE_W + COL_GAP);
-    const totalH = colNodes.length * (NODE_H + ROW_GAP) - ROW_GAP;
+    const totalH = colNodes.length * (NODE_H + rowGap) - rowGap;
     const offsetY = Math.max(24, (ch - totalH) / 2);
 
     for (let ri = 0; ri < colNodes.length; ri++) {
       const node = colNodes[ri];
-      const y = offsetY + ri * (NODE_H + ROW_GAP);
+      const y = offsetY + ri * (NODE_H + rowGap);
       const { el, valueEl } = createNodeEl(node, COLORS[node.type] ?? '#888', NODE_W, NODE_H);
       el.style.left = `${x}px`;
       el.style.top = `${y}px`;

@@ -5,7 +5,6 @@ body {
   background: #1a1a2e;
   color: #e0e0e0;
   margin: 0;
-  overflow: hidden;
 }
 
 #app {
@@ -13,6 +12,7 @@ body {
   flex-direction: column;
   height: 100vh;
   width: 100vw;
+  overflow: hidden;
 }
 
 /* Demo navigation */
@@ -43,7 +43,7 @@ body {
   display: flex;
   flex-direction: row;
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
 }
 
 /* ============================================
@@ -128,15 +128,15 @@ body {
 
 .stock-ticker {
   text-align: center;
-  padding: 1.2rem 2rem;
+  padding: 0.5rem 2rem;
   border-bottom: 1px solid #2a2a4a;
-  flex: 0 0 auto;
+  flex-shrink: 0;
 }
 
-.stock-ticker h2 { margin: 0 0 0.3rem; font-size: 1.1rem; color: #aaa; }
+.stock-ticker h2 { margin: 0; font-size: 0.9rem; color: #aaa; }
 
 .price-display {
-  font-size: 2.2rem;
+  font-size: 1.8rem;
   font-weight: bold;
   font-family: 'SF Mono', 'Fira Code', monospace;
   color: #5b9bd5;
@@ -178,16 +178,20 @@ body {
 
 /* Stock ticker circuit section */
 .stock-circuit {
-  height: 220px;
+  height: 300px;
+  flex-shrink: 0;
   border-bottom: 1px solid #2a2a4a;
   position: relative;
+  overflow: hidden;
 }
 
 /* Waveform */
 .waveform-container {
-  height: 260px;
-  position: relative;
+  height: 280px;
   flex-shrink: 0;
+  position: relative;
+  border-top: 1px solid #3a3a5a;
+  background: #12121e;
 }
 
 .waveform-tooltip {

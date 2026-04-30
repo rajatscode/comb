@@ -134,6 +134,10 @@ export function mountStockTicker(root: HTMLElement): { dispose: () => void } {
   // Waveform section
   const waveformSection = document.createElement('div');
   waveformSection.className = 'waveform-container';
+  const waveformHeader = document.createElement('div');
+  waveformHeader.style.cssText = 'padding: 4px 12px; font-size: 0.7rem; color: #666; letter-spacing: 1px; text-transform: uppercase;';
+  waveformHeader.textContent = 'Signal Waveforms';
+  waveformSection.appendChild(waveformHeader);
   root.appendChild(waveformSection);
 
   const signalIds = [
