@@ -225,7 +225,8 @@ export type VNode =
   | VExpr
   | VIf
   | VFor
-  | VComponent;
+  | VComponent
+  | VSlot;
 
 export interface VElement {
   kind: 'element';
@@ -270,6 +271,11 @@ export interface VComponent {
   props: VAttr[];
   children: VNode[];
   selfClosing: boolean;
+  loc: SourceLoc;
+}
+
+export interface VSlot {
+  kind: 'vslot';
   loc: SourceLoc;
 }
 

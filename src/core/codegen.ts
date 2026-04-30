@@ -6,7 +6,7 @@ import type {
   ConstraintDecl, AlwaysBlock, ViewBlock, StyleBlock, EnumDecl, AssertDecl, TemporalAssertDecl, FnDecl,
   Statement, SignalAssign, IfStatement, ExprStatement, ReturnStmt, DestructureStmt, TryStmt,
   VNode, VElement, VText, VExpr, VIf, VFor,
-  VComponent, VAttr, Expr,
+  VComponent, VSlot, VAttr, Expr,
 } from './ast.js';
 import type { StaticGraph } from './graph.js';
 
@@ -78,6 +78,20 @@ function nextTxt(ctx: GenContext): string { return `txt${ctx.txtCount++}`; }
 function capitalize(s: string): string { return s[0].toUpperCase() + s.slice(1); }
 function escapeStr(s: string): string { return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n'); }
 
+function viewHasSlot(vnodes: VNode[]): boolean {
+  for (const vn of vnodes) {
+    if (vn.kind === 'vslot') return true;
+    if (vn.kind === 'element' && viewHasSlot(vn.children)) return true;
+    if (vn.kind === 'component' && viewHasSlot(vn.children)) return true;
+    if (vn.kind === 'if') {
+      if (viewHasSlot(vn.then)) return true;
+      if (vn.else_ && viewHasSlot(vn.else_)) return true;
+    }
+    if (vn.kind === 'for' && viewHasSlot(vn.body)) return true;
+  }
+  return false;
+}
+
 export function generate(mod: Module, graph: StaticGraph): string {
   const ctx = createContext(mod);
   const lines: string[] = [];
@@ -113,11 +127,15 @@ export function generate(mod: Module, graph: StaticGraph): string {
   const hasPorts = hasInputs || hasOutputs;
   const paramNames = mod.params.map(p => p.name);
 
-  // Build signature: ModuleName(__props, root) or ModuleName(root)
+  // Check if module uses <slot /> — if so, accept __children parameter
+  const hasSlot = mod.body.some(d => d.kind === 'view' && viewHasSlot(d.children));
+
+  // Build signature: ModuleName(__props, root, __children?) or ModuleName(root, __children?)
   let sigParts: string[] = [];
   if (paramNames.length > 0) sigParts.push(`{ ${paramNames.join(', ')} }`);
   if (hasPorts) sigParts.push('__props');
   sigParts.push('root');
+  if (hasSlot) sigParts.push('__children');
   lines.push(`export function ${mod.name}(${sigParts.join(', ')}) {`);
   if (hasPorts) lines.push(`  if (!__props) __props = {};`);
   lines.push(`  const $m = '${mod.name}';`);
@@ -581,6 +599,7 @@ function emitVNode(node: VNode, parent: string, ctx: GenContext, parentDesc: str
     case 'expr': return emitVExpr(node, parent, ctx, parentDesc);
     case 'if': return emitVIf(node, parent, ctx, parentDesc);
     case 'for': return emitVFor(node, parent, ctx, parentDesc);
+    case 'vslot': return emitVSlot(node, parent, ctx);
     default: return [];
   }
 }
@@ -597,7 +616,7 @@ function emitVElement(node: VElement, parent: string, ctx: GenContext, parentDes
     } else if (attr.isBind) {
       const typeAttr = node.attrs.find(a => a.name === 'type' && a.value?.kind === 'literal');
       const inputType = (typeAttr && typeAttr.value?.kind === 'literal') ? String(typeAttr.value.value) : '';
-      lines.push(...emitBindAttr(attr, v, ctx, elDesc, inputType));
+      lines.push(...emitBindAttr(attr, v, ctx, elDesc, inputType, node.tag));
     } else if (attr.value) {
       if (attr.value.kind === 'literal' && attr.value.type === 'string') {
         let attrVal = String(attr.value.value);
@@ -651,7 +670,20 @@ function emitVComponent(node: VComponent, parent: string, ctx: GenContext, paren
     }
   }
   const propsObj = propsEntries.length > 0 ? `{ ${propsEntries.join(', ')} }` : '{}';
-  lines.push(`${i}const ${childVar} = ${node.name}(${propsObj}, ${v});`);
+
+  // If the component has children in the template, create a container and pass as __children
+  const hasChildren = node.children.length > 0;
+  let childrenVar = '';
+  if (hasChildren) {
+    childrenVar = `__childContent${ctx.elCount}`;
+    lines.push(`${i}const ${childrenVar} = document.createDocumentFragment();`);
+    for (const child of node.children) {
+      lines.push(...emitVNode(child, childrenVar, ctx, node.name));
+    }
+    lines.push(`${i}const ${childVar} = ${node.name}(${propsObj}, ${v}, ${childrenVar});`);
+  } else {
+    lines.push(`${i}const ${childVar} = ${node.name}(${propsObj}, ${v});`);
+  }
 
   // Wire reactive input forwarding
   for (const bind of inputBindings) {
@@ -777,6 +809,13 @@ function emitVFor(node: VFor, parent: string, ctx: GenContext, parentDesc: strin
   return lines;
 }
 
+function emitVSlot(_node: VSlot, parent: string, ctx: GenContext): string[] {
+  const i = ind(ctx);
+  return [
+    `${i}if (__children) { ${parent}.appendChild(__children); }`,
+  ];
+}
+
 function emitEventAttr(attr: VAttr, elVar: string, ctx: GenContext): string[] {
   const i = ind(ctx);
   const event = attr.name;
@@ -813,11 +852,40 @@ function emitEventAttr(attr: VAttr, elVar: string, ctx: GenContext): string[] {
   return [`${i}${elVar}.addEventListener('${event}', ${handler});`];
 }
 
-function emitBindAttr(attr: VAttr, elVar: string, ctx: GenContext, elDesc: string = '', inputType: string = ''): string[] {
+function emitBindAttr(attr: VAttr, elVar: string, ctx: GenContext, elDesc: string = '', inputType: string = '', tagName: string = 'input'): string[] {
   const i = ind(ctx);
   if (!attr.value || attr.value.kind !== 'identifier') return [];
   const name = attr.value.name;
   const setter = 'set' + capitalize(name);
+
+  // Checkbox: use checked property, change event, boolean coercion
+  if (tagName === 'input' && inputType === 'checkbox') {
+    return [
+      `${i}${elVar}.checked = ${name}();`,
+      `${i}createEffect(() => { ${elVar}.checked = ${name}(); }, { name: 'view:bind:${name}', module: $m, viewTarget: { element: '${escapeStr(elDesc)}', binding: 'bind:checked' } });`,
+      `${i}${elVar}.addEventListener('change', (e) => { ${setter}(e.target.checked); });`,
+    ];
+  }
+
+  // Radio: use checked comparison, change event, set value on check
+  if (tagName === 'input' && inputType === 'radio') {
+    return [
+      `${i}${elVar}.checked = (${name}() === ${elVar}.value);`,
+      `${i}createEffect(() => { ${elVar}.checked = (${name}() === ${elVar}.value); }, { name: 'view:bind:${name}', module: $m, viewTarget: { element: '${escapeStr(elDesc)}', binding: 'bind:checked' } });`,
+      `${i}${elVar}.addEventListener('change', (e) => { if (e.target.checked) ${setter}(e.target.value); });`,
+    ];
+  }
+
+  // Select: use value property, change event
+  if (tagName === 'select') {
+    return [
+      `${i}${elVar}.value = ${name}();`,
+      `${i}createEffect(() => { ${elVar}.value = ${name}(); }, { name: 'view:bind:${name}', module: $m, viewTarget: { element: '${escapeStr(elDesc)}', binding: 'bind:value' } });`,
+      `${i}${elVar}.addEventListener('change', (e) => { ${setter}(e.target.value); });`,
+    ];
+  }
+
+  // Default (input text/number/range, textarea): use value property, input event
   const coerce = (inputType === 'range' || inputType === 'number') ? 'Number(e.target.value)' : 'e.target.value';
   return [
     `${i}${elVar}.value = ${name}();`,

@@ -7,7 +7,7 @@ import type {
   AlwaysBlock, ViewBlock, StyleBlock, EnumDecl, AssertDecl, TemporalAssertDecl, EventTrigger, Statement,
   SignalAssign, IfStatement, ExprStatement, ReturnStmt, DestructureStmt, DestructurePattern,
   TryStmt, VNode, VElement, VText, VExpr, VIf, VFor,
-  VComponent, VAttr, Expr, Literal, Identifier, BinaryExpr, UnaryExpr,
+  VComponent, VSlot, VAttr, Expr, Literal, Identifier, BinaryExpr, UnaryExpr,
   TernaryExpr, CallExpr, MemberExpr, IndexExpr, ArrayExpr, ObjectExpr,
   SpreadExpr, LambdaExpr, RangeExpr, TemplateExpr, TypeExpr, ObjectType, RangeType, UnionType, SourceLoc,
 } from './ast.js';
@@ -641,9 +641,29 @@ class Parser {
     return null;
   }
 
-  private parseVElement(): VElement | VComponent {
+  private parseVElement(): VElement | VComponent | VSlot {
     const loc = this.loc();
     const tag = this.expect(TokenType.JsxOpen, 'element tag').value;
+
+    // Handle <slot /> as a special VSlot node
+    if (tag === 'slot') {
+      // Skip any attributes
+      while (!this.check(TokenType.JsxTagEnd) && !this.check(TokenType.JsxSelfClose) && !this.check(TokenType.EOF)) {
+        this.parseVAttr();
+      }
+      if (this.check(TokenType.JsxSelfClose)) {
+        this.advance();
+      } else {
+        this.expect(TokenType.JsxTagEnd, 'slot tag end');
+        // Consume until closing tag
+        while (!this.check(TokenType.JsxClose) && !this.check(TokenType.RBrace) && !this.check(TokenType.EOF)) {
+          this.parseVNode();
+        }
+        if (this.check(TokenType.JsxClose)) this.advance();
+      }
+      return { kind: 'vslot', loc };
+    }
+
     const isComponent = tag[0] >= 'A' && tag[0] <= 'Z';
     const attrs: VAttr[] = [];
     while (!this.check(TokenType.JsxTagEnd) && !this.check(TokenType.JsxSelfClose) && !this.check(TokenType.EOF)) {

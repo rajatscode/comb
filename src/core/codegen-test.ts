@@ -335,5 +335,107 @@ module TryCatchCodegen {
   assert(js.includes('setX(1)'), 'Try body should set X');
   assert(js.includes('setErr("failed")'), 'Catch body should set err');
 });
+
+// Test 15: Method call codegen — arr.map(|x| x + 1)
+test('method call — items.map generates correct JS', () => {
+  const source = `
+module MethodGen {
+  signal items: int[] = [1, 2, 3];
+  comb doubled = items.map(|x| x + 1);
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Errors: ${result.errors.map(e => e.message)}`);
+  const js = result.js!;
+
+  assert(js.includes('items().map((x) => (x + 1))'), 'Should emit items().map((x) => (x + 1))');
+});
+
+// Test 16: Object.keys codegen
+test('Object.keys — generates correct JS', () => {
+  const source = `
+module GlobalGen {
+  signal obj: string = "{}";
+  comb keys = Object.keys(obj);
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Errors: ${result.errors.map(e => e.message)}`);
+  const js = result.js!;
+
+  assert(js.includes('Object.keys(obj())'), 'Should emit Object.keys(obj())');
+});
+
+// Test 17: Slot codegen
+test('slot — generates __children insertion', () => {
+  const source = `
+module Wrapper {
+  input label: string = "";
+  view {
+    <div>
+      <slot />
+    </div>
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Errors: ${result.errors.map(e => e.message)}`);
+  const js = result.js!;
+
+  assert(js.includes('__children'), 'Should reference __children');
+  assert(js.includes('appendChild(__children)'), 'Should append __children');
+});
+
+// Test 18: Select bind codegen
+test('select @bind — correct codegen', () => {
+  const source = `
+module SelectGen {
+  signal val: string = "a";
+  view {
+    <select @bind=val>
+      <option value="a">A</option>
+    </select>
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Errors: ${result.errors.map(e => e.message)}`);
+  const js = result.js!;
+
+  assert(js.includes("addEventListener('change'"), 'Should use change event for select');
+  assert(js.includes('.value = val()'), 'Should set value property');
+});
+
+// Test 19: Checkbox bind codegen
+test('checkbox @bind — correct codegen', () => {
+  const source = `
+module CheckGen {
+  signal flag: bool = false;
+  view {
+    <input type="checkbox" @bind=flag />
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Errors: ${result.errors.map(e => e.message)}`);
+  const js = result.js!;
+
+  assert(js.includes('.checked = flag()'), 'Should set checked property');
+  assert(js.includes('e.target.checked'), 'Should read checked from event');
+  assert(js.includes("addEventListener('change'"), 'Should use change event');
+});
+
+// Test 20: Textarea bind codegen
+test('textarea @bind — correct codegen', () => {
+  const source = `
+module TextareaGen {
+  signal text: string = "";
+  view {
+    <textarea @bind=text></textarea>
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Errors: ${result.errors.map(e => e.message)}`);
+  const js = result.js!;
+
+  assert(js.includes('.value = text()'), 'Should set value property');
+  assert(js.includes("addEventListener('input'"), 'Should use input event for textarea');
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

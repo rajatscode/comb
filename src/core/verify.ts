@@ -1,6 +1,6 @@
 // verify.ts — Verification pass: dependency extraction, resolution, cycle detection, type checking
 
-import type { Module, Declaration, CombDecl, AlwaysBlock, AssertDecl, TemporalAssertDecl, ConstraintDecl, Expr, Statement, VNode, TypeExpr } from './ast.js';
+import type { Module, Declaration, CombDecl, AlwaysBlock, AssertDecl, TemporalAssertDecl, ConstraintDecl, Expr, Statement, VNode, VSlot, TypeExpr } from './ast.js';
 import type { StaticGraph, GraphNode, GraphEdge } from './graph.js';
 
 export interface CompileError {
@@ -170,9 +170,20 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
   const symbols = new Map<string, SymbolKind>();
   const enumValues = new Set<string>(); // e.g. "Phase.Red"
   const enumDefs = new Map<string, string[]>();
-  const builtins = new Set(['str', 'int', 'float', 'len', 'contains', 'append', 'push', 'pop', 'slice', 'map', 'filter', 'concat', 'Math', 'JSON', 'console', 'parseInt', 'parseFloat', 'toString', 'rgbToHsv', 'hsvToRgb', 'rgbToHex', 'reduce', 'floor', 'round', 'min', 'max', 'abs']);
+  const builtins = new Set(['str', 'int', 'float', 'len', 'contains', 'append', 'push', 'pop', 'slice', 'map', 'filter', 'concat', 'Math', 'JSON', 'console', 'Object', 'parseInt', 'parseFloat', 'toString', 'rgbToHsv', 'hsvToRgb', 'rgbToHex', 'reduce', 'floor', 'round', 'min', 'max', 'abs']);
 
-  // Track user-defined functions: name → param count
+  // Method names that are valid on arrays/objects/strings — should not trigger undefined reference errors
+  const knownMethods = new Set([
+    'map', 'filter', 'find', 'findIndex', 'some', 'every', 'includes', 'indexOf',
+    'join', 'flat', 'flatMap', 'sort', 'reverse', 'splice', 'push', 'pop',
+    'shift', 'unshift', 'trim', 'split', 'replace', 'startsWith', 'endsWith',
+    'toUpperCase', 'toLowerCase', 'substring', 'charAt',
+    'keys', 'values', 'entries', 'parse', 'stringify', 'random', 'log',
+    'length', 'concat', 'slice', 'reduce', 'forEach',
+    'floor', 'ceil', 'round', 'abs', 'min', 'max', 'sqrt', 'pow',
+  ]);
+
+  // Track user-defined functions: name -> param count
   const userFunctions = new Map<string, number>();
 
   // 1. Build symbol table
@@ -477,10 +488,64 @@ function collectDeps(expr: Expr, deps: Set<string>, symbols: Map<string, SymbolK
 }
 
 // Collect ALL identifiers (for undefined reference checking)
-function collectAllIdentifiers(expr: Expr, ids: Set<string>): void {
-  walkExpr(expr, e => {
-    if (e.kind === 'identifier') ids.add(e.name);
-  });
+// Skips identifiers that are member access properties (e.g., 'map' in arr.map)
+// and lambda parameters (e.g., 'x' in |x| x + 1)
+function collectAllIdentifiers(expr: Expr, ids: Set<string>, lambdaParams?: Set<string>): void {
+  const params = lambdaParams ?? new Set<string>();
+  switch (expr.kind) {
+    case 'identifier':
+      if (!params.has(expr.name)) ids.add(expr.name);
+      break;
+    case 'member':
+      // Only collect the object, not the property (property is a method/field name)
+      collectAllIdentifiers(expr.object, ids, params);
+      break;
+    case 'lambda': {
+      // Lambda params are local scope — don't check them as undefined
+      const innerParams = new Set(params);
+      for (const p of expr.params) innerParams.add(p);
+      collectAllIdentifiers(expr.body, ids, innerParams);
+      break;
+    }
+    case 'binary':
+      collectAllIdentifiers(expr.left, ids, params);
+      collectAllIdentifiers(expr.right, ids, params);
+      break;
+    case 'unary':
+      collectAllIdentifiers(expr.operand, ids, params);
+      break;
+    case 'ternary':
+      collectAllIdentifiers(expr.condition, ids, params);
+      collectAllIdentifiers(expr.then, ids, params);
+      collectAllIdentifiers(expr.else_, ids, params);
+      break;
+    case 'call':
+      collectAllIdentifiers(expr.callee, ids, params);
+      for (const a of expr.args) collectAllIdentifiers(a, ids, params);
+      break;
+    case 'index':
+      collectAllIdentifiers(expr.object, ids, params);
+      collectAllIdentifiers(expr.index, ids, params);
+      break;
+    case 'array':
+      for (const el of expr.elements) collectAllIdentifiers(el, ids, params);
+      break;
+    case 'object':
+      for (const p of expr.properties) collectAllIdentifiers(p.value, ids, params);
+      break;
+    case 'spread':
+      collectAllIdentifiers(expr.expr, ids, params);
+      break;
+    case 'range':
+      collectAllIdentifiers(expr.start, ids, params);
+      collectAllIdentifiers(expr.end, ids, params);
+      break;
+    case 'template':
+      for (const part of expr.parts) {
+        if (typeof part !== 'string') collectAllIdentifiers(part, ids, params);
+      }
+      break;
+  }
 }
 
 // Collect reads and writes in always block statements
