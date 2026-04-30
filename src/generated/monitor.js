@@ -530,7 +530,7 @@ export function Monitor(root) {
 
   const [memThreshold, setMemThreshold] = createSignal(85, { name: 'memThreshold', module: $m });
 
-  const [diskThreshold, setDiskThreshold] = createSignal(500, { name: 'diskThreshold', module: $m });
+  const [diskThreshold, setDiskThreshold] = createSignal(100, { name: 'diskThreshold', module: $m });
 
   const [lastAlert, setLastAlert] = createSignal("", { name: 'lastAlert', module: $m });
 
@@ -725,7 +725,7 @@ export function Monitor(root) {
   const el24 = document.createElement('input');
   el24.setAttribute('type', 'range');
   el24.setAttribute('min', '0');
-  el24.setAttribute('max', '2000');
+  el24.setAttribute('max', '300');
   el24.value = diskThreshold();
   createEffect(() => { el24.value = diskThreshold(); }, { name: 'view:bind:diskThreshold', module: $m, viewTarget: { element: 'input', binding: 'bind:value' } });
   el24.addEventListener('input', (e) => { setDiskThreshold(Number(e.target.value)); });
@@ -758,7 +758,7 @@ export function __test() {
 
   const [memThreshold, setMemThreshold] = createSignal(85, { name: 'memThreshold', module: $m });
 
-  const [diskThreshold, setDiskThreshold] = createSignal(500, { name: 'diskThreshold', module: $m });
+  const [diskThreshold, setDiskThreshold] = createSignal(100, { name: 'diskThreshold', module: $m });
 
   const [lastAlert, setLastAlert] = createSignal("", { name: 'lastAlert', module: $m });
 
