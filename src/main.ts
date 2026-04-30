@@ -378,7 +378,8 @@ function showLanding() {
       circuitGraphDispose = cgResult.dispose;
     }
 
-    // Render waveform
+    // Render waveform — must start recording first
+    circuit.startRecording();
     const waveformEl = document.getElementById('waveform-container');
     if (waveformEl) {
       const wfResult = renderWaveform(waveformEl, circuit, [
@@ -394,6 +395,7 @@ function showLanding() {
 
     livePreviewDispose = () => {
       clearInterval(iv);
+      circuit.stopRecording();
       component.dispose();
       if (circuitGraphDispose) { circuitGraphDispose(); circuitGraphDispose = null; }
       if (waveformDispose) { waveformDispose(); waveformDispose = null; }
@@ -443,8 +445,11 @@ async function setupLiveCompilation(
       if (waveformDispose) { waveformDispose(); waveformDispose = null; }
       circuit.reset();
 
-      // Eval the new module
-      const js = result.js!;
+      // Eval the new module — fix import paths for Blob URL context
+      let js = result.js!;
+      js = js.replace(/from\s+['"]\.\.\/runtime\/index\.js['"]/g, `from '/src/runtime/index.ts'`);
+      js = js.replace(/from\s+['"]\.\.\/runtime\/circuit\.js['"]/g, `from '/src/runtime/circuit.ts'`);
+      js = js.replace(/from\s+['"]\.\.\/runtime\/color\.js['"]/g, `from '/src/runtime/color.ts'`);
       const blob = new Blob([js], { type: 'text/javascript' });
       const url = URL.createObjectURL(blob);
       const mod = await import(/* @vite-ignore */ url);
@@ -489,6 +494,7 @@ async function setupLiveCompilation(
       }
 
       // Re-render waveform
+      circuit.startRecording();
       const waveformEl = document.getElementById('waveform-container');
       if (waveformEl) {
         waveformEl.innerHTML = '';
