@@ -488,6 +488,9 @@ function showLanding() {
     // Start threshold at 40 so alerts fire quickly
     set('cpuThreshold', 40);
 
+    // Start recording BEFORE simulation so all events are captured
+    circuit.startRecording();
+
     // Simulation — spike CPU early, vary all 4 metrics
     const cpuHist: number[] = [];
     const memHist: number[] = [];
@@ -522,8 +525,7 @@ function showLanding() {
       circuitGraphDispose = cgResult.dispose;
     }
 
-    // Render waveform — must start recording first
-    circuit.startRecording();
+    // Render waveform — all 4 metrics + averages + alerts
     const waveformEl = document.getElementById('waveform-container');
     if (waveformEl) {
       const wfResult = renderWaveform(waveformEl, circuit, [
@@ -531,7 +533,11 @@ function showLanding() {
         `${M}.cpuAvg`,
         `${M}.cpuHigh`,
         `${M}.mem`,
+        `${M}.memAvg`,
         `${M}.memHigh`,
+        `${M}.disk`,
+        `${M}.diskHigh`,
+        `${M}.net`,
         `${M}.anyAlert`,
       ]);
       waveformDispose = wfResult.dispose;

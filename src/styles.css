@@ -1226,3 +1226,6 @@ a:hover { text-decoration: underline; }
 .heatmap-cell.hit { background: #1a3a1a; border-color: #4ae04a; color: #4ae04a; font-weight: 700; }
 .heatmap-count { text-align: center; font-size: 0.85rem; color: #888; font-family: monospace; }
 
+
+.waveform-landing-container { min-height: 350px; border: 1px solid #2a2a4a; border-radius: 8px; overflow: hidden; }
+
