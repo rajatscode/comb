@@ -450,7 +450,10 @@ function emitComb(decl: CombDecl, ctx: GenContext): string[] {
   }
   const processed = hoistEdgeCounters(decl.expr);
   if (hoisted.length > 0) {
-    // Emit hoisted counters, then a comb that reads them
+    // Add hoisted counter names to signals set so emitExpr calls them with ()
+    for (let ci = 0; ci < counterIdx; ci++) {
+      ctx.signals.add(`__ec_${decl.name}_${ci}`);
+    }
     const exprCode = emitExpr(processed, ctx);
     const depsArr = JSON.stringify(decl.deps);
     return [...hoisted, `${i}const ${decl.name} = createComb(() => ${exprCode}, { name: '${decl.name}', module: $m, deps: ${depsArr} });`];

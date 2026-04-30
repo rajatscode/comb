@@ -543,7 +543,7 @@ export function Monitor(root) {
   const __ec_alertCount_0 = createEdgeCounter(() => cpuHigh(), 'posedge', { name: '__ec_alertCount_0', module: $m });
   const __ec_alertCount_1 = createEdgeCounter(() => memHigh(), 'posedge', { name: '__ec_alertCount_1', module: $m });
   const __ec_alertCount_2 = createEdgeCounter(() => diskHigh(), 'posedge', { name: '__ec_alertCount_2', module: $m });
-  const alertCount = createComb(() => ((__ec_alertCount_0 + __ec_alertCount_1) + __ec_alertCount_2), { name: 'alertCount', module: $m, deps: ["cpuHigh","memHigh","diskHigh"] });
+  const alertCount = createComb(() => ((__ec_alertCount_0() + __ec_alertCount_1()) + __ec_alertCount_2()), { name: 'alertCount', module: $m, deps: ["cpuHigh","memHigh","diskHigh"] });
 
   createEffect(() => {
     const __ok = (anyAlert() == ((cpuHigh() || memHigh()) || diskHigh()));
@@ -771,7 +771,7 @@ export function __test() {
   const __ec_alertCount_0 = createEdgeCounter(() => cpuHigh(), 'posedge', { name: '__ec_alertCount_0', module: $m });
   const __ec_alertCount_1 = createEdgeCounter(() => memHigh(), 'posedge', { name: '__ec_alertCount_1', module: $m });
   const __ec_alertCount_2 = createEdgeCounter(() => diskHigh(), 'posedge', { name: '__ec_alertCount_2', module: $m });
-  const alertCount = createComb(() => ((__ec_alertCount_0 + __ec_alertCount_1) + __ec_alertCount_2), { name: 'alertCount', module: $m, deps: ["cpuHigh","memHigh","diskHigh"] });
+  const alertCount = createComb(() => ((__ec_alertCount_0() + __ec_alertCount_1()) + __ec_alertCount_2()), { name: 'alertCount', module: $m, deps: ["cpuHigh","memHigh","diskHigh"] });
 
   createEffect(() => {
     const __ok = (anyAlert() == ((cpuHigh() || memHigh()) || diskHigh()));
