@@ -1094,11 +1094,33 @@ a:hover { text-decoration: underline; }
 .code-pane-header { padding: 0.5rem 1rem; font-size: 0.85rem; font-weight: 600; color: #7b8cff; border-bottom: 2px solid #7b8cff; background: #1a1a2e; }
 .code-pane-header-other { color: #888; border-bottom: 2px solid #333; }
 
-.comb-editor {
-  width: 100%;
-  height: auto;
+.editor-overlay-wrapper {
+  position: relative;
   background: #12121e;
+}
+
+.comb-highlight {
+  margin: 0;
+  padding: 1rem;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  tab-size: 2;
+  white-space: pre;
   color: #e0e0e0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.comb-editor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  color: transparent;
+  caret-color: #e0e0e0;
   border: none;
   font-family: 'SF Mono', 'Fira Code', monospace;
   font-size: 0.82rem;
@@ -1108,7 +1130,6 @@ a:hover { text-decoration: underline; }
   padding: 1rem;
   tab-size: 2;
   overflow: hidden;
-  field-sizing: content;
 }
 
 .comb-errors {

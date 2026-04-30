@@ -388,7 +388,10 @@ function createLanding(): HTMLElement {
       <div class="code-comparison-row">
         <div class="code-pane">
           <div class="code-pane-header">Comb</div>
-          <textarea id="comb-editor" class="comb-editor" spellcheck="false">${escapeHtml(monitorSrc)}</textarea>
+          <div class="editor-overlay-wrapper">
+            <pre id="comb-highlight" class="comb-highlight" aria-hidden="true"><code>${highlightComb(monitorSrc)}</code></pre>
+            <textarea id="comb-editor" class="comb-editor" spellcheck="false">${escapeHtml(monitorSrc)}</textarea>
+          </div>
           <div id="comb-errors" class="comb-errors"></div>
         </div>
         <div class="code-pane">
@@ -791,9 +794,25 @@ async function setupLiveCompilation(
   let currentComponent = initialComponent;
   let currentInterval = simulationInterval;
 
+  const highlightEl = document.getElementById('comb-highlight');
+
+  function syncHighlight() {
+    if (highlightEl) {
+      highlightEl.innerHTML = '<code>' + highlightComb(editor!.value) + '</code>';
+    }
+  }
+
   editor.addEventListener('input', () => {
+    syncHighlight();
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => recompile(), 300);
+  });
+
+  editor.addEventListener('scroll', () => {
+    if (highlightEl) {
+      highlightEl.scrollTop = editor.scrollTop;
+      highlightEl.scrollLeft = editor.scrollLeft;
+    }
   });
 
   async function recompile() {
