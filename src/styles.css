@@ -1010,6 +1010,95 @@ a:hover { text-decoration: underline; }
 }
 
 /* ============================================
+   Framework Showcase Tabs
+   ============================================ */
+
+.hero-tagline {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #ccc;
+  margin: 0.5rem 0 0;
+  letter-spacing: 0.5px;
+}
+
+.showcase-section {
+  padding: 2rem 0 1rem;
+}
+
+.showcase-tabs { display: flex; gap: 0; border-bottom: 2px solid #333; margin-bottom: 0; }
+.tab { padding: 0.6rem 1.2rem; background: transparent; border: none; color: #888; cursor: pointer; font-size: 0.9rem; font-family: inherit; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.15s; }
+.tab:hover { color: #ccc; }
+.tab.active { color: #fff; border-bottom-color: #7b8cff; }
+.tab[data-tab="comb"].active { border-bottom-color: #7b8cff; color: #7b8cff; }
+.showcase-panels { background: #1a1a2e; border-radius: 0 0 8px 8px; }
+.panel { display: none; padding: 1rem; }
+.panel.active { display: block; }
+.panel pre { margin: 0; overflow-x: auto; }
+.panel code { font-size: 0.85rem; line-height: 1.5; font-family: 'SF Mono', 'Fira Code', monospace; }
+
+.panel-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.2rem 0;
+  border-top: 1px solid #2a2a4a;
+  margin-top: 0.75rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.line-count {
+  font-size: 0.75rem;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  color: #666;
+  white-space: nowrap;
+}
+
+.panel-note {
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+.panel-note code {
+  font-size: 0.75rem;
+  background: #2a2a40;
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+}
+.panel-note-warn { color: #e8915a; }
+.panel-note-ok { color: #4ae04a; }
+
+.showcase-callout { padding: 1rem 1.5rem; margin: 1.5rem 0; background: #1a1a2e; border-left: 3px solid #7b8cff; border-radius: 4px; font-size: 0.9rem; color: #ccc; line-height: 1.6; }
+.showcase-callout code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85rem; color: #7b8cff; background: rgba(123, 140, 255, 0.1); padding: 0.1rem 0.4rem; border-radius: 3px; }
+
+/* ============================================
+   Live Preview (inline monitor)
+   ============================================ */
+
+.live-preview-section { margin: 2rem 0; }
+.live-preview-header { color: #999; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 1px; font-size: 0.8rem; }
+.live-preview-container { border: 1px solid #2a2a4a; border-radius: 8px; overflow: hidden; background: #12121e; }
+.live-preview-row { display: flex; min-height: 280px; }
+.live-preview-app { flex: 0 0 340px; padding: 1rem; border-right: 1px solid #2a2a4a; }
+.live-preview-circuit { flex: 1; position: relative; min-height: 280px; overflow: hidden; }
+.live-preview-waveform { height: 140px; border-top: 1px solid #2a2a4a; position: relative; overflow: hidden; background: #12121e; }
+
+/* Prominent feature card (auto-testing) */
+.feature-card-prominent {
+  border-color: #3a5a3a;
+  background: #1a2e1a;
+}
+.feature-card-prominent:hover {
+  border-color: #4ae04a;
+}
+
+@media (max-width: 640px) {
+  .live-preview-row { flex-direction: column; }
+  .live-preview-app { flex: 0 0 auto; border-right: none; border-bottom: 1px solid #2a2a4a; }
+  .live-preview-circuit { min-height: 250px; }
+  .showcase-tabs { flex-wrap: wrap; }
+}
+
+/* ============================================
    System Monitor Demo
    ============================================ */
 

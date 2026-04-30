@@ -4,54 +4,266 @@ import { renderCircuitGraph } from './visualizer.js';
 
 const app = document.getElementById('app')!;
 
+// --- Framework code samples for the showcase ---
+const COMB_CODE = `module Monitor {
+  signal cpu: float = 25.0;
+  signal mem: float = 40.0;
+  signal cpuThreshold: float = 80.0;
+  signal cpuAvg: float = 25.0;
+  signal alertCount: int = 0;
+  signal lastAlert: string = "";
+
+  comb cpuHigh = cpuAvg > cpuThreshold;
+  comb cpuDisplay = str(round(cpu)) + "%";
+  comb avgDisplay = str(round(cpuAvg)) + "%";
+  comb memDisplay = str(round(mem)) + "%";
+  comb threshDisplay = str(round(cpuThreshold)) + "%";
+  comb statusText = cpuHigh ? "ALERT: CPU above " + threshDisplay : "Normal";
+  comb statusClass = cpuHigh ? "status-alert" : "status-ok";
+
+  always @(posedge cpuHigh) {
+    alertCount <= alertCount + 1;
+    lastAlert <= "CPU crossed " + threshDisplay;
+  }
+
+  always @(negedge cpuHigh) {
+    lastAlert <= "CPU recovered below " + threshDisplay;
+  }
+
+  view {
+    <div class="monitor">
+      <div class="monitor-metrics">
+        <div class="metric">
+          <span class="metric-label">CPU</span>
+          <span class="metric-value">{cpuDisplay}</span>
+          <span class="metric-detail">avg {avgDisplay}</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">MEM</span>
+          <span class="metric-value">{memDisplay}</span>
+        </div>
+      </div>
+      <p class={statusClass}>{statusText}</p>
+      <p class="alert-info">Alerts fired: {str(alertCount)} | {lastAlert}</p>
+      <label>Threshold: {threshDisplay}
+        <input type="range" min="50" max="100" @bind=cpuThreshold />
+      </label>
+    </div>
+  }
+}`;
+
+const REACT_CODE = `function Monitor() {
+  const [cpu, setCpu] = useState(25);
+  const [cpuAvg, setCpuAvg] = useState(25);
+  const [threshold, setThreshold] = useState(80);
+  const [alertCount, setAlertCount] = useState(0);
+  const [lastAlert, setLastAlert] = useState('');
+  const prevHigh = useRef(false);
+
+  const cpuHigh = cpuAvg > threshold;
+
+  // Edge detection \u2014 fire ONCE on transition
+  useEffect(() => {
+    if (cpuHigh && !prevHigh.current) {
+      setAlertCount(c => c + 1);
+      setLastAlert(\`CPU crossed \${threshold}%\`);
+    }
+    if (!cpuHigh && prevHigh.current) {
+      setLastAlert(\`CPU recovered below \${threshold}%\`);
+    }
+    prevHigh.current = cpuHigh;
+  }, [cpuHigh, threshold]);
+
+  return (
+    <div className="monitor">
+      <div className="metrics">
+        <div>CPU: {Math.round(cpu)}%</div>
+        <div>avg: {Math.round(cpuAvg)}%</div>
+      </div>
+      <p className={cpuHigh ? 'alert' : 'ok'}>
+        {cpuHigh ? \`ALERT: CPU above \${threshold}%\` : 'Normal'}
+      </p>
+      <p>Alerts: {alertCount} | {lastAlert}</p>
+      <input type="range" min={50} max={100}
+        value={threshold}
+        onChange={e => setThreshold(+e.target.value)} />
+    </div>
+  );
+}`;
+
+const VUE_CODE = `<script setup>
+import { ref, computed, watch } from 'vue'
+
+const cpu = ref(25)
+const cpuAvg = ref(25)
+const threshold = ref(80)
+const alertCount = ref(0)
+const lastAlert = ref('')
+
+const cpuHigh = computed(() => cpuAvg.value > threshold.value)
+
+let prevHigh = false
+watch(cpuHigh, (isHigh) => {
+  if (isHigh && !prevHigh) {
+    alertCount.value++
+    lastAlert.value = \`CPU crossed \${threshold.value}%\`
+  }
+  if (!isHigh && prevHigh) {
+    lastAlert.value = \`CPU recovered below \${threshold.value}%\`
+  }
+  prevHigh = isHigh
+})
+</script>
+
+<template>
+  <div class="monitor">
+    <div>CPU: {{ Math.round(cpu) }}% avg: {{ Math.round(cpuAvg) }}%</div>
+    <p :class="cpuHigh ? 'alert' : 'ok'">
+      {{ cpuHigh ? \`ALERT: CPU above \${threshold}%\` : 'Normal' }}
+    </p>
+    <p>Alerts: {{ alertCount }} | {{ lastAlert }}</p>
+    <input type="range" :min="50" :max="100"
+      v-model="threshold" />
+  </div>
+</template>`;
+
+const SVELTE_CODE = `<script>
+  let cpu = $state(25);
+  let cpuAvg = $state(25);
+  let threshold = $state(80);
+  let alertCount = $state(0);
+  let lastAlert = $state('');
+
+  let cpuHigh = $derived(cpuAvg > threshold);
+
+  let prevHigh = false;
+  $effect(() => {
+    if (cpuHigh && !prevHigh) {
+      alertCount++;
+      lastAlert = \`CPU crossed \${threshold}%\`;
+    }
+    if (!cpuHigh && prevHigh) {
+      lastAlert = \`CPU recovered below \${threshold}%\`;
+    }
+    prevHigh = cpuHigh;
+  });
+</script>
+
+<div class="monitor">
+  <div>CPU: {Math.round(cpu)}% avg: {Math.round(cpuAvg)}%</div>
+  <p class={cpuHigh ? 'alert' : 'ok'}>
+    {cpuHigh ? \`ALERT: CPU above \${threshold}%\` : 'Normal'}
+  </p>
+  <p>Alerts: {alertCount} | {lastAlert}</p>
+  <input type="range" min={50} max={100} bind:value={threshold} />
+</div>`;
+
+const SOLID_CODE = `function Monitor() {
+  const [cpu, setCpu] = createSignal(25);
+  const [cpuAvg, setCpuAvg] = createSignal(25);
+  const [threshold, setThreshold] = createSignal(80);
+  const [alertCount, setAlertCount] = createSignal(0);
+  const [lastAlert, setLastAlert] = createSignal('');
+
+  const cpuHigh = () => cpuAvg() > threshold();
+
+  let prevHigh = false;
+  createEffect(() => {
+    const isHigh = cpuHigh();
+    if (isHigh && !prevHigh) {
+      setAlertCount(c => c + 1);
+      setLastAlert(\`CPU crossed \${threshold()}%\`);
+    }
+    if (!isHigh && prevHigh) {
+      setLastAlert(\`CPU recovered below \${threshold()}%\`);
+    }
+    prevHigh = isHigh;
+  });
+
+  return (
+    <div class="monitor">
+      <div>CPU: {Math.round(cpu())}% avg: {Math.round(cpuAvg())}%</div>
+      <p class={cpuHigh() ? 'alert' : 'ok'}>
+        {cpuHigh() ? \`ALERT: CPU above \${threshold()}%\` : 'Normal'}
+      </p>
+      <p>Alerts: {alertCount()} | {lastAlert()}</p>
+      <input type="range" min={50} max={100}
+        value={threshold()}
+        onInput={e => setThreshold(+e.target.value)} />
+    </div>
+  );
+}`;
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 // --- Landing page HTML ---
 function createLanding(): HTMLElement {
   const landing = document.createElement('div');
   landing.className = 'landing';
   landing.innerHTML = `
     <section class="landing-hero">
-      <h1 class="hero-title">Stop hand-tracking your reactive dependencies.</h1>
-      <p class="hero-subtitle">Comb is a compiled reactive framework with edge-triggered sensitivity, temporal assertions, and a static circuit graph.</p>
+      <h1 class="hero-title">Comb</h1>
+      <p class="hero-subtitle">The reactive framework with edge-triggered sensitivity.</p>
+      <p class="hero-tagline">Write circuits. Ship apps.</p>
+    </section>
 
-      <p class="hero-problem-label">The problem: fire an alert <strong>once</strong> when a value crosses a threshold.</p>
-
-      <div class="code-comparison">
-        <div class="code-panel">
-          <div class="code-panel-header">React</div>
-          <pre><code><span class="hl-keyword">const</span> [val, setVal] = <span class="hl-type">useState</span>(0);
-<span class="hl-keyword">const</span> prev = <span class="hl-type">useRef</span>(<span class="hl-keyword">false</span>);
-
-<span class="hl-type">useEffect</span>(() =&gt; {
-  <span class="hl-keyword">const</span> isHigh = val &gt; threshold;
-  <span class="hl-keyword">if</span> (isHigh &amp;&amp; !prev.current) {
-    fireAlert();  <span class="hl-comment">// posedge</span>
-  }
-  prev.current = isHigh;
-}, [val, threshold]);</code></pre>
+    <section class="showcase-section">
+      <h2 class="section-title">The same dashboard. Five frameworks.</h2>
+      <div class="showcase-tabs">
+        <button class="tab active" data-tab="comb">Comb</button>
+        <button class="tab" data-tab="react">React</button>
+        <button class="tab" data-tab="vue">Vue</button>
+        <button class="tab" data-tab="svelte">Svelte</button>
+        <button class="tab" data-tab="solid">Solid</button>
+      </div>
+      <div class="showcase-panels">
+        <div class="panel active" data-panel="comb">
+          <pre><code>${escapeHtml(COMB_CODE)}</code></pre>
+          <div class="panel-footer">
+            <span class="line-count">46 lines</span>
+            <span class="panel-note panel-note-ok">Edge detection is a language primitive &mdash; compiler-verified</span>
+          </div>
         </div>
-        <div class="code-panel">
-          <div class="code-panel-header">Svelte</div>
-          <pre><code><span class="hl-keyword">let</span> prev = <span class="hl-keyword">false</span>;
-$: isHigh = val &gt; threshold;
-$: {
-  <span class="hl-keyword">if</span> (isHigh &amp;&amp; !prev) fireAlert();
-  prev = isHigh;
-}</code></pre>
+        <div class="panel" data-panel="react">
+          <pre><code>${escapeHtml(REACT_CODE)}</code></pre>
+          <div class="panel-footer">
+            <span class="line-count">~35 lines</span>
+            <span class="panel-note panel-note-warn">Manual edge detection &mdash; <code>prevHigh</code> ref must be managed by hand</span>
+          </div>
         </div>
-        <div class="code-panel code-panel-comb">
-          <div class="code-panel-header">Comb</div>
-          <pre><code><span class="hl-keyword">always</span> @(<span class="hl-type">posedge</span> val &gt; threshold) {
-  fireAlert();
-}</code></pre>
+        <div class="panel" data-panel="vue">
+          <pre><code>${escapeHtml(VUE_CODE)}</code></pre>
+          <div class="panel-footer">
+            <span class="line-count">~35 lines</span>
+            <span class="panel-note panel-note-warn">Manual edge detection &mdash; <code>prevHigh</code> variable must be managed by hand</span>
+          </div>
+        </div>
+        <div class="panel" data-panel="svelte">
+          <pre><code>${escapeHtml(SVELTE_CODE)}</code></pre>
+          <div class="panel-footer">
+            <span class="line-count">~25 lines</span>
+            <span class="panel-note panel-note-warn">Manual edge detection &mdash; <code>prevHigh</code> flag must be managed by hand</span>
+          </div>
+        </div>
+        <div class="panel" data-panel="solid">
+          <pre><code>${escapeHtml(SOLID_CODE)}</code></pre>
+          <div class="panel-footer">
+            <span class="line-count">~30 lines</span>
+            <span class="panel-note panel-note-warn">Manual edge detection &mdash; <code>prevHigh</code> variable must be managed by hand</span>
+          </div>
         </div>
       </div>
 
-      <p class="hero-desc">
-        Comb eliminates entire classes of bugs that plague React, Svelte, Vue, and SolidJS.
-        Edge triggers, temporal assertions, and a compiler-emitted dependency graph
-        mean you stop guessing and start proving.
-      </p>
-      <a href="#demos-section" class="hero-cta" onclick="document.getElementById('demos-section').scrollIntoView({behavior:'smooth'});return false;">Try the Demos &#8595;</a>
+      <div class="showcase-callout">
+        Every framework needs manual edge detection &mdash; tracking the previous value with a ref or variable, comparing on each update, and carefully managing the flag. Comb makes it a language primitive: <code>@(posedge expr)</code>. The compiler verifies it. The circuit graph visualizes it. One line replaces six.
+      </div>
+    </section>
+
+    <section class="live-preview-section">
+      <div class="live-preview-header">Live Preview &mdash; Comb Monitor Running</div>
+      <div id="live-preview" class="live-preview-container"></div>
     </section>
 
     <section class="features-section">
@@ -68,7 +280,7 @@ $: {
           </p>
         </div>
 
-        <div class="feature-card">
+        <div class="feature-card feature-card-prominent">
           <h3 class="feature-card-title">Auto-Derived Testing</h3>
           <code class="feature-code">__test()</code>
           <p class="feature-card-desc">
@@ -106,25 +318,6 @@ $: {
           </p>
         </div>
 
-      </div>
-    </section>
-
-    <section class="pipeline-section">
-      <h2 class="section-title">The __graph Pipeline</h2>
-      <div class="pipeline-diagram">
-        <div class="pipeline-node pipeline-source">.comb source</div>
-        <div class="pipeline-arrow">&rarr;</div>
-        <div class="pipeline-node pipeline-compiler">Compiler</div>
-        <div class="pipeline-arrow">&rarr;</div>
-        <div class="pipeline-node pipeline-graph">__graph</div>
-        <div class="pipeline-arrow">&rarr;</div>
-        <div class="pipeline-outputs">
-          <div class="pipeline-output">Circuit Visualizer</div>
-          <div class="pipeline-output">Waveform Debugger</div>
-          <div class="pipeline-output">Circuit Diff</div>
-          <div class="pipeline-output">Coverage Testing</div>
-          <div class="pipeline-output">Runtime <span class="pipeline-small">(signals, combs, effects)</span></div>
-        </div>
       </div>
     </section>
 
@@ -200,22 +393,97 @@ app.appendChild(content);
 let currentDispose: (() => void) | null = null;
 let currentView: string = '';
 
+let livePreviewDispose: (() => void) | null = null;
+
 function showLanding() {
   if (currentDispose) { currentDispose(); currentDispose = null; }
+  if (livePreviewDispose) { livePreviewDispose(); livePreviewDispose = null; }
   circuit.reset();
   content.innerHTML = '';
   content.removeAttribute('style');
   content.className = 'landing-mode';
-  content.appendChild(createLanding());
+  const landingEl = createLanding();
+  content.appendChild(landingEl);
   currentView = 'home';
 
   nav.querySelectorAll('.nav-link').forEach(el => {
     el.classList.toggle('active', (el as HTMLElement).dataset.demo === 'home');
   });
+
+  // Wire up tab switching
+  landingEl.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      landingEl.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      landingEl.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      landingEl.querySelector(`[data-panel="${(tab as HTMLElement).dataset.tab}"]`)?.classList.add('active');
+    });
+  });
+
+  // Mount live monitor preview
+  setTimeout(async () => {
+    const previewEl = document.getElementById('live-preview');
+    if (!previewEl) return;
+
+    const { Monitor, __graph } = await import('./generated/monitor.js');
+    const { renderWaveform } = await import('./waveform.js');
+
+    // Layout: monitor app + circuit graph side by side, waveform below
+    const previewRow = document.createElement('div');
+    previewRow.className = 'live-preview-row';
+
+    const appPane = document.createElement('div');
+    appPane.className = 'live-preview-app';
+    const circuitPane = document.createElement('div');
+    circuitPane.className = 'live-preview-circuit';
+
+    previewRow.appendChild(appPane);
+    previewRow.appendChild(circuitPane);
+    previewEl.appendChild(previewRow);
+
+    const wfDiv = document.createElement('div');
+    wfDiv.className = 'live-preview-waveform';
+    previewEl.appendChild(wfDiv);
+
+    const component = Monitor(appPane);
+    const M = 'Monitor';
+    const set = (name: string, v: any) => circuit.getNode(`${M}.${name}`)?.setValue?.(v);
+
+    circuit.startRecording();
+
+    renderCircuitGraph(circuitPane, __graph as any, circuit);
+    const wf = renderWaveform(wfDiv, circuit, [`${M}.cpu`, `${M}.cpuAvg`, `${M}.cpuHigh`]);
+
+    // Simulation
+    const cpuHist: number[] = [];
+    let t = 0;
+    const iv = setInterval(() => {
+      t++;
+      const spike = (t % 30 > 20 && t % 30 < 28);
+      const cpu = spike ? 75 + Math.random() * 20 : 20 + Math.random() * 30;
+      const mem = 40 + 20 * Math.sin(t / 40) + Math.random() * 10;
+      cpuHist.push(cpu);
+      if (cpuHist.length > 10) cpuHist.shift();
+      const avg = cpuHist.reduce((a, b) => a + b) / cpuHist.length;
+      batch(() => {
+        set('cpu', Math.round(cpu * 10) / 10);
+        set('mem', Math.round(mem * 10) / 10);
+        set('cpuAvg', Math.round(avg * 10) / 10);
+      });
+    }, 500);
+
+    livePreviewDispose = () => {
+      clearInterval(iv);
+      circuit.stopRecording();
+      wf.dispose();
+      component.dispose();
+    };
+  }, 100);
 }
 
 function loadDemo(name: string) {
   if (currentDispose) { currentDispose(); currentDispose = null; }
+  if (livePreviewDispose) { livePreviewDispose(); livePreviewDispose = null; }
   circuit.reset();
   content.innerHTML = '';
   content.removeAttribute('style');
