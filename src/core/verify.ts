@@ -21,9 +21,9 @@ export interface VerifyResult {
   warnings: CompileWarning[];
 }
 
-type SymbolKind = 'signal' | 'comb' | 'enum';
+type SymbolKind = 'signal' | 'comb' | 'enum' | 'input' | 'output';
 
-export function verify(mod: Module): VerifyResult {
+export function verify(mod: Module, moduleRegistry?: Map<string, Module>): VerifyResult {
   const errors: CompileError[] = [];
   const warnings: CompileWarning[] = [];
   const symbols = new Map<string, SymbolKind>();
@@ -32,6 +32,8 @@ export function verify(mod: Module): VerifyResult {
 
   // 1. Build symbol table
   for (const decl of mod.body) {
+    if (decl.kind === 'input') symbols.set(decl.name, 'input');
+    if (decl.kind === 'output') symbols.set(decl.name, 'output');
     if (decl.kind === 'signal') symbols.set(decl.name, 'signal');
     if (decl.kind === 'token') symbols.set(decl.name, 'signal'); // tokens are signals
     if (decl.kind === 'comb') symbols.set(decl.name, 'comb');
@@ -94,7 +96,7 @@ export function verify(mod: Module): VerifyResult {
   for (const decl of mod.body) {
     if (decl.kind === 'always' && decl.triggerKind === 'event' && decl.trigger.params.length === 0) {
       const name = decl.trigger.name;
-      if (symbols.has(name) && (symbols.get(name) === 'signal' || symbols.get(name) === 'comb')) {
+      if (symbols.has(name) && isReactiveKind(symbols.get(name)!)) {
         decl.triggerKind = 'sensitivity';
         decl.trigger.signals = [name];
         decl.trigger.name = `sense_${name}`;
@@ -112,12 +114,19 @@ export function verify(mod: Module): VerifyResult {
       decl.reads = [...reads];
       decl.writes = [...writes];
 
-      // Verify all written targets are signals
+      // Verify all written targets are writable (signals or outputs, not inputs or combs)
       for (const w of writes) {
         if (!symbols.has(w)) {
           errors.push({ message: `Undefined signal '${w}' written in always @(${decl.trigger.name})`, line: decl.loc.line, column: decl.loc.column });
-        } else if (symbols.get(w) !== 'signal') {
-          errors.push({ message: `Cannot write to '${w}' (${symbols.get(w)}) in always @(${decl.trigger.name}) — only signals can be assigned`, line: decl.loc.line, column: decl.loc.column });
+        } else {
+          const kind = symbols.get(w)!;
+          if (kind === 'comb') {
+            errors.push({ message: `Cannot write to '${w}' (comb) in always @(${decl.trigger.name}) — only signals can be assigned`, line: decl.loc.line, column: decl.loc.column });
+          } else if (kind === 'input') {
+            errors.push({ message: `Cannot write to '${w}' (input) in always @(${decl.trigger.name}) — inputs are read-only`, line: decl.loc.line, column: decl.loc.column });
+          } else if (kind !== 'signal' && kind !== 'output') {
+            errors.push({ message: `Cannot write to '${w}' (${kind}) in always @(${decl.trigger.name}) — only signals can be assigned`, line: decl.loc.line, column: decl.loc.column });
+          }
         }
       }
 
@@ -136,14 +145,14 @@ export function verify(mod: Module): VerifyResult {
         for (const sig of sensList) {
           if (!symbols.has(sig)) {
             errors.push({ message: `Undefined signal '${sig}' in sensitivity list @(${decl.trigger.signals.join(', ')})`, line: decl.loc.line, column: decl.loc.column });
-          } else if (symbols.get(sig) !== 'signal' && symbols.get(sig) !== 'comb') {
+          } else if (!isReactiveKind(symbols.get(sig)!)) {
             errors.push({ message: `'${sig}' is not a signal or comb — cannot appear in sensitivity list`, line: decl.loc.line, column: decl.loc.column });
           }
         }
 
         // Reads must be subset of sensitivity list
         for (const r of reads) {
-          if ((symbols.get(r) === 'signal' || symbols.get(r) === 'comb') && !sensList.has(r)) {
+          if (symbols.has(r) && isReactiveKind(symbols.get(r)!) && !sensList.has(r)) {
             errors.push({ message: `Read of '${r}' not declared in sensitivity list @(${decl.trigger.signals.join(', ')})`, line: decl.loc.line, column: decl.loc.column });
           }
         }
@@ -178,9 +187,13 @@ export function verify(mod: Module): VerifyResult {
 }
 
 // Collect identifiers that resolve to signals or combs (dependencies)
+function isReactiveKind(kind: SymbolKind): boolean {
+  return kind === 'signal' || kind === 'comb' || kind === 'input' || kind === 'output';
+}
+
 function collectDeps(expr: Expr, deps: Set<string>, symbols: Map<string, SymbolKind>, builtins: Set<string>, enumValues: Set<string>): void {
   walkExpr(expr, e => {
-    if (e.kind === 'identifier' && symbols.has(e.name) && (symbols.get(e.name) === 'signal' || symbols.get(e.name) === 'comb')) {
+    if (e.kind === 'identifier' && symbols.has(e.name) && isReactiveKind(symbols.get(e.name)!)) {
       deps.add(e.name);
     }
   });
@@ -217,14 +230,14 @@ function collectAlwaysReadsWrites(
       });
       // Actually, always collect reads from RHS regardless
       walkExpr(stmt.value, e => {
-        if (e.kind === 'identifier' && symbols.has(e.name) && (symbols.get(e.name) === 'signal' || symbols.get(e.name) === 'comb')) {
+        if (e.kind === 'identifier' && symbols.has(e.name) && isReactiveKind(symbols.get(e.name)!)) {
           reads.add(e.name);
         }
       });
     }
     if (stmt.kind === 'if') {
       walkExpr(stmt.condition, e => {
-        if (e.kind === 'identifier' && symbols.has(e.name) && (symbols.get(e.name) === 'signal' || symbols.get(e.name) === 'comb')) {
+        if (e.kind === 'identifier' && symbols.has(e.name) && isReactiveKind(symbols.get(e.name)!)) {
           reads.add(e.name);
         }
       });
@@ -233,7 +246,7 @@ function collectAlwaysReadsWrites(
     }
     if (stmt.kind === 'expr_stmt') {
       walkExpr(stmt.expr, e => {
-        if (e.kind === 'identifier' && symbols.has(e.name) && (symbols.get(e.name) === 'signal' || symbols.get(e.name) === 'comb')) {
+        if (e.kind === 'identifier' && symbols.has(e.name) && isReactiveKind(symbols.get(e.name)!)) {
           reads.add(e.name);
         }
       });
@@ -292,6 +305,12 @@ function buildGraph(mod: Module, symbols: Map<string, SymbolKind>): StaticGraph 
   let assertIdx = 0;
 
   for (const decl of mod.body) {
+    if (decl.kind === 'input') {
+      nodes.push({ id: decl.name, name: decl.name, type: 'signal' });
+    }
+    if (decl.kind === 'output') {
+      nodes.push({ id: decl.name, name: decl.name, type: 'signal' });
+    }
     if (decl.kind === 'signal') {
       nodes.push({ id: decl.name, name: decl.name, type: 'signal' });
     }

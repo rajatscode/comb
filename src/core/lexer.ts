@@ -11,6 +11,8 @@ export enum TokenType {
   Enum = 'enum',
   If = 'if',
   Else = 'else',
+  Input = 'input',
+  Output = 'output',
   Token = 'token',
   Style = 'style',
   Assert = 'assert',
@@ -84,6 +86,8 @@ const KEYWORDS: Record<string, TokenType> = {
   signal: TokenType.Signal,
   comb: TokenType.Comb,
   always: TokenType.Always,
+  input: TokenType.Input,
+  output: TokenType.Output,
   token: TokenType.Token,
   style: TokenType.Style,
   assert: TokenType.Assert,
@@ -382,7 +386,24 @@ export function tokenize(source: string): Token[] {
         const name = readIdentifier();
         tokens.push(tok(TokenType.Identifier, name, sl, sc));
         skipWhitespace();
-        if (peek() === '=') {
+        // := binding syntax: propName:={expr}
+        if (peek() === ':' && peek(1) === '=') {
+          advance(); advance();
+          tokens.push(tok(TokenType.Colon, ':', line, col - 2));
+          tokens.push(tok(TokenType.Assign, '=', line, col - 1));
+          skipWhitespace();
+          if (peek() === '{') {
+            advance();
+            tokens.push(tok(TokenType.LBrace, '{', line, col - 1));
+            tokenizeExprInBraces();
+          } else if (peek() === '"' || peek() === "'") {
+            const ql = line, qc = col;
+            tokens.push(tok(TokenType.String, readString(), ql, qc));
+          } else {
+            const vl = line, vc = col;
+            tokens.push(tok(TokenType.Identifier, readIdentifier(), vl, vc));
+          }
+        } else if (peek() === '=') {
           advance();
           tokens.push(tok(TokenType.Assign, '=', line, col - 1));
           skipWhitespace();

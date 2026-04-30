@@ -367,5 +367,125 @@ module Theme {
   assert(js.includes('setAccent(color)'), 'Should accept color param');
 });
 
+// Test 18: multi-module composition — clean compile
+test('multi-module composition — clean compile', () => {
+  const source = `
+module Child {
+  input label: string = "hello";
+  output clicks: int = 0;
+
+  always @(click) {
+    clicks <= clicks + 1;
+  }
+
+  view {
+    <div>
+      <span>{label}</span>
+      <button @click=click>Click</button>
+    </div>
+  }
+}
+
+module App {
+  signal title: string = "Parent";
+  signal childClicks: int = 0;
+
+  view {
+    <div>
+      <h2>{title}</h2>
+      <Child label={title} clicks:={childClicks} />
+      <p>{childClicks}</p>
+    </div>
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  // Both modules should be in generated JS
+  assert(js.includes('function Child('), 'Should generate Child factory');
+  assert(js.includes('function App('), 'Should generate App factory');
+
+  // Child should accept __props
+  assert(js.includes('__props'), 'Child should use __props');
+  assert(js.includes('__props.label'), 'Child should read label from __props');
+  assert(js.includes('__props.clicks'), 'Child should read clicks from __props');
+
+  // Child should return __ports
+  assert(js.includes('__ports'), 'Child should return __ports');
+
+  // Parent should wire reactive input effect
+  assert(js.includes('wire:label'), 'Parent should create wire effect for label input');
+
+  // Parent should wire output binding
+  assert(js.includes('bind:clicks'), 'Parent should create bind effect for clicks output');
+});
+
+// Test 19: input is read-only — cannot write to input
+test('input is read-only — write produces error', () => {
+  const source = `
+module Bad {
+  input x: int = 0;
+  always @(update) {
+    x <= 5;
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length > 0, 'Expected error for writing to input');
+  assert(result.errors.some(e => e.message.includes("'x'") && e.message.includes('input') && e.message.includes('read-only')), `Error should mention input read-only, got: ${result.errors.map(e => e.message)}`);
+});
+
+// Test 20: output is writable in always blocks
+test('output is writable in always block', () => {
+  const source = `
+module Counter {
+  output count: int = 0;
+  always @(inc) {
+    count <= count + 1;
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('setCount'), 'Should generate setter for output');
+});
+
+// Test 21: input used in comb expression
+test('input used as comb dependency', () => {
+  const source = `
+module Display {
+  input value: int = 0;
+  comb doubled = value * 2;
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const ast = result.modules![0];
+  const comb = ast.body.find(d => d.kind === 'comb' && d.name === 'doubled') as any;
+  assert(comb.deps.includes('value'), 'doubled should depend on input value');
+});
+
+// Test 22: := binding syntax parsed correctly
+test(':= binding syntax parsed correctly', () => {
+  const source = `
+module Child {
+  output result: int = 0;
+  view { <span>{result}</span> }
+}
+module Parent {
+  signal myResult: int = 0;
+  view {
+    <Child result:={myResult} />
+    <span>{myResult}</span>
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const js = result.js!;
+  assert(js.includes('bind:result'), 'Should wire output binding for result');
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

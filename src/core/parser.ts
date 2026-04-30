@@ -2,9 +2,9 @@
 
 import { Token, TokenType } from './lexer.js';
 import type {
-  Module, Param, Declaration, SignalDecl, TokenDecl, CombDecl, AlwaysBlock,
-  ViewBlock, StyleBlock, EnumDecl, AssertDecl, EventTrigger, Statement, SignalAssign,
-  IfStatement, ExprStatement, VNode, VElement, VText, VExpr, VIf, VFor,
+  Module, Param, Declaration, InputDecl, OutputDecl, SignalDecl, TokenDecl, CombDecl,
+  AlwaysBlock, ViewBlock, StyleBlock, EnumDecl, AssertDecl, EventTrigger, Statement,
+  SignalAssign, IfStatement, ExprStatement, VNode, VElement, VText, VExpr, VIf, VFor,
   VComponent, VAttr, Expr, Literal, Identifier, BinaryExpr, UnaryExpr,
   TernaryExpr, CallExpr, MemberExpr, IndexExpr, ArrayExpr, ObjectExpr,
   SpreadExpr, LambdaExpr, RangeExpr, TypeExpr, ObjectType, SourceLoc,
@@ -140,6 +140,8 @@ class Parser {
   private parseDeclaration(): Declaration {
     const t = this.peek();
     switch (t.type) {
+      case TokenType.Input: return this.parseInputDecl();
+      case TokenType.Output: return this.parseOutputDecl();
       case TokenType.Signal: return this.parseSignalDecl();
       case TokenType.Token: return this.parseTokenDecl();
       case TokenType.Comb: return this.parseCombDecl();
@@ -150,6 +152,34 @@ class Parser {
       case TokenType.Assert: return this.parseAssertDecl();
       default: this.error(`Unexpected token '${t.value}' in module body, expected declaration`);
     }
+  }
+
+  private parseInputDecl(): InputDecl {
+    const loc = this.loc();
+    this.expect(TokenType.Input);
+    const name = this.expect(TokenType.Identifier, 'input name').value;
+    this.expect(TokenType.Colon, 'input type');
+    const type = this.parseType();
+    let initial: Expr | undefined;
+    if (this.match(TokenType.Assign)) {
+      initial = this.parseExpr();
+    }
+    this.expect(TokenType.Semicolon, 'input declaration');
+    return { kind: 'input', name, type, initial, loc };
+  }
+
+  private parseOutputDecl(): OutputDecl {
+    const loc = this.loc();
+    this.expect(TokenType.Output);
+    const name = this.expect(TokenType.Identifier, 'output name').value;
+    this.expect(TokenType.Colon, 'output type');
+    const type = this.parseType();
+    let initial: Expr | undefined;
+    if (this.match(TokenType.Assign)) {
+      initial = this.parseExpr();
+    }
+    this.expect(TokenType.Semicolon, 'output declaration');
+    return { kind: 'output', name, type, initial, loc };
   }
 
   private parseSignalDecl(): SignalDecl {
@@ -407,6 +437,18 @@ class Parser {
     }
 
     const nameTok = this.expect(TokenType.Identifier, 'attribute name');
+    // := binding syntax: propName:={expr}
+    if (this.check(TokenType.Colon) && this.peekAt(1).type === TokenType.Assign) {
+      this.advance(); // consume :
+      this.advance(); // consume =
+      if (this.check(TokenType.LBrace)) {
+        this.advance();
+        const expr = this.parseExpr();
+        this.expect(TokenType.RBrace, 'binding expression');
+        return { name: nameTok.value, value: expr, isEvent: false, isBind: false, isBinding: true };
+      }
+      return { name: nameTok.value, value: this.parseAttrExpr(), isEvent: false, isBind: false, isBinding: true };
+    }
     if (this.match(TokenType.Assign)) {
       if (this.check(TokenType.LBrace)) {
         this.advance();

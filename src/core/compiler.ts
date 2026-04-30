@@ -12,6 +12,7 @@ export type { CompileError, CompileWarning };
 export interface CompileResult {
   js?: string;
   ast?: Module;
+  modules?: Module[];
   graph?: StaticGraph;
   errors: CompileError[];
   warnings: CompileWarning[];
@@ -41,21 +42,39 @@ export function compile(source: string): CompileResult {
     return { errors: [{ message: 'No module found', line: 1, column: 1 }], warnings: [] };
   }
 
-  // Verify
-  const mod = modules[0];
-  const result = verify(mod);
+  // Build module registry for cross-module verification
+  const moduleRegistry = new Map<string, Module>();
+  for (const m of modules) moduleRegistry.set(m.name, m);
 
-  if (result.errors.length > 0) {
-    return { errors: result.errors, warnings: result.warnings };
+  // Verify and generate ALL modules
+  const allErrors: CompileError[] = [];
+  const allWarnings: CompileWarning[] = [];
+  const jsChunks: string[] = [];
+  let primaryGraph: StaticGraph | undefined;
+
+  for (const mod of modules) {
+    const result = verify(mod, moduleRegistry);
+    allErrors.push(...result.errors);
+    allWarnings.push(...result.warnings);
+
+    if (result.errors.length === 0) {
+      try {
+        jsChunks.push(generate(mod, result.graph));
+      } catch (e: any) {
+        allErrors.push({ message: `Codegen error in ${mod.name}: ${e.message}`, line: 1, column: 1 });
+      }
+    }
+
+    // Use last module's graph as primary (the "app" module)
+    primaryGraph = result.graph;
   }
 
-  // Generate
-  let js: string;
-  try {
-    js = generate(mod, result.graph);
-  } catch (e: any) {
-    return { ast: mod, graph: result.graph, errors: [{ message: `Codegen error: ${e.message}`, line: 1, column: 1 }], warnings: result.warnings };
+  if (allErrors.length > 0) {
+    return { errors: allErrors, warnings: allWarnings, modules };
   }
 
-  return { js, ast: mod, graph: result.graph, errors: [], warnings: result.warnings };
+  const js = jsChunks.join('\n\n');
+  // Return last module as primary AST for backward compat
+  const primaryMod = modules[modules.length - 1];
+  return { js, ast: primaryMod, modules, graph: primaryGraph, errors: [], warnings: allWarnings };
 }

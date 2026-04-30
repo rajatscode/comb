@@ -23,6 +23,8 @@ export interface Param {
 // Declarations
 
 export type Declaration =
+  | InputDecl
+  | OutputDecl
   | SignalDecl
   | TokenDecl
   | CombDecl
@@ -31,6 +33,22 @@ export type Declaration =
   | StyleBlock
   | EnumDecl
   | AssertDecl;
+
+export interface InputDecl {
+  kind: 'input';
+  name: string;
+  type: TypeExpr;
+  initial?: Expr;
+  loc: SourceLoc;
+}
+
+export interface OutputDecl {
+  kind: 'output';
+  name: string;
+  type: TypeExpr;
+  initial?: Expr;
+  loc: SourceLoc;
+}
 
 export interface SignalDecl {
   kind: 'signal';
@@ -188,6 +206,7 @@ export interface VAttr {
   value: Expr | null;
   isEvent: boolean;
   isBind: boolean;
+  isBinding?: boolean; // := output binding
   modifier?: string;
   eventArgs?: Expr[];
 }

@@ -71,6 +71,7 @@ function cleanupComputation(comp: Computation): void {
 
 class Scope {
   private computations: Computation[] = [];
+  private children: (() => void)[] = [];
   private parent: Scope | null;
 
   constructor() {
@@ -81,7 +82,14 @@ class Scope {
     this.computations.push(comp);
   }
 
+  addChild(disposeFn: () => void): void {
+    this.children.push(disposeFn);
+  }
+
   dispose(): void {
+    // Dispose children first (bottom-up)
+    for (const child of this.children) child();
+    this.children = [];
     for (const comp of this.computations) {
       comp.disposed = true;
       cleanupComputation(comp);

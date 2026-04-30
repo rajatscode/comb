@@ -2,9 +2,9 @@
 // Emits readable ES module JavaScript targeting the Comb runtime API
 
 import type {
-  Module, Declaration, SignalDecl, TokenDecl, CombDecl, AlwaysBlock,
-  ViewBlock, StyleBlock, EnumDecl, AssertDecl, Statement, SignalAssign, IfStatement,
-  ExprStatement, VNode, VElement, VText, VExpr, VIf, VFor,
+  Module, Declaration, InputDecl, OutputDecl, SignalDecl, TokenDecl, CombDecl,
+  AlwaysBlock, ViewBlock, StyleBlock, EnumDecl, AssertDecl, Statement, SignalAssign,
+  IfStatement, ExprStatement, VNode, VElement, VText, VExpr, VIf, VFor,
   VComponent, VAttr, Expr,
 } from './ast.js';
 import type { StaticGraph } from './graph.js';
@@ -14,6 +14,8 @@ interface GenContext {
   signals: Set<string>;
   combs: Set<string>;
   params: Set<string>;
+  inputs: Set<string>;
+  outputs: Set<string>;
   enums: Map<string, string[]>;
   indent: number;
   elCount: number;
@@ -37,6 +39,8 @@ function createContext(mod: Module): GenContext {
     signals: new Set(),
     combs: new Set(),
     params: new Set(),
+    inputs: new Set(),
+    outputs: new Set(),
     enums: new Map(),
     indent: 1,
     elCount: 0,
@@ -46,6 +50,8 @@ function createContext(mod: Module): GenContext {
     hasStyle: mod.body.some(d => d.kind === 'style'),
   };
   for (const decl of mod.body) {
+    if (decl.kind === 'input') { ctx.inputs.add(decl.name); ctx.signals.add(decl.name); }
+    if (decl.kind === 'output') { ctx.outputs.add(decl.name); ctx.signals.add(decl.name); }
     if (decl.kind === 'signal') ctx.signals.add(decl.name);
     if (decl.kind === 'token') ctx.signals.add(decl.name); // tokens are reactive signals
     if (decl.kind === 'comb') ctx.combs.add(decl.name);
@@ -75,9 +81,18 @@ export function generate(mod: Module, graph: StaticGraph): string {
   lines.push('');
 
   // Module factory function
+  const hasInputs = ctx.inputs.size > 0;
+  const hasOutputs = ctx.outputs.size > 0;
+  const hasPorts = hasInputs || hasOutputs;
   const paramNames = mod.params.map(p => p.name);
-  const paramList = paramNames.length > 0 ? `{ ${paramNames.join(', ')} }, root` : 'root';
-  lines.push(`export function ${mod.name}(${paramList}) {`);
+
+  // Build signature: ModuleName(__props, root) or ModuleName(root)
+  let sigParts: string[] = [];
+  if (paramNames.length > 0) sigParts.push(`{ ${paramNames.join(', ')} }`);
+  if (hasPorts) sigParts.push('__props');
+  sigParts.push('root');
+  lines.push(`export function ${mod.name}(${sigParts.join(', ')}) {`);
+  if (hasPorts) lines.push(`  if (!__props) __props = {};`);
   lines.push(`  const $m = '${mod.name}';`);
   lines.push(`  circuit.loadStaticGraph(__graph);`);
   lines.push(`  const __scope = createScope();`);
@@ -88,7 +103,19 @@ export function generate(mod: Module, graph: StaticGraph): string {
     lines.push('');
   }
 
-  lines.push('  return { dispose: __scope.dispose };');
+  // Build return with ports
+  if (hasPorts) {
+    const portEntries: string[] = [];
+    for (const name of ctx.inputs) {
+      portEntries.push(`${name}: { set: set${capitalize(name)} }`);
+    }
+    for (const name of ctx.outputs) {
+      portEntries.push(`${name}: { get: ${name}, set: set${capitalize(name)} }`);
+    }
+    lines.push(`  return { dispose: __scope.dispose, __ports: { ${portEntries.join(', ')} } };`);
+  } else {
+    lines.push('  return { dispose: __scope.dispose };');
+  }
   lines.push('}');
   lines.push('');
 
@@ -104,10 +131,10 @@ export function generate(mod: Module, graph: StaticGraph): string {
   const testCtx = { ...ctx, indent: 1, elCount: 0, txtCount: 0, assertCount: 0 };
 
   for (const decl of mod.body) {
-    if (decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'comb' || decl.kind === 'enum' || decl.kind === 'assert') {
+    if (decl.kind === 'input' || decl.kind === 'output' || decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'comb' || decl.kind === 'enum' || decl.kind === 'assert') {
       lines.push(...emitDecl(decl, testCtx));
       lines.push('');
-      if (decl.kind === 'signal' || decl.kind === 'token') signalNames.push(decl.name);
+      if (decl.kind === 'signal' || decl.kind === 'token' || decl.kind === 'input' || decl.kind === 'output') signalNames.push(decl.name);
       if (decl.kind === 'comb') combNames.push(decl.name);
     }
   }
@@ -129,6 +156,8 @@ export function generate(mod: Module, graph: StaticGraph): string {
 
 function emitDecl(decl: Declaration, ctx: GenContext): string[] {
   switch (decl.kind) {
+    case 'input': return emitInput(decl, ctx);
+    case 'output': return emitOutput(decl, ctx);
     case 'signal': return emitSignal(decl, ctx);
     case 'token': return emitToken(decl, ctx);
     case 'comb': return emitComb(decl, ctx);
@@ -138,6 +167,20 @@ function emitDecl(decl: Declaration, ctx: GenContext): string[] {
     case 'enum': return emitEnum(decl, ctx);
     case 'assert': return emitAssert(decl, ctx);
   }
+}
+
+function emitInput(decl: InputDecl, ctx: GenContext): string[] {
+  const i = ind(ctx);
+  const init = decl.initial ? emitExpr(decl.initial, ctx) : 'undefined';
+  const setter = 'set' + capitalize(decl.name);
+  return [`${i}const [${decl.name}, ${setter}] = createSignal(__props.${decl.name} ?? ${init}, { name: '${decl.name}', module: $m });`];
+}
+
+function emitOutput(decl: OutputDecl, ctx: GenContext): string[] {
+  const i = ind(ctx);
+  const init = decl.initial ? emitExpr(decl.initial, ctx) : 'undefined';
+  const setter = 'set' + capitalize(decl.name);
+  return [`${i}const [${decl.name}, ${setter}] = createSignal(__props.${decl.name} ?? ${init}, { name: '${decl.name}', module: $m });`];
 }
 
 function emitSignal(decl: SignalDecl, ctx: GenContext): string[] {
@@ -373,19 +416,48 @@ function emitVElement(node: VElement, parent: string, ctx: GenContext): string[]
 function emitVComponent(node: VComponent, parent: string, ctx: GenContext): string[] {
   const i = ind(ctx);
   const v = nextEl(ctx);
+  const childVar = `__child${ctx.elCount}`;
   const lines = [
     `${i}const ${v} = document.createElement('div');`,
     `${i}${v}.style.display = 'contents';`,
   ];
 
+  // Collect initial prop values for child factory
   const propsEntries: string[] = [];
+  const inputBindings: { name: string; expr: string }[] = [];
+  const outputBindings: { name: string; expr: Expr }[] = [];
   for (const prop of node.props) {
-    if (!prop.isEvent && prop.value) {
+    if (prop.isEvent) continue;
+    if (prop.isBinding && prop.value) {
+      // := binding — bidirectional output wire
       propsEntries.push(`${prop.name}: ${emitExpr(prop.value, ctx)}`);
+      outputBindings.push({ name: prop.name, expr: prop.value });
+    } else if (prop.value) {
+      propsEntries.push(`${prop.name}: ${emitExpr(prop.value, ctx)}`);
+      if (isReactive(prop.value, ctx)) {
+        inputBindings.push({ name: prop.name, expr: emitExpr(prop.value, ctx) });
+      }
     }
   }
   const propsObj = propsEntries.length > 0 ? `{ ${propsEntries.join(', ')} }` : '{}';
-  lines.push(`${i}${node.name}(${propsObj}, ${v});`);
+  lines.push(`${i}const ${childVar} = ${node.name}(${propsObj}, ${v});`);
+
+  // Wire reactive input forwarding
+  for (const bind of inputBindings) {
+    lines.push(`${i}createEffect(() => {`);
+    lines.push(`${i}  if (${childVar}.__ports && ${childVar}.__ports.${bind.name}) ${childVar}.__ports.${bind.name}.set(${bind.expr});`);
+    lines.push(`${i}}, { name: 'wire:${bind.name}', module: $m });`);
+  }
+
+  // Wire output bindings (child output → parent signal)
+  for (const bind of outputBindings) {
+    if (bind.expr.kind === 'identifier') {
+      const parentSetter = `set${capitalize(bind.expr.name)}`;
+      lines.push(`${i}createEffect(() => {`);
+      lines.push(`${i}  if (${childVar}.__ports && ${childVar}.__ports.${bind.name}) ${parentSetter}(${childVar}.__ports.${bind.name}.get());`);
+      lines.push(`${i}}, { name: 'bind:${bind.name}', module: $m });`);
+    }
+  }
 
   for (const prop of node.props) {
     if (prop.isEvent) lines.push(...emitEventAttr(prop, v, ctx));
