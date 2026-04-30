@@ -4,12 +4,138 @@ import { renderCircuitGraph } from './visualizer.js';
 
 const app = document.getElementById('app')!;
 
-// Navigation
+// --- Landing page HTML ---
+function createLanding(): HTMLElement {
+  const landing = document.createElement('div');
+  landing.className = 'landing';
+  landing.innerHTML = `
+    <section class="landing-hero">
+      <h1 class="hero-title">Comb</h1>
+      <p class="hero-subtitle">Write circuits. Ship apps.</p>
+      <p class="hero-desc">
+        A reactive UI framework where the compiler sees your entire dependency
+        graph, verifies it's correct, and lets you visualize, debug, diff,
+        and test it — all from one data structure.
+      </p>
+      <a href="#demos-section" class="hero-cta" onclick="document.querySelector('.pipeline-section').scrollIntoView({behavior:'smooth'});return false;">Try the Demos &#8595;</a>
+    </section>
+
+    <section class="pipeline-section">
+      <h2 class="section-title">The __graph Pipeline</h2>
+      <div class="pipeline-diagram">
+        <div class="pipeline-node pipeline-source">.comb source</div>
+        <div class="pipeline-arrow">&rarr;</div>
+        <div class="pipeline-node pipeline-compiler">Compiler</div>
+        <div class="pipeline-arrow">&rarr;</div>
+        <div class="pipeline-node pipeline-graph">__graph</div>
+        <div class="pipeline-arrow">&rarr;</div>
+        <div class="pipeline-outputs">
+          <div class="pipeline-output">Circuit Visualizer</div>
+          <div class="pipeline-output">Waveform Debugger</div>
+          <div class="pipeline-output">Circuit Diff</div>
+          <div class="pipeline-output">Coverage Testing</div>
+          <div class="pipeline-output">Runtime <span class="pipeline-small">(signals, combs, effects)</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="comparison-section">
+      <h2 class="section-title">Why Comb</h2>
+      <div class="comparison-table-wrap">
+        <table class="comparison-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>React</th>
+              <th>SolidJS</th>
+              <th>Svelte 5</th>
+              <th class="comb-col">Comb</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="row-label">Dep tracking</td>
+              <td>Manual arrays</td>
+              <td>Auto (implicit)</td>
+              <td>Compiler (invisible)</td>
+              <td class="comb-col"><strong>Compiler-verified (visible)</strong></td>
+            </tr>
+            <tr>
+              <td class="row-label">Reactive graph</td>
+              <td>Hidden</td>
+              <td>Hidden</td>
+              <td>Hidden</td>
+              <td class="comb-col"><strong>First-class __graph artifact</strong></td>
+            </tr>
+            <tr>
+              <td class="row-label">Circuit visualization</td>
+              <td>No</td>
+              <td>DevTools addon</td>
+              <td>No</td>
+              <td class="comb-col"><strong>Built-in, from compile-time</strong></td>
+            </tr>
+            <tr>
+              <td class="row-label">Topology diffing</td>
+              <td>No</td>
+              <td>No</td>
+              <td>No</td>
+              <td class="comb-col"><strong>Yes — diff two __graphs</strong></td>
+            </tr>
+            <tr>
+              <td class="row-label">Auto-derived testing</td>
+              <td>No</td>
+              <td>No</td>
+              <td>No</td>
+              <td class="comb-col"><strong>Yes — combs ARE specs</strong></td>
+            </tr>
+            <tr>
+              <td class="row-label">Bidirectional constraints</td>
+              <td>No</td>
+              <td>No</td>
+              <td>No</td>
+              <td class="comb-col"><strong>Propagator networks</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="demos-section" id="demos-section">
+      <h2 class="section-title">Demos</h2>
+      <div class="demo-cards">
+        <a href="#registration" class="demo-card">
+          <h3>Dependency Debugger</h3>
+          <p>Compiler-verified deps, live circuit diagram, auto-test with 16/16 coverage in &lt;1s</p>
+        </a>
+        <a href="#ticker" class="demo-card">
+          <h3>Waveform Debugger</h3>
+          <p>Signal traces over time, like a hardware logic analyzer for your UI</p>
+        </a>
+        <a href="#diff" class="demo-card">
+          <h3>Circuit Diff</h3>
+          <p>Diff reactive topology across refactors. Zero prior art.</p>
+        </a>
+        <a href="#color" class="demo-card">
+          <h3>Color Picker</h3>
+          <p>Bidirectional constraints via propagator networks. Try doing this in React.</p>
+        </a>
+      </div>
+    </section>
+
+    <footer class="landing-footer">
+      Built with the Comb compiler. 52 tests. Open source.
+    </footer>
+  `;
+  return landing;
+}
+
+// --- Navigation ---
 const nav = document.createElement('nav');
 nav.className = 'demo-nav';
 nav.innerHTML = `
-  <a href="#registration" class="nav-link active" data-demo="registration">Registration Form</a>
-  <a href="#ticker" class="nav-link" data-demo="ticker">Stock Ticker</a>
+  <a href="#" class="nav-link nav-home" data-demo="home">Comb</a>
+  <a href="#registration" class="nav-link" data-demo="registration">Dependency Debugger</a>
+  <a href="#ticker" class="nav-link" data-demo="ticker">Waveform Debugger</a>
   <a href="#diff" class="nav-link" data-demo="diff">Circuit Diff</a>
   <a href="#color" class="nav-link" data-demo="color">Color Picker</a>
 `;
@@ -20,40 +146,66 @@ content.id = 'demo-content';
 app.appendChild(content);
 
 let currentDispose: (() => void) | null = null;
+let currentView: string = '';
 
-function loadDemo(name: string) {
-  // Clean up previous demo
+function showLanding() {
   if (currentDispose) { currentDispose(); currentDispose = null; }
   circuit.reset();
   content.innerHTML = '';
   content.removeAttribute('style');
+  content.className = 'landing-mode';
+  content.appendChild(createLanding());
+  currentView = 'home';
 
-  // Update nav active state
+  nav.querySelectorAll('.nav-link').forEach(el => {
+    el.classList.toggle('active', (el as HTMLElement).dataset.demo === 'home');
+  });
+}
+
+function loadDemo(name: string) {
+  if (currentDispose) { currentDispose(); currentDispose = null; }
+  circuit.reset();
+  content.innerHTML = '';
+  content.removeAttribute('style');
+  content.className = '';
+  currentView = name;
+
+  // Back link
+  const backLink = document.createElement('a');
+  backLink.href = '#';
+  backLink.className = 'back-link';
+  backLink.textContent = '\u2190 Back to overview';
+  content.appendChild(backLink);
+
+  // Demo wrapper
+  const demoWrap = document.createElement('div');
+  demoWrap.id = 'demo-wrap';
+  content.appendChild(demoWrap);
+
   nav.querySelectorAll('.nav-link').forEach(el => {
     el.classList.toggle('active', (el as HTMLElement).dataset.demo === name);
   });
 
   if (name === 'registration') {
-    loadRegistration();
+    loadRegistration(demoWrap);
   } else if (name === 'ticker') {
-    loadTicker();
+    loadTicker(demoWrap);
   } else if (name === 'diff') {
-    loadDiff();
+    loadDiff(demoWrap);
   } else if (name === 'color') {
-    loadColor();
+    loadColor(demoWrap);
   }
 }
 
-async function loadRegistration() {
+async function loadRegistration(container: HTMLElement) {
   const { RegistrationForm, __graph, __test } = await import('./generated/registration.js');
 
-  // Split layout
   const paneApp = document.createElement('div');
   paneApp.className = 'pane pane-app';
   const paneCircuit = document.createElement('div');
   paneCircuit.className = 'pane pane-circuit';
-  content.appendChild(paneApp);
-  content.appendChild(paneCircuit);
+  container.appendChild(paneApp);
+  container.appendChild(paneCircuit);
 
   const formWrapper = document.createElement('div');
   formWrapper.className = 'form-wrapper';
@@ -90,11 +242,9 @@ async function loadRegistration() {
   const boolCombs = ['usernameValid', 'emailValid', 'passwordStrong', 'passwordsMatch'];
   const hitSet = new Set<number>();
 
-  // Heatmap grid
   const heatmapContainer = document.createElement('div');
   heatmapContainer.className = 'heatmap-container';
 
-  // Labels
   const labelRow = document.createElement('div');
   labelRow.className = 'heatmap-labels';
   labelRow.innerHTML = boolCombs.map(n => `<span>${n.replace('Valid', 'V').replace('Strong', 'S').replace('Match', 'M').replace('password', 'pw').replace('username', 'user').replace('email', 'em')}</span>`).join('');
@@ -137,12 +287,9 @@ async function loadRegistration() {
     updateHeatmap();
   }
 
-  // Subscribe to circuit events to record combinations
   const unsub = circuit.subscribe(() => { recordCombination(); });
-  // Record initial state
   setTimeout(recordCombination, 100);
 
-  // Auto-test button
   const autoBtn = document.createElement('button');
   autoBtn.className = 'auto-test-btn';
   autoBtn.textContent = 'Auto-Test (1000 random inputs)';
@@ -165,7 +312,6 @@ async function loadRegistration() {
           t.signals.password.set(pw);
           t.signals.confirm.set(Math.random() > 0.5 ? pw : randomString(8));
         });
-        // Record from test circuit
         let combo = 0;
         if (t.combs.usernameValid()) combo |= 8;
         if (t.combs.emailValid()) combo |= 4;
@@ -190,28 +336,32 @@ async function loadRegistration() {
   };
 }
 
-async function loadTicker() {
+async function loadTicker(container: HTMLElement) {
   const { mountStockTicker } = await import('./demos/stock-ticker.js');
-  const result = mountStockTicker(content);
+  const result = mountStockTicker(container);
   currentDispose = result.dispose;
 }
 
-async function loadDiff() {
+async function loadDiff(container: HTMLElement) {
   const { mountCircuitDiff } = await import('./demos/circuit-diff.js');
-  const result = mountCircuitDiff(content);
+  const result = mountCircuitDiff(container);
   currentDispose = result.dispose;
 }
 
-async function loadColor() {
+async function loadColor(container: HTMLElement) {
   const { mountColorPicker } = await import('./demos/color-picker.js');
-  const result = mountColorPicker(content);
+  const result = mountColorPicker(container);
   currentDispose = result.dispose;
 }
 
 // Route based on hash
 function route() {
-  const hash = location.hash.replace('#', '') || 'registration';
-  loadDemo(hash);
+  const hash = location.hash.replace('#', '');
+  if (!hash || hash === 'demos-section') {
+    showLanding();
+  } else {
+    loadDemo(hash);
+  }
 }
 
 nav.addEventListener('click', (e) => {
@@ -219,7 +369,11 @@ nav.addEventListener('click', (e) => {
   if (link) {
     e.preventDefault();
     const demo = link.dataset.demo!;
-    location.hash = demo;
+    if (demo === 'home') {
+      location.hash = '';
+    } else {
+      location.hash = demo;
+    }
   }
 });
 
