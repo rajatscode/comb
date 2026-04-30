@@ -48,6 +48,7 @@ export interface CombDecl {
 
 export interface AlwaysBlock {
   kind: 'always';
+  triggerKind: 'event' | 'sensitivity';
   trigger: EventTrigger;
   body: Statement[];
   reads: string[];  // filled by verification pass
@@ -79,6 +80,7 @@ export interface AssertDecl {
 export interface EventTrigger {
   name: string;
   params: string[];
+  signals?: string[];  // sensitivity list: @(sig1, sig2)
 }
 
 // Statements

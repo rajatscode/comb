@@ -28,7 +28,7 @@ export function verify(mod: Module): VerifyResult {
   const warnings: CompileWarning[] = [];
   const symbols = new Map<string, SymbolKind>();
   const enumValues = new Set<string>(); // e.g. "Phase.Red"
-  const builtins = new Set(['str', 'int', 'float', 'len', 'contains', 'push', 'pop', 'slice', 'map', 'filter', 'concat', 'Math', 'JSON', 'console', 'parseInt', 'parseFloat', 'toString']);
+  const builtins = new Set(['str', 'int', 'float', 'len', 'contains', 'append', 'push', 'pop', 'slice', 'map', 'filter', 'concat', 'Math', 'JSON', 'console', 'parseInt', 'parseFloat', 'toString']);
 
   // 1. Build symbol table
   for (const decl of mod.body) {
@@ -88,6 +88,19 @@ export function verify(mod: Module): VerifyResult {
     }
   }
 
+  // 2c. Auto-detect single-signal sensitivity blocks:
+  // always @(sigName) where sigName is a signal/comb → promote to sensitivity
+  for (const decl of mod.body) {
+    if (decl.kind === 'always' && decl.triggerKind === 'event' && decl.trigger.params.length === 0) {
+      const name = decl.trigger.name;
+      if (symbols.has(name) && (symbols.get(name) === 'signal' || symbols.get(name) === 'comb')) {
+        decl.triggerKind = 'sensitivity';
+        decl.trigger.signals = [name];
+        decl.trigger.name = `sense_${name}`;
+      }
+    }
+  }
+
   // 3. Extract always block reads/writes
   for (const decl of mod.body) {
     if (decl.kind === 'always') {
@@ -111,6 +124,34 @@ export function verify(mod: Module): VerifyResult {
       for (const r of reads) {
         if (!isKnownIdentifier(r, localScope)) {
           errors.push({ message: `Undefined reference '${r}' in always @(${decl.trigger.name})`, line: decl.loc.line, column: decl.loc.column });
+        }
+      }
+
+      // Sensitivity-specific validation
+      if (decl.triggerKind === 'sensitivity' && decl.trigger.signals) {
+        const sensList = new Set(decl.trigger.signals);
+
+        // All declared sensitivity signals must exist as signals or combs
+        for (const sig of sensList) {
+          if (!symbols.has(sig)) {
+            errors.push({ message: `Undefined signal '${sig}' in sensitivity list @(${decl.trigger.signals.join(', ')})`, line: decl.loc.line, column: decl.loc.column });
+          } else if (symbols.get(sig) !== 'signal' && symbols.get(sig) !== 'comb') {
+            errors.push({ message: `'${sig}' is not a signal or comb — cannot appear in sensitivity list`, line: decl.loc.line, column: decl.loc.column });
+          }
+        }
+
+        // Reads must be subset of sensitivity list
+        for (const r of reads) {
+          if ((symbols.get(r) === 'signal' || symbols.get(r) === 'comb') && !sensList.has(r)) {
+            errors.push({ message: `Read of '${r}' not declared in sensitivity list @(${decl.trigger.signals.join(', ')})`, line: decl.loc.line, column: decl.loc.column });
+          }
+        }
+
+        // Writes must not overlap sensitivity list (no self-triggering)
+        for (const w of writes) {
+          if (sensList.has(w)) {
+            errors.push({ message: `Cannot write to '${w}' — it appears in its own sensitivity list (would self-trigger)`, line: decl.loc.line, column: decl.loc.column });
+          }
         }
       }
     }
@@ -260,15 +301,23 @@ function buildGraph(mod: Module, symbols: Map<string, SymbolKind>): StaticGraph 
       }
     }
     if (decl.kind === 'always') {
-      const eventId = `event:${decl.trigger.name}`;
-      nodes.push({ id: eventId, name: decl.trigger.name, type: 'event' });
-
-      for (const w of decl.writes) {
-        edges.push({ from: eventId, to: w, type: 'write' });
+      if (decl.triggerKind === 'sensitivity' && decl.trigger.signals) {
+        // Sensitivity block: signals → sensitivity node → written signals
+        const sensId = `sense:${decl.trigger.signals.join(',')}`;
+        nodes.push({ id: sensId, name: decl.trigger.signals.join(', '), type: 'sensitivity' });
+        for (const sig of decl.trigger.signals) {
+          edges.push({ from: sig, to: sensId, type: 'data' });
+        }
+        for (const w of decl.writes) {
+          edges.push({ from: sensId, to: w, type: 'write' });
+        }
+      } else {
+        const eventId = `event:${decl.trigger.name}`;
+        nodes.push({ id: eventId, name: decl.trigger.name, type: 'event' });
+        for (const w of decl.writes) {
+          edges.push({ from: eventId, to: w, type: 'write' });
+        }
       }
-      // Don't create data edges from signals/combs TO events — events are
-      // user-triggered, not signal-triggered. The reads inside an always
-      // block are implementation details, not dataflow.
     }
     if (decl.kind === 'assert') {
       const assertId = `assert:${assertIdx++}`;

@@ -31,6 +31,7 @@ const COLORS: Record<string, string> = {
   'view-binding': '#c084fc',
   effect: '#c084fc',
   assert: '#ff6b6b',
+  sensitivity: '#f472b6',
   cell: '#5bc0de',
   propagator: '#e8915a',
 };
@@ -85,6 +86,7 @@ function buildLayout(
     comb: [],
     propagator: [],
     assert: [],
+    sensitivity: [],
     event: [],
     'view-binding': [],
   };
@@ -92,7 +94,7 @@ function buildLayout(
     (columns[node.type] ?? columns['event']).push(node);
   }
 
-  const colOrder = ['signal', 'cell', 'propagator', 'comb', 'assert', 'event', 'view-binding'];
+  const colOrder = ['signal', 'cell', 'propagator', 'comb', 'assert', 'sensitivity', 'event', 'view-binding'];
   const activeCols = colOrder.filter(c => columns[c].length > 0);
 
   // Compute layout — fit all columns within container
@@ -289,7 +291,7 @@ function buildLayout(
     const x = PAD_X + ci * (NODE_W + COL_GAP);
     const header = document.createElement('div');
     header.className = 'circuit-col-header';
-    header.textContent = colType === 'view-binding' ? 'VIEW' : colType === 'assert' ? 'ASSERTS' : colType === 'propagator' ? 'PROPAGATORS' : colType.toUpperCase() + 'S';
+    header.textContent = colType === 'view-binding' ? 'VIEW' : colType === 'assert' ? 'ASSERTS' : colType === 'propagator' ? 'PROPAGATORS' : colType === 'sensitivity' ? 'SENSITIVITY' : colType.toUpperCase() + 'S';
     header.style.position = 'absolute';
     header.style.left = `${x}px`;
     header.style.top = '4px';

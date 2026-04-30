@@ -154,6 +154,28 @@ function emitEnum(decl: EnumDecl, ctx: GenContext): string[] {
 
 function emitAlways(decl: AlwaysBlock, ctx: GenContext): string[] {
   const i = ind(ctx);
+
+  // Sensitivity-triggered: compile to createEffect
+  if (decl.triggerKind === 'sensitivity' && decl.trigger.signals) {
+    const signals = decl.trigger.signals;
+    const sensName = `sense_${signals.join('_')}`;
+    const lines = [
+      `${i}createEffect(() => {`,
+      `${i}  // Read sensitivity deps`,
+    ];
+    for (const sig of signals) {
+      lines.push(`${i}  const __${sig} = ${sig}();`);
+    }
+    lines.push(`${i}  batch(() => {`);
+    ctx.indent += 2;
+    for (const stmt of decl.body) lines.push(...emitStmt(stmt, ctx));
+    ctx.indent -= 2;
+    lines.push(`${i}  });`);
+    lines.push(`${i}}, { name: '${sensName}', module: $m });`);
+    return lines;
+  }
+
+  // Event-triggered: compile to named function
   const name = decl.trigger.name;
   const params = decl.trigger.params;
   const paramList = params.length > 0 ? params.join(', ') : '';

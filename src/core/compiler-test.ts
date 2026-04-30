@@ -199,5 +199,99 @@ module IfTest {
   assert(always.reads.includes('phase'), 'Should read phase');
 });
 
+// Test 10: sensitivity-triggered always block — clean compile
+test('sensitivity-triggered always — clean compile with graph', () => {
+  const source = `
+module TempConvert {
+  signal celsius: int = 0;
+  signal fahrenheit: int = 32;
+
+  always @(celsius) {
+    fahrenheit <= celsius * 9 / 5 + 32;
+  }
+
+  always @(fahrenheit) {
+    celsius <= (fahrenheit - 32) * 5 / 9;
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+
+  const graph = result.graph!;
+  const sensNodes = graph.nodes.filter(n => n.type === 'sensitivity');
+  assert(sensNodes.length === 2, `Expected 2 sensitivity nodes, got ${sensNodes.length}`);
+
+  // Check edges: celsius → sense node → fahrenheit
+  const sensEdgesFromCelsius = graph.edges.filter(e => e.from === 'celsius' && e.type === 'data');
+  assert(sensEdgesFromCelsius.length > 0, 'Expected data edge from celsius to sensitivity node');
+  const sensWriteToFahr = graph.edges.filter(e => e.to === 'fahrenheit' && e.type === 'write');
+  assert(sensWriteToFahr.length > 0, 'Expected write edge from sensitivity node to fahrenheit');
+});
+
+// Test 11: sensitivity list — read outside sensitivity list → error
+test('sensitivity — read outside sensitivity list produces error', () => {
+  const source = `
+module Bad {
+  signal a: int = 0;
+  signal b: int = 0;
+  signal c: int = 0;
+
+  always @(a) {
+    c <= a + b;
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length > 0, 'Expected error for reading b outside sensitivity list');
+  assert(result.errors.some(e => e.message.includes("'b'") && e.message.includes('sensitivity')), `Error should mention b and sensitivity, got: ${result.errors.map(e => e.message)}`);
+});
+
+// Test 12: sensitivity list — write to own sensitivity signal → error
+test('sensitivity — self-triggering write produces error', () => {
+  const source = `
+module Bad {
+  signal x: int = 0;
+
+  always @(x) {
+    x <= x + 1;
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length > 0, 'Expected error for self-triggering write');
+  assert(result.errors.some(e => e.message.includes("'x'") && e.message.includes('self-trigger')), `Error should mention self-trigger, got: ${result.errors.map(e => e.message)}`);
+});
+
+// Test 13: sensitivity list — undefined signal in sensitivity list → error
+test('sensitivity — undefined signal in list produces error', () => {
+  const source = `
+module Bad {
+  signal a: int = 0;
+
+  always @(a, nonexistent) {
+    a <= 1;
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length > 0, 'Expected error for undefined signal in sensitivity list');
+  assert(result.errors.some(e => e.message.includes('nonexistent')), `Error should mention nonexistent, got: ${result.errors.map(e => e.message)}`);
+});
+
+// Test 14: sensitivity block generates createEffect in output
+test('sensitivity — codegen emits createEffect', () => {
+  const source = `
+module Sync {
+  signal a: int = 0;
+  signal b: int = 0;
+
+  always @(a) {
+    b <= a * 2;
+  }
+}`;
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+  assert(result.js!.includes('createEffect'), 'Generated code should contain createEffect');
+  assert(result.js!.includes('sense_a'), 'Generated code should contain sense_a name');
+  assert(!result.js!.includes('function sense_a'), 'Should not generate a function declaration for sensitivity block');
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

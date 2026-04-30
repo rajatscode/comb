@@ -177,7 +177,26 @@ class Parser {
     this.expect(TokenType.Always);
     this.expect(TokenType.At, 'always trigger');
     this.expect(TokenType.LParen, 'always trigger');
-    const triggerName = this.expect(TokenType.Identifier, 'event name').value;
+    const firstName = this.expect(TokenType.Identifier, 'event/signal name').value;
+
+    // Detect sensitivity list: @(sig1, sig2, ...) — comma after first identifier
+    if (this.check(TokenType.Comma)) {
+      const signals = [firstName];
+      while (this.match(TokenType.Comma)) {
+        signals.push(this.expect(TokenType.Identifier, 'sensitivity signal').value);
+      }
+      this.expect(TokenType.RParen, 'sensitivity list');
+      this.expect(TokenType.LBrace, 'always body');
+      const body: Statement[] = [];
+      while (!this.check(TokenType.RBrace) && !this.check(TokenType.EOF)) {
+        body.push(this.parseStatement());
+      }
+      this.expect(TokenType.RBrace, 'always body end');
+      const name = `sense_${signals.join('_')}`;
+      return { kind: 'always', triggerKind: 'sensitivity', trigger: { name, params: [], signals }, body, reads: [], writes: [], loc };
+    }
+
+    // Event trigger: @(eventName) or @(eventName(param1, param2))
     let triggerParams: string[] = [];
     if (this.match(TokenType.LParen)) {
       while (!this.check(TokenType.RParen) && !this.check(TokenType.EOF)) {
@@ -193,7 +212,7 @@ class Parser {
       body.push(this.parseStatement());
     }
     this.expect(TokenType.RBrace, 'always body end');
-    return { kind: 'always', trigger: { name: triggerName, params: triggerParams }, body, reads: [], writes: [], loc };
+    return { kind: 'always', triggerKind: 'event', trigger: { name: firstName, params: triggerParams }, body, reads: [], writes: [], loc };
   }
 
   private parseViewBlock(): ViewBlock {
