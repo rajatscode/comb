@@ -508,6 +508,20 @@ export function createEdgeEffect(
   runEdgeEffect();
 }
 
+// --- Edge counter: reactive count of how many times an edge has fired ---
+
+export function createEdgeCounter(
+  valueFn: () => any,
+  edge: 'posedge' | 'negedge',
+  meta: { name: string; module: string },
+): () => number {
+  const [count, setCount] = createSignal(0, { name: meta.name, module: meta.module, type: 'int' });
+  createEdgeEffect(valueFn, edge, () => {
+    setCount(count() + 1);
+  }, { name: `${edge}:${meta.name}`, module: meta.module });
+  return count;
+}
+
 // --- Temporal assertions ---
 
 export function createTemporalAssert(

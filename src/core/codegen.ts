@@ -217,12 +217,14 @@ export function generateWithSourceMap(mod: Module, graph: StaticGraph): Generate
   const hasCells = mod.body.some(d => d.kind === 'cell');
   const hasConstraints = mod.body.some(d => d.kind === 'constraint');
   const hasEdgeTriggers = mod.body.some(d => d.kind === 'always' && (d.triggerKind === 'posedge' || d.triggerKind === 'negedge'));
+  const hasEdgeCounters = mod.body.some(d => d.kind === 'comb' && d.expr.kind === 'call' && d.expr.callee.kind === 'identifier' && (d.expr.callee.name === 'edgeCount' || d.expr.callee.name === 'negedgeCount'));
   const hasTemporalAsserts = mod.body.some(d => d.kind === 'temporal_assert');
   const hasKeyedFor = hasKeyedForDirective(mod);
   const importParts = ['createSignal', 'createComb', 'createEffect', 'batch', 'createScope', 'circuit', 'X'];
   if (hasCells) importParts.push('createCell');
   if (hasConstraints) importParts.push('createPropagator');
   if (hasEdgeTriggers) importParts.push('createEdgeEffect');
+  if (hasEdgeCounters) importParts.push('createEdgeCounter');
   if (hasTemporalAsserts) importParts.push('createTemporalAssert');
   if (hasKeyedFor) importParts.push('reconcileKeyed');
   pushLine(`import { ${importParts.join(', ')} } from '../runtime/index.js';`);
@@ -415,6 +417,37 @@ function emitToken(decl: TokenDecl, ctx: GenContext): string[] {
 
 function emitComb(decl: CombDecl, ctx: GenContext): string[] {
   const i = ind(ctx);
+  // Hoist any edgeCount()/negedgeCount() calls to top-level createEdgeCounter declarations
+  const hoisted: string[] = [];
+  let counterIdx = 0;
+  function hoistEdgeCounters(expr: Expr): Expr {
+    if (expr.kind === 'call' && expr.callee.kind === 'identifier'
+        && (expr.callee.name === 'edgeCount' || expr.callee.name === 'negedgeCount')
+        && expr.args.length === 1) {
+      const edge = expr.callee.name === 'edgeCount' ? 'posedge' : 'negedge';
+      const name = `__ec_${decl.name}_${counterIdx++}`;
+      const arg = emitExpr(expr.args[0], ctx);
+      hoisted.push(`${i}const ${name} = createEdgeCounter(() => ${arg}, '${edge}', { name: '${name}', module: $m });`);
+      return { kind: 'identifier', name, loc: expr.loc } as any;
+    }
+    if (expr.kind === 'binary') {
+      return { ...expr, left: hoistEdgeCounters(expr.left), right: hoistEdgeCounters(expr.right) };
+    }
+    if (expr.kind === 'unary') {
+      return { ...expr, operand: hoistEdgeCounters(expr.operand) };
+    }
+    if (expr.kind === 'ternary') {
+      return { ...expr, condition: hoistEdgeCounters((expr as any).condition), then: hoistEdgeCounters((expr as any).then), else_: hoistEdgeCounters((expr as any).else_) };
+    }
+    return expr;
+  }
+  const processed = hoistEdgeCounters(decl.expr);
+  if (hoisted.length > 0) {
+    // Emit hoisted counters, then a comb that reads them
+    const exprCode = emitExpr(processed, ctx);
+    const depsArr = JSON.stringify(decl.deps);
+    return [...hoisted, `${i}const ${decl.name} = createComb(() => ${exprCode}, { name: '${decl.name}', module: $m, deps: ${depsArr} });`];
+  }
   const expr = emitExpr(decl.expr, ctx);
   const depsArr = JSON.stringify(decl.deps);
   return [`${i}const ${decl.name} = createComb(() => ${expr}, { name: '${decl.name}', module: $m, deps: ${depsArr} });`];

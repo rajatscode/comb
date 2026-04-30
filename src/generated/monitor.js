@@ -48,11 +48,6 @@ export const __graph = {
       "type": "signal"
     },
     {
-      "id": "alertCount",
-      "name": "alertCount",
-      "type": "signal"
-    },
-    {
       "id": "lastAlert",
       "name": "lastAlert",
       "type": "signal"
@@ -75,6 +70,11 @@ export const __graph = {
     {
       "id": "anyAlert",
       "name": "anyAlert",
+      "type": "comb"
+    },
+    {
+      "id": "alertCount",
+      "name": "alertCount",
       "type": "comb"
     },
     {
@@ -300,6 +300,21 @@ export const __graph = {
       "type": "data"
     },
     {
+      "from": "cpuHigh",
+      "to": "alertCount",
+      "type": "data"
+    },
+    {
+      "from": "memHigh",
+      "to": "alertCount",
+      "type": "data"
+    },
+    {
+      "from": "diskHigh",
+      "to": "alertCount",
+      "type": "data"
+    },
+    {
       "from": "anyAlert",
       "to": "assert:0",
       "type": "data"
@@ -341,11 +356,6 @@ export const __graph = {
     },
     {
       "from": "posedge:cpuHigh",
-      "to": "alertCount",
-      "type": "write"
-    },
-    {
-      "from": "posedge:cpuHigh",
       "to": "lastAlert",
       "type": "write"
     },
@@ -366,11 +376,6 @@ export const __graph = {
     },
     {
       "from": "posedge:memHigh",
-      "to": "alertCount",
-      "type": "write"
-    },
-    {
-      "from": "posedge:memHigh",
       "to": "lastAlert",
       "type": "write"
     },
@@ -388,11 +393,6 @@ export const __graph = {
       "from": "diskHigh",
       "to": "posedge:diskHigh",
       "type": "data"
-    },
-    {
-      "from": "posedge:diskHigh",
-      "to": "alertCount",
-      "type": "write"
     },
     {
       "from": "posedge:diskHigh",
@@ -524,13 +524,11 @@ export function Monitor(root) {
 
   const [memAvg, setMemAvg] = createSignal(40, { name: 'memAvg', module: $m });
 
-  const [cpuThreshold, setCpuThreshold] = createSignal(80, { name: 'cpuThreshold', module: $m });
+  const [cpuThreshold, setCpuThreshold] = createSignal(40, { name: 'cpuThreshold', module: $m });
 
   const [memThreshold, setMemThreshold] = createSignal(85, { name: 'memThreshold', module: $m });
 
   const [diskThreshold, setDiskThreshold] = createSignal(90, { name: 'diskThreshold', module: $m });
-
-  const [alertCount, setAlertCount] = createSignal(0, { name: 'alertCount', module: $m });
 
   const [lastAlert, setLastAlert] = createSignal("", { name: 'lastAlert', module: $m });
 
@@ -541,6 +539,11 @@ export function Monitor(root) {
   const diskHigh = createComb(() => (disk() > diskThreshold()), { name: 'diskHigh', module: $m, deps: ["disk","diskThreshold"] });
 
   const anyAlert = createComb(() => ((cpuHigh() || memHigh()) || diskHigh()), { name: 'anyAlert', module: $m, deps: ["cpuHigh","memHigh","diskHigh"] });
+
+  const __ec_alertCount_0 = createEdgeCounter(() => cpuHigh(), 'posedge', { name: '__ec_alertCount_0', module: $m });
+  const __ec_alertCount_1 = createEdgeCounter(() => memHigh(), 'posedge', { name: '__ec_alertCount_1', module: $m });
+  const __ec_alertCount_2 = createEdgeCounter(() => diskHigh(), 'posedge', { name: '__ec_alertCount_2', module: $m });
+  const alertCount = createComb(() => ((__ec_alertCount_0 + __ec_alertCount_1) + __ec_alertCount_2), { name: 'alertCount', module: $m, deps: ["cpuHigh","memHigh","diskHigh"] });
 
   createEffect(() => {
     const __ok = (anyAlert() == ((cpuHigh() || memHigh()) || diskHigh()));
@@ -566,7 +569,6 @@ export function Monitor(root) {
 
   createEdgeEffect(() => cpuHigh(), 'posedge', () => {
     batch(() => {
-      setAlertCount((alertCount() + 1));
       setLastAlert("CPU crossed threshold");
     });
   }, { name: 'posedge_cpuHigh', module: $m });
@@ -579,7 +581,6 @@ export function Monitor(root) {
 
   createEdgeEffect(() => memHigh(), 'posedge', () => {
     batch(() => {
-      setAlertCount((alertCount() + 1));
       setLastAlert("Memory exceeded threshold");
     });
   }, { name: 'posedge_memHigh', module: $m });
@@ -592,7 +593,6 @@ export function Monitor(root) {
 
   createEdgeEffect(() => diskHigh(), 'posedge', () => {
     batch(() => {
-      setAlertCount((alertCount() + 1));
       setLastAlert("Disk exceeded threshold");
     });
   }, { name: 'posedge_diskHigh', module: $m });
@@ -752,13 +752,11 @@ export function __test() {
 
   const [memAvg, setMemAvg] = createSignal(40, { name: 'memAvg', module: $m });
 
-  const [cpuThreshold, setCpuThreshold] = createSignal(80, { name: 'cpuThreshold', module: $m });
+  const [cpuThreshold, setCpuThreshold] = createSignal(40, { name: 'cpuThreshold', module: $m });
 
   const [memThreshold, setMemThreshold] = createSignal(85, { name: 'memThreshold', module: $m });
 
   const [diskThreshold, setDiskThreshold] = createSignal(90, { name: 'diskThreshold', module: $m });
-
-  const [alertCount, setAlertCount] = createSignal(0, { name: 'alertCount', module: $m });
 
   const [lastAlert, setLastAlert] = createSignal("", { name: 'lastAlert', module: $m });
 
@@ -769,6 +767,11 @@ export function __test() {
   const diskHigh = createComb(() => (disk() > diskThreshold()), { name: 'diskHigh', module: $m, deps: ["disk","diskThreshold"] });
 
   const anyAlert = createComb(() => ((cpuHigh() || memHigh()) || diskHigh()), { name: 'anyAlert', module: $m, deps: ["cpuHigh","memHigh","diskHigh"] });
+
+  const __ec_alertCount_0 = createEdgeCounter(() => cpuHigh(), 'posedge', { name: '__ec_alertCount_0', module: $m });
+  const __ec_alertCount_1 = createEdgeCounter(() => memHigh(), 'posedge', { name: '__ec_alertCount_1', module: $m });
+  const __ec_alertCount_2 = createEdgeCounter(() => diskHigh(), 'posedge', { name: '__ec_alertCount_2', module: $m });
+  const alertCount = createComb(() => ((__ec_alertCount_0 + __ec_alertCount_1) + __ec_alertCount_2), { name: 'alertCount', module: $m, deps: ["cpuHigh","memHigh","diskHigh"] });
 
   createEffect(() => {
     const __ok = (anyAlert() == ((cpuHigh() || memHigh()) || diskHigh()));
@@ -793,8 +796,8 @@ export function __test() {
   }, { name: 'assert:1', module: $m });
 
   return {
-    signals: { cpu: { get: cpu, set: setCpu }, mem: { get: mem, set: setMem }, disk: { get: disk, set: setDisk }, net: { get: net, set: setNet }, cpuAvg: { get: cpuAvg, set: setCpuAvg }, memAvg: { get: memAvg, set: setMemAvg }, cpuThreshold: { get: cpuThreshold, set: setCpuThreshold }, memThreshold: { get: memThreshold, set: setMemThreshold }, diskThreshold: { get: diskThreshold, set: setDiskThreshold }, alertCount: { get: alertCount, set: setAlertCount }, lastAlert: { get: lastAlert, set: setLastAlert } },
-    combs: { cpuHigh, memHigh, diskHigh, anyAlert },
+    signals: { cpu: { get: cpu, set: setCpu }, mem: { get: mem, set: setMem }, disk: { get: disk, set: setDisk }, net: { get: net, set: setNet }, cpuAvg: { get: cpuAvg, set: setCpuAvg }, memAvg: { get: memAvg, set: setMemAvg }, cpuThreshold: { get: cpuThreshold, set: setCpuThreshold }, memThreshold: { get: memThreshold, set: setMemThreshold }, diskThreshold: { get: diskThreshold, set: setDiskThreshold }, lastAlert: { get: lastAlert, set: setLastAlert } },
+    combs: { cpuHigh, memHigh, diskHigh, anyAlert, alertCount },
     dispose: __scope.dispose,
   };
 }

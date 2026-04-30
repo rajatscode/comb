@@ -5,36 +5,25 @@ module Monitor {
   signal net = 10.0;
   signal cpuAvg = 25.0;
   signal memAvg = 40.0;
-  signal cpuThreshold = 80.0;
+  signal cpuThreshold = 40.0;
   signal memThreshold = 85.0;
   signal diskThreshold = 90.0;
-  signal alertCount = 0;
   signal lastAlert = "";
 
   comb cpuHigh = cpuAvg > cpuThreshold;
   comb memHigh = memAvg > memThreshold;
   comb diskHigh = disk > diskThreshold;
   comb anyAlert = cpuHigh || memHigh || diskHigh;
+  comb alertCount = edgeCount(cpuHigh) + edgeCount(memHigh) + edgeCount(diskHigh);
 
   assert anyAlert == (cpuHigh || memHigh || diskHigh);
   assert cpuHigh == (cpuAvg > cpuThreshold);
 
-  always @(posedge cpuHigh) {
-    alertCount++;
-    lastAlert <= "CPU crossed threshold";
-  }
+  always @(posedge cpuHigh) { lastAlert <= "CPU crossed threshold"; }
   always @(negedge cpuHigh) { lastAlert <= "CPU recovered"; }
-
-  always @(posedge memHigh) {
-    alertCount++;
-    lastAlert <= "Memory exceeded threshold";
-  }
+  always @(posedge memHigh) { lastAlert <= "Memory exceeded threshold"; }
   always @(negedge memHigh) { lastAlert <= "Memory recovered"; }
-
-  always @(posedge diskHigh) {
-    alertCount++;
-    lastAlert <= "Disk exceeded threshold";
-  }
+  always @(posedge diskHigh) { lastAlert <= "Disk exceeded threshold"; }
   always @(negedge diskHigh) { lastAlert <= "Disk recovered"; }
 
   view {

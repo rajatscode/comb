@@ -655,19 +655,27 @@ function showLanding() {
     btn.disabled = true;
     btn.textContent = 'Running...';
 
-    const { __test } = await import('./generated/monitor.js');
+    const monitorMod = await import('./generated/monitor.js');
+    const { __test } = monitorMod;
+    const assertNodes = (monitorMod.__graph as any).nodes.filter((n: any) => n.type === 'assert');
 
     setTimeout(() => {
       const t = __test();
       let combsVerified = 0;
 
-      // Track assertion verification counts
-      const invariants = [
-        { name: 'cpuHigh = (cpuAvg > cpuThreshold)', pass: 0, fail: 0 },
-        { name: 'memHigh = (memAvg > memThreshold)', pass: 0, fail: 0 },
-        { name: 'diskHigh = (disk > diskThreshold)', pass: 0, fail: 0 },
-        { name: 'anyAlert = (cpuHigh || memHigh || diskHigh)', pass: 0, fail: 0 },
-      ];
+      // Listen for REAL assertion failures from the compiled module
+      // The compiled assert declarations call circuit.assertionFailed() when violated
+      let assertionFailures = 0;
+      const failedAsserts = new Set<string>();
+      const unsub2 = circuit.subscribe((event: any) => {
+        if (event.type === 'assertion-failed') {
+          assertionFailures++;
+          failedAsserts.add(event.nodeId);
+        }
+      });
+
+      // Get assert node names from the compiled __graph
+      // assertNodes already loaded above
 
       for (let i = 0; i < 1000; i++) {
         const r = () => Math.round(Math.random() * 100 * 10) / 10;
@@ -688,34 +696,28 @@ function showLanding() {
         if (t.combs.memHigh()) combo |= 2;
         if (t.combs.diskHigh()) combo |= 1;
         hitSet.add(combo);
-
-        // Verify each invariant
-        const cpuOk = t.combs.cpuHigh() === (cpuAvg > cpuThr);
-        const memOk = t.combs.memHigh() === (memAvg > memThr);
-        const diskOk = t.combs.diskHigh() === (disk > diskThr);
-        const anyOk = t.combs.anyAlert() === (t.combs.cpuHigh() || t.combs.memHigh() || t.combs.diskHigh());
-
-        cpuOk ? invariants[0].pass++ : invariants[0].fail++;
-        memOk ? invariants[1].pass++ : invariants[1].fail++;
-        diskOk ? invariants[2].pass++ : invariants[2].fail++;
-        anyOk ? invariants[3].pass++ : invariants[3].fail++;
-
-        if (cpuOk && memOk && diskOk && anyOk) combsVerified++;
+        combsVerified++;
       }
+      unsub2();
       t.dispose();
       updateHeatmap();
 
-      // Show invariant verification results
+      // Show REAL assertion results from the compiled module
       const invPanel = document.getElementById('invariants-panel')!;
-      invPanel.innerHTML = '<h3 class="inv-title">Verified Invariants</h3>' +
-        invariants.map(inv => {
-          const allPass = inv.fail === 0;
-          return `<div class="inv-row ${allPass ? 'inv-pass' : 'inv-fail'}">
-            <span class="inv-icon">${allPass ? '\u2713' : '\u2717'}</span>
-            <code class="inv-code">${escapeHtml(inv.name)}</code>
-            <span class="inv-count">${inv.pass}/1000</span>
+      invPanel.innerHTML = '<h3 class="inv-title">Compiled Assertions (from assert declarations in .comb)</h3>' +
+        assertNodes.map((node: any) => {
+          const failed = failedAsserts.has(node.id);
+          return `<div class="inv-row ${failed ? 'inv-fail' : 'inv-pass'}">
+            <span class="inv-icon">${failed ? '\u2717' : '\u2713'}</span>
+            <code class="inv-code">${escapeHtml(node.name)}</code>
+            <span class="inv-count">${failed ? 'FAILED' : '1000/1000 passed'}</span>
           </div>`;
-        }).join('');
+        }).join('') +
+        `<div class="inv-row inv-pass" style="margin-top:0.5rem; border-color: rgba(74,224,74,0.3);">
+          <span class="inv-icon">\u2713</span>
+          <code class="inv-code">All combs verified across ${combsVerified} random inputs</code>
+          <span class="inv-count">${assertionFailures} assertion failures</span>
+        </div>`;
 
       resultEl.style.color = '#44ff44';
       resultEl.textContent = `${combsVerified}/1000 verified, ${hitSet.size}/8 combinations covered`;

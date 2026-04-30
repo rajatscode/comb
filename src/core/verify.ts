@@ -170,7 +170,7 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
   const symbols = new Map<string, SymbolKind>();
   const enumValues = new Set<string>(); // e.g. "Phase.Red"
   const enumDefs = new Map<string, string[]>();
-  const builtins = new Set(['str', 'int', 'float', 'len', 'contains', 'append', 'push', 'pop', 'slice', 'map', 'filter', 'concat', 'Math', 'JSON', 'console', 'Object', 'parseInt', 'parseFloat', 'toString', 'rgbToHsv', 'hsvToRgb', 'rgbToHex', 'reduce', 'floor', 'round', 'min', 'max', 'abs', 'fetch', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'X']);
+  const builtins = new Set(['str', 'int', 'float', 'len', 'contains', 'append', 'push', 'pop', 'slice', 'map', 'filter', 'concat', 'Math', 'JSON', 'console', 'Object', 'parseInt', 'parseFloat', 'toString', 'rgbToHsv', 'hsvToRgb', 'rgbToHex', 'reduce', 'floor', 'round', 'min', 'max', 'abs', 'fetch', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'X', 'edgeCount', 'negedgeCount']);
 
   // Method names that are valid on arrays/objects/strings — should not trigger undefined reference errors
   const knownMethods = new Set([
