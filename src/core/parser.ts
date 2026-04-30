@@ -114,7 +114,18 @@ class Parser {
     if (this.check(TokenType.LBrace)) {
       type = this.parseObjectType();
     } else {
-      type = { kind: 'simple', name: this.expect(TokenType.Identifier, 'type name').value };
+      const name = this.expect(TokenType.Identifier, 'type name').value;
+      // Check for range type: int(0..255) or float(0.0..1.0)
+      if ((name === 'int' || name === 'float') && this.check(TokenType.LParen)) {
+        this.advance(); // consume '('
+        const minStr = this.expect(TokenType.Number, 'range min').value;
+        this.expect(TokenType.DotDot, 'range separator (..)');
+        const maxStr = this.expect(TokenType.Number, 'range max').value;
+        this.expect(TokenType.RParen, 'range end');
+        type = { kind: 'range', base: name as 'int' | 'float', min: Number(minStr), max: Number(maxStr) };
+      } else {
+        type = { kind: 'simple', name };
+      }
     }
     while (this.check(TokenType.LBracket) && this.peekAt(1).type === TokenType.RBracket) {
       this.advance(); this.advance();

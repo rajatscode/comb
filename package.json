@@ -3,9 +3,24 @@
   "version": "0.1.0",
   "description": "Write circuits. Ship apps. A SystemVerilog-inspired reactive web framework.",
   "type": "module",
+  "main": "src/runtime/index.ts",
+  "module": "src/runtime/index.ts",
+  "bin": {
+    "comb": "./src/cli/cli.ts"
+  },
+  "exports": {
+    ".": "./src/runtime/index.ts",
+    "./compiler": "./src/core/compiler.ts",
+    "./router": "./src/runtime/router.ts"
+  },
+  "files": [
+    "src/core/",
+    "src/runtime/",
+    "src/cli/"
+  ],
   "scripts": {
-    "compile": "tsx src/cli/cli.ts",
-    "compile:all": "tsx src/cli/cli.ts examples/counter.comb && tsx src/cli/cli.ts examples/traffic-light.comb && tsx src/cli/cli.ts examples/minesweeper.comb && tsx src/cli/cli.ts examples/chat.comb",
+    "compile": "tsx src/cli/cli.ts compile",
+    "compile:all": "tsx src/cli/cli.ts compile --all",
     "dev": "vite",
     "build": "vite build",
     "playground": "vite --open /playground.html",

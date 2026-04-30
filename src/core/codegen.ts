@@ -78,7 +78,7 @@ export function generate(mod: Module, graph: StaticGraph): string {
   // Imports
   const hasCells = mod.body.some(d => d.kind === 'cell');
   const hasConstraints = mod.body.some(d => d.kind === 'constraint');
-  const importParts = ['createSignal', 'createComb', 'createEffect', 'batch', 'createScope', 'circuit'];
+  const importParts = ['createSignal', 'createComb', 'createEffect', 'batch', 'createScope', 'circuit', 'X'];
   if (hasCells) importParts.push('createCell');
   if (hasConstraints) importParts.push('createPropagator');
   lines.push(`import { ${importParts.join(', ')} } from '../runtime/index.js';`);
@@ -205,6 +205,20 @@ function emitSignal(decl: SignalDecl, ctx: GenContext): string[] {
   const i = ind(ctx);
   const init = emitExpr(decl.initial, ctx);
   const setter = 'set' + capitalize(decl.name);
+
+  if (decl.type.kind === 'range') {
+    const { base, min, max } = decl.type;
+    const meta = `{ name: '${decl.name}', module: $m, type: '${base}' }`;
+    const rawSetter = `__rawSet${capitalize(decl.name)}`;
+    const clamp = base === 'int'
+      ? `(v) => ${rawSetter}(Math.max(${min}, Math.min(${max}, typeof v === 'number' ? Math.round(v) : v)))`
+      : `(v) => ${rawSetter}(Math.max(${min}, Math.min(${max}, v)))`;
+    return [
+      `${i}const [${decl.name}, ${rawSetter}] = createSignal(${init}, ${meta});`,
+      `${i}const ${setter} = ${clamp};`,
+    ];
+  }
+
   const typeName = decl.type.kind === 'simple' ? decl.type.name : undefined;
   const meta = typeName
     ? `{ name: '${decl.name}', module: $m, type: '${typeName}' }`
@@ -703,6 +717,7 @@ function emitExpr(expr: Expr, ctx: GenContext): string {
       if (expr.type === 'string') return JSON.stringify(expr.value);
       return String(expr.value);
     case 'identifier':
+      if (expr.name === 'X') return 'X';
       if (ctx.signals.has(expr.name) || ctx.combs.has(expr.name)) return `${expr.name}()`;
       return expr.name;
     case 'binary': {

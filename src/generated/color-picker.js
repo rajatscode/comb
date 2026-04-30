@@ -1,4 +1,4 @@
-import { createSignal, createComb, createEffect, batch, createScope, circuit, createCell, createPropagator } from '../runtime/index.js';
+import { createSignal, createComb, createEffect, batch, createScope, circuit, X, createCell, createPropagator } from '../runtime/index.js';
 import { rgbToHsv, hsvToRgb, rgbToHex } from '../runtime/color.js';
 
 export const __graph = {

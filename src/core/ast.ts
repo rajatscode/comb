@@ -350,12 +350,20 @@ export interface TemplateExpr {
 
 export type TypeExpr =
   | SimpleType
+  | RangeType
   | ArrayType
   | ObjectType;
 
 export interface SimpleType {
   kind: 'simple';
   name: string;
+}
+
+export interface RangeType {
+  kind: 'range';
+  base: 'int' | 'float';
+  min: number;
+  max: number;
 }
 
 export interface ArrayType {
