@@ -34,7 +34,8 @@ export type Declaration =
   | ViewBlock
   | StyleBlock
   | EnumDecl
-  | AssertDecl;
+  | AssertDecl
+  | FnDecl;
 
 export interface InputDecl {
   kind: 'input';
@@ -133,6 +134,15 @@ export interface AssertDecl {
   loc: SourceLoc;
 }
 
+export interface FnDecl {
+  kind: 'fn';
+  name: string;
+  params: { name: string; type?: TypeExpr }[];
+  returnType?: TypeExpr;
+  body: Statement[];
+  loc: SourceLoc;
+}
+
 export interface EventTrigger {
   name: string;
   params: string[];
@@ -144,7 +154,10 @@ export interface EventTrigger {
 export type Statement =
   | SignalAssign
   | IfStatement
-  | ExprStatement;
+  | ExprStatement
+  | ReturnStmt
+  | DestructureStmt
+  | TryStmt;
 
 export interface SignalAssign {
   kind: 'assign';
@@ -164,6 +177,31 @@ export interface IfStatement {
 export interface ExprStatement {
   kind: 'expr_stmt';
   expr: Expr;
+  loc: SourceLoc;
+}
+
+export interface ReturnStmt {
+  kind: 'return';
+  value?: Expr;
+  loc: SourceLoc;
+}
+
+export type DestructurePattern =
+  | { kind: 'object'; fields: { key: string; alias?: string }[] }
+  | { kind: 'array'; elements: string[]; rest?: string };
+
+export interface DestructureStmt {
+  kind: 'destructure';
+  pattern: DestructurePattern;
+  value: Expr;
+  loc: SourceLoc;
+}
+
+export interface TryStmt {
+  kind: 'try';
+  body: Statement[];
+  catchParam?: string;
+  catchBody: Statement[];
   loc: SourceLoc;
 }
 

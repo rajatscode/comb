@@ -30,6 +30,9 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
   const enumValues = new Set<string>(); // e.g. "Phase.Red"
   const builtins = new Set(['str', 'int', 'float', 'len', 'contains', 'append', 'push', 'pop', 'slice', 'map', 'filter', 'concat', 'Math', 'JSON', 'console', 'parseInt', 'parseFloat', 'toString', 'rgbToHsv', 'hsvToRgb', 'rgbToHex']);
 
+  // Track user-defined functions: name → param count
+  const userFunctions = new Map<string, number>();
+
   // 1. Build symbol table
   for (const decl of mod.body) {
     if (decl.kind === 'input') symbols.set(decl.name, 'input');
@@ -41,6 +44,9 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
     if (decl.kind === 'enum') {
       symbols.set(decl.name, 'enum');
       for (const v of decl.variants) enumValues.add(`${decl.name}.${v}`);
+    }
+    if (decl.kind === 'fn') {
+      userFunctions.set(decl.name, decl.params.length);
     }
   }
 
@@ -54,7 +60,22 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
   }
 
   function isKnownIdentifier(name: string, localScope?: Set<string>): boolean {
-    return symbols.has(name) || builtins.has(name) || enumValues.has(name) || (localScope?.has(name) ?? false);
+    return symbols.has(name) || builtins.has(name) || enumValues.has(name) || userFunctions.has(name) || (localScope?.has(name) ?? false);
+  }
+
+  // 1b. Validate user-defined function call arg counts
+  function validateCallArgCounts(expr: Expr, loc: { line: number; column: number }): void {
+    walkExpr(expr, e => {
+      if (e.kind === 'call' && e.callee.kind === 'identifier') {
+        const name = e.callee.name;
+        if (userFunctions.has(name)) {
+          const expected = userFunctions.get(name)!;
+          if (e.args.length !== expected) {
+            errors.push({ message: `Function '${name}' expects ${expected} arguments but got ${e.args.length}`, line: loc.line, column: loc.column });
+          }
+        }
+      }
+    });
   }
 
   // 2. Extract comb dependencies
@@ -72,6 +93,9 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
           errors.push({ message: `Undefined reference '${ref}' in comb '${decl.name}'`, line: decl.loc.line, column: decl.loc.column });
         }
       }
+
+      // Validate function call arg counts
+      validateCallArgCounts(decl.expr, decl.loc);
     }
   }
 
@@ -296,6 +320,32 @@ function collectAlwaysReadsWrites(
           reads.add(e.name);
         }
       });
+    }
+    if (stmt.kind === 'return' && stmt.value) {
+      walkExpr(stmt.value, e => {
+        if (e.kind === 'identifier' && symbols.has(e.name) && isReactiveKind(symbols.get(e.name)!)) {
+          reads.add(e.name);
+        }
+      });
+    }
+    if (stmt.kind === 'destructure') {
+      walkExpr(stmt.value, e => {
+        if (e.kind === 'identifier' && symbols.has(e.name) && isReactiveKind(symbols.get(e.name)!)) {
+          reads.add(e.name);
+        }
+      });
+      // Add destructured names to local scope
+      if (stmt.pattern.kind === 'object') {
+        for (const f of stmt.pattern.fields) localScope.add(f.alias ?? f.key);
+      } else {
+        for (const el of stmt.pattern.elements) localScope.add(el);
+        if (stmt.pattern.rest) localScope.add(stmt.pattern.rest);
+      }
+    }
+    if (stmt.kind === 'try') {
+      collectAlwaysReadsWrites(stmt.body, reads, writes, symbols, localScope);
+      if (stmt.catchParam) localScope.add(stmt.catchParam);
+      collectAlwaysReadsWrites(stmt.catchBody, reads, writes, symbols, localScope);
     }
   }
 }
