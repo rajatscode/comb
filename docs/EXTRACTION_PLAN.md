@@ -70,59 +70,189 @@ DUT rewards writing disciplined code. You use tracked hooks instead of bare hook
 
 This means DUT is for new code (or intentional rewrites), not for sprinkling onto existing messy codebases. That's fine — the value proposition is "write your next component with DUT hooks, and never write a test case for it."
 
-**Framework adapters (explicit hooks):**
+**The Signal object API:**
+
+All framework adapters return `Signal<T>` objects — `.val` to read, `.set()` to write. This is the same pattern as SolidJS signals, Vue `ref()`, and the TC39 Signals proposal. Signal objects in dep arrays enable automatic edge tracing — no string-based dep names, no redundancy, type-safe, refactoring-safe.
 
 ```ts
-// React manual adapter
-import { useTrackedState, useTrackedMemo } from '@dut/react'
+// React adapter
+import { useSignal, useDerived, useTrackedEffect, useEdgeEffect } from '@dut/react'
 
-const [loading, setLoading] = useTrackedState(false, 'loading')
-const display = useTrackedMemo(() => loading ? '...' : 'Ready', [loading], 'display')
+// Signals: .val to read, .set() to write
+const loading = useSignal(false, 'loading')
+const error = useSignal<string | null>(null, 'error')
+const phase = useSignal('idle', 'phase', { states: ['idle', 'loading', 'error', 'success'] })
+
+// Derived values: signal objects in dep array → edges traced automatically
+const canSubmit = useDerived(
+  () => !loading.val && phase.val === 'idle',
+  [loading, phase],   // Signal objects, not values — DUT reads .nodeId for graph edges
+  'canSubmit'
+)
+
+// Effects: same pattern
+useTrackedEffect(
+  () => { if (loading.val) analytics.track('load-start') },
+  [loading],
+  'analytics-effect'
+)
+
+// Edge-triggered effects
+useEdgeEffect(loading, 'negedge', () => showToast('Done!'), 'loading-complete')
+
+// JSX: .val to read, .set() to write
+return (
+  <button onClick={() => phase.set('loading')} disabled={!canSubmit.val}>
+    {loading.val ? 'Submitting...' : 'Submit'}
+  </button>
+)
 ```
 
 ```ts
-// Solid adapter
-import { createTrackedSignal, createTrackedMemo } from '@dut/solid'
+// Solid adapter — same Signal<T> object, wired to Solid's reactivity
+import { useSignal, useDerived } from '@dut/solid'
 
-const [count, setCount] = createTrackedSignal(0, 'count')
-const doubled = createTrackedMemo(() => count() * 2, 'doubled')
+const count = useSignal(0, 'count')
+const doubled = useDerived(() => count.val * 2, [count], 'doubled')
 ```
 
 ```ts
-// Vanilla / any framework
-import { graph } from '@dut/graph'
+// Vanilla JS — same Signal<T>, standalone reactivity
+import { createSignal, createDerived } from '@dut/graph'
 
-const nodeId = graph.registerNode({ name: 'count', module: 'Counter', type: 'signal' })
-graph.setNodeValue(nodeId, () => currentCount)
-// On change:
-graph.notifyChange(nodeId, oldValue, newValue)
+const count = createSignal(0, 'count')
+const doubled = createDerived(() => count.val * 2, [count], 'doubled')
+count.set(5)  // doubled.val is now 10
 ```
 
 ```ts
-// TC39 Signals (future)
-import { Signal } from 'signal-polyfill'
-import { trackSignal } from '@dut/signals'
+// TC39 Signals (future) — same Signal<T> wrapping the standard primitive
+import { trackSignal } from '@dut/tc39'
 
 const count = trackSignal(new Signal.State(0), 'count')
 ```
 
+**How the Signal<T> type works internally:**
+
+```ts
+interface Signal<T> {
+  readonly val: T           // current value (getter)
+  set(next: T): void        // update value (setter)
+  readonly nodeId: string   // graph node identifier
+  readonly name: string     // declared name
+}
+```
+
+The framework adapter creates this object and wires `.val` and `.set()` to the framework's internals:
+- React: `.val` reads from `useState`'s current value. `.set()` calls the state setter + `graph.notifyChange()`.
+- Solid: `.val` calls the Solid getter. `.set()` calls the Solid setter + notifies graph.
+- Vanilla: `.val` reads an internal variable. `.set()` writes it + notifies graph + triggers derived recomputation.
+
+`useDerived` reads `.nodeId` from each signal in the dep array to register graph edges. It reads `.val` from each to get current values for the framework's comparison/memoization. Zero redundancy — the dep array serves both purposes.
+
 **Framework adapter matrix:**
 
-| Framework | Auto (plugin) | Manual (hooks) | Edge extraction |
-|---|---|---|---|
-| React | Babel plugin reads dep arrays | `useTrackedState/Memo/Effect` | From `useMemo`/`useEffect` dep arrays |
-| Solid | Vite plugin wraps signal calls | `createTrackedSignal/Memo` | Auto-tracked (Solid tracks deps at runtime — we intercept) |
-| Vue 3 | Vite plugin wraps ref/computed | `trackedRef`, `trackedComputed` | From `computed` getter reads + `watch` sources |
-| Svelte 5 | Svelte preprocessor instruments runes | Use `writable()` stores with manual tracking | Compiler-derived (Svelte knows deps at compile time) |
-| Vanilla JS | N/A | Direct `graph.registerNode` API | Manual edge declaration |
-| TC39 Signals | Wrap `Signal.State`/`Signal.Computed` | `trackSignal` | Auto-tracked via `Signal.Computed` reads |
+| Framework | Adapter | Edge extraction |
+|---|---|---|
+| **React** | `useSignal`, `useDerived`, `useTrackedEffect`, `useEdgeEffect` | Signal objects in dep array → `.nodeId` read for edges |
+| **Solid** | Same API names, wired to `createSignal`/`createMemo` | Same — Solid also auto-tracks reads, so edges are doubly confirmed |
+| **Vue 3** | `useSignal` wraps `ref()`, `useDerived` wraps `computed()` | Signal objects in dep array |
+| **Svelte 5** | `useSignal` wraps `writable()` stores | Signal objects in dep array |
+| **Vanilla JS** | `createSignal`, `createDerived` from core `@dut/graph` | Signal objects in dep array |
+| **TC39 Signals** | `trackSignal` wraps `Signal.State`/`Signal.Computed` | Signal objects in dep array |
+
+**Component lifecycle and cleanup:**
+
+When a React component unmounts, all signals and assertions created within it must be disposed. The adapter uses React's cleanup mechanism:
+
+```ts
+function useSignal<T>(initial: T, name: string, opts?: SignalOpts): Signal<T> {
+  const signal = useMemo(() => graph.createSignal(initial, name, opts), [])
+  
+  // Cleanup on unmount: remove node from graph, cancel pending assertions,
+  // mark signal's waveform as ended (renders as a terminated trace in the viewer)
+  useEffect(() => {
+    return () => graph.disposeNode(signal.nodeId)
+  }, [])
+  
+  return signal
+}
+```
+
+`graph.disposeNode()`:
+- Removes the node and its edges from the graph
+- Marks the waveform trace with an "end" marker (the viewer shows the signal's lifetime)
+- Cancels any pending temporal assertions that reference this signal (status → "disposed", not "violated")
+- Frees the signal from the coverage collector
+
+For re-mounting (e.g., conditional rendering), a new signal with the same name gets a fresh node. The waveform shows both lifetimes as separate traces.
+
+**Multiple component instances:**
+
+When the same component renders multiple times, signal names collide. The adapter disambiguates with an auto-incrementing instance suffix:
+
+```tsx
+// First <CheckoutForm> → signals: CheckoutForm.loading, CheckoutForm.error
+// Second <CheckoutForm> → signals: CheckoutForm:2.loading, CheckoutForm:2.error
+```
+
+The adapter tracks instance counts per component name using a module-level counter. Alternatively, the user can provide an explicit scope:
+
+```tsx
+function CheckoutForm({ id }: { id: string }) {
+  const loading = useSignal(false, 'loading', { scope: `checkout-${id}` })
+  // → node name: checkout-abc.loading
+}
+```
+
+Explicit scope overrides the auto-suffix. The graph, waveform, and explorer all use the scoped name.
 
 **The "tick" model:**
 
-The graph defines a **tick** as one settling cycle: a signal changes → all downstream derived values recompute → all triggered effects run → system is quiescent. This maps to:
-- React: one `setState` batch → re-render → effects run (within `act()` in tests)
-- Solid: one signal write → synchronous propagation → effects run
-- Svelte: one `$state` mutation → compiler-scheduled update → `tick()` resolves
+A **tick** = one settling cycle: one or more signal changes → all downstream derived values recompute → all triggered effects run → system is quiescent. Multiple signal changes in the same synchronous handler are ONE tick.
+
+The graph tracks ticks via explicit bracketing:
+
+```ts
+// Inside the adapter's signal setter:
+signal.set = (next: T) => {
+  graph.openTick()          // starts a tick if one isn't already open
+  // ... update value, notify graph ...
+}
+
+// The tick auto-closes on the next microtask:
+graph.openTick = () => {
+  if (!this.tickOpen) {
+    this.tickOpen = true
+    this.currentTick++
+    queueMicrotask(() => {
+      this.tickOpen = false
+      this.flushTickEnd()   // notify assertions, record tick boundary in waveform
+    })
+  }
+}
+```
+
+This means: all signal changes in the same synchronous call stack (same event handler, same `batch()`) share one tick number. When the microtask queue drains (React has flushed its batch), the tick closes. Derived values that update during the settling are part of the same tick.
+
+Framework mapping:
+- **React:** `onClick` handler calls `loading.set(true)` and `submitted.set(true)` → both are tick N. React batches the render. Effects run. Microtask drains → tick N closes.
+- **Solid:** Same — synchronous propagation happens within the tick. Tick closes on microtask.
+- **Promise resolution:** `fetch().then(response => { loading.set(false); data.set(response) })` — the `.then` callback runs in a new microtask → new tick (N+1). This is how `eventually` assertions detect async boundaries: the trigger was tick N, the resolution is tick N+M.
+
+For the explorer (test mode): the explorer wraps each signal-driving step in React's `act()`, which synchronously flushes renders and effects. After `act()` returns, the tick is guaranteed closed. The explorer then checks assertions before driving the next step. This makes exploration deterministic — no microtask timing issues.
+
+```ts
+// Inside explore():
+for (const step of explorationSteps) {
+  await act(() => {
+    step.signal.set(step.value)  // drives the signal
+  })
+  // Tick is now closed. All derived values updated. All effects ran.
+  graph.checkAssertions()        // check immediately/always/never assertions
+  graph.recordCoverage()         // update toggle/FSM/cross coverage
+}
+```
 
 Every tick gets an incrementing sequence number. Assertions and coverage reference ticks, not wall-clock time. This makes everything deterministic.
 
@@ -368,13 +498,16 @@ The user is never blocked by "you didn't declare enough." They just get less pre
 - `src/runtime/circuit.ts` — graph traversal (upstream/downstream queries)
 
 **What needs to be built:**
-- Backward cone-of-influence analysis (trace from outputs/assertions to inputs)
-- Branch-aware input generation (read ternaries/comparisons in comb expressions to determine meaningful input states)
-- Combinatorial input driver (not single-variable — full combinations for small input sets, coverage-steered sampling for large ones)
-- Assertion adversarial mode (specifically try to break each assertion)
-- Eventually-resolution driver (when `eventually` assertion is pending, drive downstream signals)
-- Vitest integration: `explore()` function that returns violations + coverage
-- Shrinking: when a violation is found, minimize the input sequence (fast-check's shrinking algorithm)
+- Backward cone-of-influence analysis: trace from outputs/assertions to inputs via graph edges. For each assertion, identify the set of upstream root signals that can affect it.
+- Topology-based input generation: boolean signals → exhaustive (2^N for small N). Declared state spaces → exhaustive combinations. Undeclared non-boolean signals → type-appropriate fuzzing (boundary values for numbers, empty/non-empty for strings/arrays, null/non-null for nullable) steered by coverage toward uncovered states.
+- **Limitation (honest):** expression-level analysis (reading ternaries/comparisons inside derived value closures) is NOT possible — JavaScript closures are opaque at runtime. The explorer works on graph topology + declared state spaces, not expression structure. Still powerful because the graph tells you WHICH inputs matter for each output.
+- Combinatorial input driver: full combinations for small input sets (≤ ~12 booleans = 4096 combos), coverage-steered sampling for larger sets.
+- Assertion adversarial mode: specifically try to reach states where each assertion would fail.
+- Eventually-resolution driver: when `eventually` assertion is pending, drive downstream signals through their state spaces to simulate async resolutions (success, error, timeout, etc.).
+- React `act()` integration: the explorer wraps each signal-driving step in `act()` to ensure React renders and effects settle before checking assertions. Framework adapters provide a `flush()` function — React's is `act()`, Solid's is synchronous (no-op), Svelte's is `tick()`.
+- Sequence shrinking: when a violation is found, minimize the input SEQUENCE (not just values). Remove steps from the sequence one at a time and re-check — if the violation still reproduces, the step was unnecessary. Produces the minimal reproducing sequence. This is sequence-level shrinking (like fast-check's stateful testing), not just value-level shrinking.
+- Side effect sandboxing: the explorer runs in a test environment. The plan assumes standard test mocking (MSW for fetch, vi.fn() for analytics, etc.). The explorer does not sandbox side effects itself — that's the test environment's job.
+- Vitest integration: `explore()` function that returns violations + coverage.
 
 **Integration with interaction-level testing:**
 
@@ -528,24 +661,28 @@ Start with React + vanilla. Add Solid and Vue once core is stable. Svelte last (
 npm install @dut/graph @dut/react @dut/devtools
 ```
 
-### Step 2: Wrap signals you care about (5 minutes)
+### Step 2: Write new components with DUT signals (5 minutes)
 
 ```tsx
 // Before (normal React):
 const [loading, setLoading] = useState(false)
 const [error, setError] = useState(null)
 const [data, setData] = useState(null)
+const display = useMemo(() => loading ? 'Loading...' : data, [loading, data])
 
-// After (tracked):
-import { useTrackedState, useTrackedMemo } from '@dut/react'
+// After (DUT signals):
+import { useSignal, useDerived } from '@dut/react'
 
-const [loading, setLoading] = useTrackedState(false, 'loading')
-const [error, setError] = useTrackedState<string | null>(null, 'error')
-const [data, setData] = useTrackedState(null, 'data')
-const display = useTrackedMemo(() => loading ? 'Loading...' : data, [loading, data], 'display')
+const loading = useSignal(false, 'loading')
+const error = useSignal<string | null>(null, 'error')
+const data = useSignal(null, 'data')
+const display = useDerived(() => loading.val ? 'Loading...' : data.val, [loading, data], 'display')
+
+// JSX: .val to read, .set() to write
+<button onClick={() => loading.set(true)}>{loading.val ? '...' : 'Submit'}</button>
 ```
 
-Everything else — JSX, event handlers, effects — stays exactly the same. The tracked hooks are drop-in replacements.
+DUT signals are for new code or intentional rewrites. The discipline of using `.val`/`.set()` is what gives you the graph, the waveform, the coverage, the assertions. No discipline → no tooling. That's the deal.
 
 ### Step 3: Install Chrome extension (30 seconds)
 
@@ -566,21 +703,35 @@ Open Chrome DevTools → click "DUT" tab. You see:
 ```tsx
 import { assertAlways, assertTemporal, assertNever } from '@dut/graph'
 
-// Invariants — checked on every signal change, zero flakiness
-assertAlways(() => !(loading && error), 'loading-error-mutex')
-assertAlways(() => score >= 0, 'score-non-negative')
-assertNever(() => phase === 'submitted' && !validated, 'no-unvalidated-submit')
+// Invariants — checked on every tick, zero flakiness
+assertAlways(() => !(loading.val && error.val), 'loading-error-mutex')
+assertAlways(() => score.val >= 0, 'score-non-negative')
+assertNever(() => phase.val === 'submitted' && !validated.val, 'no-unvalidated-submit')
 
 // Temporal — tick-based, deterministic
 assertTemporal(
-  () => submitted,           // when this becomes true...
-  'eventually',
-  () => !loading,            // ...this must eventually become true
-  { withinTicks: 5, name: 'submit-completes' }
+  () => submitted.val,       // when this becomes true...
+  'immediately',
+  () => loading.val,         // ...loading must be true in the SAME tick
+  { name: 'submit-starts-loading' }
+)
+
+assertTemporal(
+  () => loading.val,         // when loading goes true...
+  'eventually',              // ...it must eventually go false (async — no tick bound)
+  () => !loading.val,
+  { name: 'loading-resolves' }
+)
+
+assertTemporal(
+  () => !loading.val,        // when loading goes false (negedge)...
+  'immediately',
+  () => toastVisible.val,    // ...toast must appear in the same tick
+  { edge: 'negedge', name: 'response-shows-toast' }
 )
 ```
 
-These run in dev mode as live monitors (assertion panel shows pass/fail). In test mode, the explorer uses them as the spec.
+These run in dev mode as live monitors (assertion panel shows pass/fail). In test mode, the explorer uses them as the spec AND as navigation hints (e.g., `eventually` tells the explorer there's an async boundary to drive through).
 
 ### Step 5: Auto-test with zero test cases (the dream)
 
@@ -698,7 +849,7 @@ The zero-test-case verification engine. Backward graph solving + exploration + a
 
 **What ships:**
 - Backward cone-of-influence analysis (trace from outputs/assertions to inputs)
-- Branch-aware input generation (read comb expressions to determine meaningful input states)
+- Topology-based input generation (graph edges, not expression analysis — JS closures are opaque)
 - Combinatorial input driver with coverage-steered sampling
 - Adversarial assertion testing (specifically try to break each assertion)
 - Eventually-resolution driver (drive async boundaries when `eventually` assertions are pending)
