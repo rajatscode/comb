@@ -135,20 +135,82 @@ const count = trackSignal(new Signal.State(0), 'count')
 **How the Signal<T> type works internally:**
 
 ```ts
-interface Signal<T> {
+interface ReadonlySignal<T> {
   readonly val: T           // current value (getter)
-  set(next: T): void        // update value (setter)
   readonly nodeId: string   // graph node identifier
   readonly name: string     // declared name
 }
+
+interface Signal<T> extends ReadonlySignal<T> {
+  set(next: T): void        // update value (setter)
+}
 ```
 
-The framework adapter creates this object and wires `.val` and `.set()` to the framework's internals:
-- React: `.val` reads from `useState`'s current value. `.set()` calls the state setter + `graph.notifyChange()`.
-- Solid: `.val` calls the Solid getter. `.set()` calls the Solid setter + notifies graph.
-- Vanilla: `.val` reads an internal variable. `.set()` writes it + notifies graph + triggers derived recomputation.
+`useSignal` returns `Signal<T>` (readable + writable). `useDerived` returns `ReadonlySignal<T>` (readable only — calling `.set()` on a derived value would bypass the dependency graph, so it's not exposed). TypeScript enforces this at compile time.
 
-`useDerived` reads `.nodeId` from each signal in the dep array to register graph edges. It reads `.val` from each to get current values for the framework's comparison/memoization. Zero redundancy — the dep array serves both purposes.
+**React adapter implementation detail — stale closure avoidance:**
+
+In React, `useSignal` internally uses `useState`. The Signal object is created once (via `useMemo`) but `.val` must return the CURRENT render's value, not the stale closure from the first render. The adapter uses a ref to bridge:
+
+```ts
+function useSignal<T>(initial: T, name: string, opts?: SignalOpts): Signal<T> {
+  const [value, setValue] = useState(initial)
+  const valueRef = useRef(value)
+  valueRef.current = value  // updated every render
+  
+  const nodeId = useRef(graph.registerNode({ name, type: 'signal', ...opts })).current
+  
+  const signal = useMemo(() => ({
+    get val() { return valueRef.current },  // always reads current render value
+    set: (next: T) => {
+      const old = valueRef.current
+      graph.openTick()
+      setValue(typeof next === 'function' ? next : () => next)
+      graph.notifyChange(nodeId, old, next)
+    },
+    nodeId,
+    name,
+  }), [])
+  
+  useEffect(() => () => graph.disposeNode(nodeId), [])  // cleanup on unmount
+  
+  return signal
+}
+```
+
+**React adapter implementation detail — `useDerived` bridges two worlds:**
+
+`useDerived` receives Signal objects in the dep array. It uses them for TWO purposes:
+1. Read `.nodeId` to register graph edges (done once on mount)
+2. Read `.val` to extract current values for React's `useMemo` comparison (done every render)
+
+React's `useMemo` needs VALUES (not signal objects) in its dep array for shallow comparison. Signal objects are reference-stable and would never trigger recomputation. So the adapter extracts values:
+
+```ts
+function useDerived<T>(fn: () => T, deps: Signal<any>[], name: string): ReadonlySignal<T> {
+  const nodeId = useRef(graph.registerNode({ name, type: 'derived' })).current
+  const resultRef = useRef<T>(undefined as T)
+  
+  // Register graph edges (once)
+  useEffect(() => {
+    deps.forEach(d => graph.addEdge(d.nodeId, nodeId))
+    return () => graph.disposeNode(nodeId)
+  }, [])
+  
+  // Extract current values for React's comparison
+  const values = deps.map(d => d.val)
+  resultRef.current = useMemo(fn, values)
+  graph.notifyChange(nodeId, undefined, resultRef.current)
+  
+  return useMemo(() => ({
+    get val() { return resultRef.current },
+    nodeId,
+    name,
+  }), [])
+}
+```
+
+The dep array serves both purposes: Signal objects for graph edges, `.val` extraction for React reactivity. The user passes signal objects once; the adapter handles both needs internally.
 
 **Framework adapter matrix:**
 
@@ -554,46 +616,94 @@ test('checkout flow is correct', async () => {
 })
 ```
 
-### Temporal Assertions: Tick-Based, Not Time-Based
+### Assertion API Reference
 
-Comb's current temporal assertions use wall-clock `setTimeout` durations (`within 5s`). This is the wrong model for testing — time-based assertions are inherently flaky (CI machines are slow, animation frames vary, network latency differs).
+Three assertion functions. Unambiguous signatures. No overloads.
 
-**The extracted library should support tick/event-based assertions as the primary mode:**
+**`assertAlways(checkFn, name)` — Invariant. Checked every tick.**
 
 ```ts
-// BAD: time-based (flaky in CI, slow in tests, unreliable)
-assertTemporal(submitted, 'eventually', () => !loading, { within: 5000 })
-
-// GOOD: tick-based (deterministic, fast, reliable)
-assertTemporal(submitted, 'eventually', () => !loading, { withinTicks: 3 })
-
-// GOOD: event-based (fires on the Nth signal change, not after N ms)
-assertTemporal(submitted, 'eventually', () => successVisible || errorVisible, {
-  withinEvents: 5,  // within 5 signal-change events after trigger
-})
-
-// GOOD: transition-based (after N state transitions of a specific signal)
-assertTemporal(
-  () => phase === 'submitting',
-  'eventually',
-  () => phase === 'success' || phase === 'error',
-  { withinTransitions: 'phase', count: 2 }  // within 2 transitions of `phase`
-)
-
-// Invariants: no duration needed, checked on every signal change
-assertAlways(() => score >= 0)
-assertAlways(() => !(loading && error))  // can't be loading AND errored
-assertNever(() => phase === 'submitted' && !validated)  // can't submit without validation
+assertAlways(() => score.val >= 0, 'score-non-negative')
+assertAlways(() => !(loading.val && error.val), 'loading-error-mutex')
 ```
 
-**How ticks work:** The graph already records every signal change as an event. A "tick" is one event-processing cycle (all signals settle after an input change). The assertion counts ticks/events, not milliseconds. This makes assertions:
-- **Deterministic:** same inputs → same tick count → same pass/fail, regardless of machine speed
-- **Fast:** no need for `setTimeout` or `waitFor` — assertions resolve synchronously during exploration
-- **Composable:** "within 3 ticks of X" means "within 3 reactive settling cycles after X triggers"
+Checked after every tick settles. If `checkFn()` returns false, the assertion is violated. Violation includes: tick number, signal values at violation time, name.
 
-**Wall-clock mode still available** for runtime monitoring in dev (e.g., "warn me if this loading spinner has been up for 10 real seconds"). But the test/exploration mode should be purely tick-based.
+**`assertNever(checkFn, name)` — Forbidden state. Checked every tick.**
 
-**What to extract from Comb:** `createTemporalAssert` in `signals.ts` already supports a tick-based `duration` mode (added in commit 1a776cd). The extracted version needs both modes explicitly named (`{ withinTicks: N }` vs `{ withinMs: N }`), with tick-based as the default for testing.
+```ts
+assertNever(() => phase.val === 'submitted' && !validated.val, 'no-unvalidated-submit')
+```
+
+Syntactic sugar for `assertAlways(() => !checkFn())`. Reads better for "this should never happen" properties.
+
+**`assertAfter(signal, edge, operator, checkFn, options)` — Temporal. Triggered by a signal edge.**
+
+```ts
+// First arg: a Signal object (not a function)
+// Second arg: 'posedge' | 'negedge' (which transition to watch)
+// Third arg: 'immediately' | 'eventually' | { withinTicks: N }
+// Fourth arg: the property to check after the trigger fires
+
+// "When submitted goes true, loading must be true in the SAME tick"
+assertAfter(submitted, 'posedge', 'immediately', () => loading.val, {
+  name: 'submit-starts-loading'
+})
+
+// "When loading goes true, it must EVENTUALLY go false (async boundary)"
+assertAfter(loading, 'posedge', 'eventually', () => !loading.val, {
+  name: 'loading-resolves'
+})
+
+// "When loading goes false, toast must appear in the same tick"
+assertAfter(loading, 'negedge', 'immediately', () => toastVisible.val, {
+  name: 'response-shows-toast'
+})
+
+// "When phase becomes 'error', error message must appear within 2 ticks"
+assertAfter(phase, 'posedge', { withinTicks: 2 }, () => errorVisible.val, {
+  name: 'error-shows-message',
+  edgeValue: 'error'  // only trigger when phase transitions TO 'error', not any posedge
+})
+```
+
+**Why signal + edge, not function trigger:**
+- Unambiguous: the system watches ONE signal for ONE transition type. No "whose edge?" confusion.
+- The explorer knows exactly which signal to drive to trigger the assertion.
+- Maps directly to Comb's `always @(posedge signal)` and HDL's `$rose(signal)`.
+
+**For compound triggers** (e.g., "when score exceeds 100"), create a derived signal:
+
+```ts
+const highScore = useDerived(() => score.val > 100, [score], 'highScore')
+assertAfter(highScore, 'posedge', 'eventually', () => congratsVisible.val, {
+  name: 'high-score-congrats'
+})
+```
+
+This is explicit and traceable — the graph has an edge from `score` to `highScore`, and the assertion watches `highScore`. The explorer traces back through the graph: to trigger `highScore` posedge, it needs `score > 100`.
+
+**Temporal operators:**
+
+| Operator | Meaning | Use case |
+|---|---|---|
+| `'immediately'` | Property must be true in the SAME tick as the trigger | Synchronous consequences (submit → loading) |
+| `{ withinTicks: N }` | Property must become true within N ticks of the trigger | Known propagation depth |
+| `'eventually'` | Property must become true at SOME point after the trigger, no bound | Async boundaries (loading → eventually !loading). The explorer drives resolutions. In dev mode, a configurable watchdog warns after prolonged pending (e.g., 30s wall-clock) but this is a UX hint, not the assertion semantics. |
+
+**No `setTimeout` anywhere in the assertion system.** Ticks are deterministic — same inputs → same tick count → same pass/fail regardless of machine speed.
+
+**Wall-clock mode** is available ONLY for dev-mode monitoring (not testing):
+```ts
+assertAfter(loading, 'posedge', 'eventually', () => !loading.val, {
+  name: 'loading-resolves',
+  devWatchdogMs: 10000  // in dev mode only: warn if still pending after 10s wall-clock
+})
+```
+
+`devWatchdogMs` has no effect in test/explore mode. It's purely a dev UX hint for "this spinner has been up too long."
+
+**What to extract from Comb:** `createTemporalAssert` in `signals.ts` supports tick-based assertions (added in commit 1a776cd). The extracted version renames to `assertAfter` with the signal+edge signature. `assertAlways`/`assertNever` extract from Comb's `assert` declaration codegen.
 
 ---
 
@@ -701,37 +811,31 @@ Open Chrome DevTools → click "DUT" tab. You see:
 ### Step 4: Add assertions instead of test cases (10 minutes)
 
 ```tsx
-import { assertAlways, assertTemporal, assertNever } from '@dut/graph'
+import { assertAlways, assertNever, assertAfter } from '@dut/graph'
 
 // Invariants — checked on every tick, zero flakiness
 assertAlways(() => !(loading.val && error.val), 'loading-error-mutex')
 assertAlways(() => score.val >= 0, 'score-non-negative')
 assertNever(() => phase.val === 'submitted' && !validated.val, 'no-unvalidated-submit')
 
-// Temporal — tick-based, deterministic
-assertTemporal(
-  () => submitted.val,       // when this becomes true...
-  'immediately',
-  () => loading.val,         // ...loading must be true in the SAME tick
-  { name: 'submit-starts-loading' }
-)
+// Temporal — signal + edge + operator, tick-based, deterministic
+assertAfter(submitted, 'posedge', 'immediately', () => loading.val, {
+  name: 'submit-starts-loading'
+})
 
-assertTemporal(
-  () => loading.val,         // when loading goes true...
-  'eventually',              // ...it must eventually go false (async — no tick bound)
-  () => !loading.val,
-  { name: 'loading-resolves' }
-)
+assertAfter(loading, 'posedge', 'eventually', () => !loading.val, {
+  name: 'loading-resolves'
+})
 
-assertTemporal(
-  () => !loading.val,        // when loading goes false (negedge)...
-  'immediately',
-  () => toastVisible.val,    // ...toast must appear in the same tick
-  { edge: 'negedge', name: 'response-shows-toast' }
-)
+assertAfter(loading, 'negedge', 'immediately', () => toastVisible.val, {
+  name: 'response-shows-toast'
+})
 ```
 
-These run in dev mode as live monitors (assertion panel shows pass/fail). In test mode, the explorer uses them as the spec AND as navigation hints (e.g., `eventually` tells the explorer there's an async boundary to drive through).
+These run in dev mode as live monitors (assertion panel shows pass/fail). In test mode, the explorer uses them as the spec AND as navigation hints:
+- `'immediately'` → synchronous consequence, check in same tick
+- `'eventually'` → async boundary, the explorer needs to drive a resolution
+- The trigger signal + edge tells the explorer exactly which signal to drive and which transition to target
 
 ### Step 5: Auto-test with zero test cases (the dream)
 
@@ -804,8 +908,8 @@ The graph is the foundation everything else reads from. React adapter is the fir
 
 **What ships:**
 - `CircuitGraph` class with node registration, edge tracking, waveform recording, graph diffing, event stream
-- `useTrackedState`, `useTrackedMemo`, `useTrackedEffect`, `useEdgeEffect` hooks for React
-- `assertAlways`, `assertNever`, `assertTemporal` assertion API with tick-based semantics
+- `useSignal`, `useDerived`, `useTrackedEffect`, `useEdgeEffect` hooks for React (Signal object API: `.val` / `.set()`)
+- `assertAlways`, `assertNever`, `assertAfter` assertion API with tick-based semantics
 - Runtime CDC async boundary warnings
 - `dut diff` CLI for graph snapshot comparison
 - `dut snapshot` CLI for capturing graph from a running app
