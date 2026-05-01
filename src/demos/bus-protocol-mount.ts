@@ -48,11 +48,22 @@ function hlSvelte(code: string): string {
   return h;
 }
 
-// React — full apples-to-apples with JSX view
-const REACT_CODE = `function BusProtocol() {
+// React — apples-to-apples: attempts EVERYTHING Comb does
+const REACT_CODE = `// Enums (Comb has first-class enums; React uses frozen objects)
+const MasterState = Object.freeze({
+  Idle: 'Idle', Requesting: 'Requesting',
+  Transmitting: 'Transmitting', WaitAck: 'WaitAck', Done: 'Done',
+});
+const SlaveState = Object.freeze({
+  Idle: 'Idle', Receiving: 'Receiving',
+  Processing: 'Processing', Acking: 'Acking',
+});
+
+function BusProtocol() {
+  // --- State (same as Comb signals) ---
   const [cycle, setCycle] = useState(0);
-  const [masterState, setMasterState] = useState('Idle');
-  const [slaveState, setSlaveState] = useState('Idle');
+  const [masterState, setMasterState] = useState(MasterState.Idle);
+  const [slaveState, setSlaveState] = useState(SlaveState.Idle);
   const [busReq, setBusReq] = useState(false);
   const [busGrant, setBusGrant] = useState(false);
   const [busData, setBusData] = useState(0);
@@ -65,86 +76,165 @@ const REACT_CODE = `function BusProtocol() {
   const [dataIdx, setDataIdx] = useState(0);
   const [grantDelay, setGrantDelay] = useState(0);
 
-  // Must snapshot ALL values before ANY writes
-  // Forget one ref? Silent ordering bug.
+  // --- Derived (same as Comb combs) ---
+  const masterLabel = {Idle:'IDLE', Requesting:'REQ',
+    Transmitting:'TX', WaitAck:'WAIT', Done:'DONE'}[masterState];
+  const slaveLabel = {Idle:'IDLE', Receiving:'RX',
+    Processing:'PROC', Acking:'ACK'}[slaveState];
+  const transferActive = busBusy;
+  const protocolHealthy = !(busReq && busAck);
+
+  // --- Clock step: must manually snapshot ALL values ---
+  // (Comb does this automatically via deferredBatch)
   const step = useCallback(() => {
     const old = {
       master: masterState, slave: slaveState,
       req: busReq, grant: busGrant, valid: busValid,
       ack: busAck, busy: busBusy, data: busData,
-      idx: dataIdx, delay: grantDelay, cycle, tx: txCount, rx: rxCount,
+      idx: dataIdx, delay: grantDelay, cycle,
+      tx: txCount, rx: rxCount,
     };
 
     // Master FSM
-    if (old.master === 'Idle' && old.cycle % 8 === 0 && old.cycle > 0) {
-      setMasterState('Requesting'); setBusReq(true); setDataIdx(0);
+    if (old.master === MasterState.Idle
+        && old.cycle % 8 === 0 && old.cycle > 0) {
+      setMasterState(MasterState.Requesting);
+      setBusReq(true); setDataIdx(0);
     }
-    if (old.master === 'Requesting' && old.grant) {
-      setMasterState('Transmitting'); setBusReq(false); setBusBusy(true);
+    if (old.master === MasterState.Requesting && old.grant) {
+      setMasterState(MasterState.Transmitting);
+      setBusReq(false); setBusBusy(true);
     }
-    if (old.master === 'Transmitting') {
-      setBusData((old.tx + 1) * 100 + old.idx); setBusValid(true);
-      setDataIdx(old.idx + 1);
-      if (old.idx >= 3) { setMasterState('WaitAck'); setBusValid(false); }
+    if (old.master === MasterState.Transmitting) {
+      setBusData((old.tx + 1) * 100 + old.idx);
+      setBusValid(true); setDataIdx(old.idx + 1);
+      if (old.idx >= 3) {
+        setMasterState(MasterState.WaitAck);
+        setBusValid(false);
+      }
     }
-    if (old.master === 'WaitAck' && old.ack) {
-      setMasterState('Done'); setBusBusy(false); setTxCount(old.tx + 1);
+    if (old.master === MasterState.WaitAck && old.ack) {
+      setMasterState(MasterState.Done);
+      setBusBusy(false); setTxCount(old.tx + 1);
     }
-    if (old.master === 'Done') setMasterState('Idle');
+    if (old.master === MasterState.Done)
+      setMasterState(MasterState.Idle);
 
-    // Arbiter
+    // Arbiter FSM
     if (old.req && !old.grant) {
       setGrantDelay(d => d + 1);
-      if (old.delay >= 1) { setBusGrant(true); setGrantDelay(0); }
+      if (old.delay >= 1) {
+        setBusGrant(true); setGrantDelay(0);
+      }
     }
-    if (!old.req && old.grant && !old.busy) setBusGrant(false);
+    if (!old.req && old.grant && !old.busy)
+      setBusGrant(false);
 
-    // Slave
-    if (old.slave === 'Idle' && old.valid) {
-      setSlaveState('Receiving'); setSlaveBuffer(old.data);
-    }
-    if (old.slave === 'Receiving') {
+    // Slave FSM
+    if (old.slave === SlaveState.Idle && old.valid) {
+      setSlaveState(SlaveState.Receiving);
       setSlaveBuffer(old.data);
-      if (!old.valid) setSlaveState('Processing');
     }
-    if (old.slave === 'Processing') {
-      setSlaveState('Acking'); setBusAck(true); setRxCount(old.rx + 1);
+    if (old.slave === SlaveState.Receiving) {
+      setSlaveBuffer(old.data);
+      if (!old.valid) setSlaveState(SlaveState.Processing);
     }
-    if (old.slave === 'Acking') { setBusAck(false); setSlaveState('Idle'); }
+    if (old.slave === SlaveState.Processing) {
+      setSlaveState(SlaveState.Acking);
+      setBusAck(true); setRxCount(old.rx + 1);
+    }
+    if (old.slave === SlaveState.Acking) {
+      setBusAck(false); setSlaveState(SlaveState.Idle);
+    }
     setCycle(old.cycle + 1);
   }, [masterState, slaveState, busReq, busGrant,
       busValid, busAck, busBusy, busData, dataIdx,
       grantDelay, cycle, txCount, rxCount]);
 
-  // Edge detection: manual useRef per signal
+  // --- Continuous invariant (Comb: assert always) ---
+  useEffect(() => {
+    if (busReq && busAck)
+      console.warn('Protocol violation: req && ack');
+  });
+
+  // --- Edge detection (Comb: @(posedge x) is 1 line) ---
   const prevReq = useRef(busReq);
   useEffect(() => {
-    if (!prevReq.current && busReq) { /* posedge */ }
+    if (!prevReq.current && busReq) { /* posedge bus_request */ }
     prevReq.current = busReq;
   }, [busReq]);
+
   const prevValid = useRef(busValid);
   useEffect(() => {
-    if (!prevValid.current && busValid) { /* posedge */ }
+    if (!prevValid.current && busValid) { /* posedge bus_valid */ }
     prevValid.current = busValid;
   }, [busValid]);
 
-  // Temporal assertions? Not expressible in React.
-  // Protocol invariant? Manual useEffect:
+  const prevBusy = useRef(busBusy);
   useEffect(() => {
-    if (busReq && busAck) console.warn('Protocol violation');
-  });
+    if (!prevBusy.current && busBusy) { /* posedge bus_busy */ }
+    prevBusy.current = busBusy;
+  }, [busBusy]);
 
-  const masterLabel = masterState === 'Idle' ? 'IDLE'
-    : masterState === 'Requesting' ? 'REQ'
-    : masterState === 'Transmitting' ? 'TX'
-    : masterState === 'WaitAck' ? 'WAIT' : 'DONE';
-  const slaveLabel = slaveState === 'Idle' ? 'IDLE'
-    : slaveState === 'Receiving' ? 'RX'
-    : slaveState === 'Processing' ? 'PROC' : 'ACK';
+  // --- Temporal assertions (Comb: 1 line each; React: DIY) ---
+  // "after request rises, grant must follow within 1500ms"
+  const reqTimerRef = useRef(null);
+  useEffect(() => {
+    if (!prevReq.current && busReq) {
+      reqTimerRef.current = setTimeout(() => {
+        if (!busGrant)
+          console.warn('Temporal: req->grant timeout');
+      }, 1500);
+    }
+    if (busGrant && reqTimerRef.current) {
+      clearTimeout(reqTimerRef.current);
+      reqTimerRef.current = null;
+    }
+  }, [busReq, busGrant]);
 
+  // "after valid data, ack must follow within 5000ms"
+  const validTimerRef = useRef(null);
+  useEffect(() => {
+    if (!prevValid.current && busValid) {
+      validTimerRef.current = setTimeout(() => {
+        if (!busAck)
+          console.warn('Temporal: valid->ack timeout');
+      }, 5000);
+    }
+    if (busAck && validTimerRef.current) {
+      clearTimeout(validTimerRef.current);
+      validTimerRef.current = null;
+    }
+  }, [busValid, busAck]);
+
+  // "while busy, grant must stay true for 100ms"
+  const busyTimerRef = useRef(null);
+  useEffect(() => {
+    if (!prevBusy.current && busBusy) {
+      busyTimerRef.current = setTimeout(() => {
+        // passed — grant held
+      }, 100);
+    }
+    if (busBusy && !busGrant && busyTimerRef.current) {
+      clearTimeout(busyTimerRef.current);
+      console.warn('Temporal: busy->grant violated');
+    }
+  }, [busBusy, busGrant]);
+
+  // Cleanup timers
+  useEffect(() => () => {
+    if (reqTimerRef.current) clearTimeout(reqTimerRef.current);
+    if (validTimerRef.current) clearTimeout(validTimerRef.current);
+    if (busyTimerRef.current) clearTimeout(busyTimerRef.current);
+  }, []);
+
+  // --- View (same as Comb view) ---
   return (
     <div className="bus-protocol">
       <h2>SPI Bus Protocol Simulator</h2>
+      <p className="bus-subtitle">
+        Clock-driven FSMs with manual value snapshots
+      </p>
       <div className="bus-status-row">
         <div className="bus-device">
           <h3>Master</h3>
@@ -153,26 +243,38 @@ const REACT_CODE = `function BusProtocol() {
         </div>
         <div className="bus-signals">
           <h3>Bus</h3>
-          <p>REQ:{busReq?1:0} GNT:{busGrant?1:0}</p>
-          <p>DATA:{busData} VALID:{busValid?1:0}</p>
-          <p>ACK:{busAck?1:0} BUSY:{busBusy?1:0}</p>
+          <p>REQ:{busReq?1:0} | GNT:{busGrant?1:0}</p>
+          <p>DATA:{busData} | VALID:{busValid?1:0}</p>
+          <p>ACK:{busAck?1:0} | BUSY:{busBusy?1:0}</p>
         </div>
         <div className="bus-device">
           <h3>Slave</h3>
           <span className="bus-state">{slaveLabel}</span>
-          <p>RX: {rxCount} | Buf: {slaveBuffer}</p>
+          <p>RX count: {rxCount}</p>
+          <p>Buffer: {slaveBuffer}</p>
         </div>
       </div>
-      <p>Cycle:{cycle} | {busBusy?'ACTIVE':'idle'}</p>
+      <p>Cycle:{cycle} | Transfer:{transferActive ? 'ACTIVE' : 'idle'}
+         | Health:{protocolHealthy ? 'OK' : 'VIOLATION'}</p>
     </div>
   );
 }`;
 
 // SolidJS — closer to Comb's reactivity model but still needs manual snapshots
-const SOLID_CODE = `function BusProtocol() {
+// SolidJS — apples-to-apples: attempts EVERYTHING Comb does
+const SOLID_CODE = `const MasterState = Object.freeze({
+  Idle: 'Idle', Requesting: 'Requesting',
+  Transmitting: 'Transmitting', WaitAck: 'WaitAck', Done: 'Done',
+});
+const SlaveState = Object.freeze({
+  Idle: 'Idle', Receiving: 'Receiving',
+  Processing: 'Processing', Acking: 'Acking',
+});
+
+function BusProtocol() {
   const [cycle, setCycle] = createSignal(0);
-  const [masterState, setMasterState] = createSignal('Idle');
-  const [slaveState, setSlaveState] = createSignal('Idle');
+  const [masterState, setMasterState] = createSignal(MasterState.Idle);
+  const [slaveState, setSlaveState] = createSignal(SlaveState.Idle);
   const [busReq, setBusReq] = createSignal(false);
   const [busGrant, setBusGrant] = createSignal(false);
   const [busData, setBusData] = createSignal(0);
@@ -185,9 +287,17 @@ const SOLID_CODE = `function BusProtocol() {
   const [dataIdx, setDataIdx] = createSignal(0);
   const [grantDelay, setGrantDelay] = createSignal(0);
 
-  // Solid batch() defers updates but reads
-  // still see CURRENT values, not old ones.
-  // Must snapshot manually for cross-FSM reads.
+  // Derived (same as Comb combs)
+  const masterLabel = createMemo(() =>
+    ({Idle:'IDLE',Requesting:'REQ',Transmitting:'TX',
+      WaitAck:'WAIT',Done:'DONE'})[masterState()]);
+  const slaveLabel = createMemo(() =>
+    ({Idle:'IDLE',Receiving:'RX',Processing:'PROC',
+      Acking:'ACK'})[slaveState()]);
+  const transferActive = createMemo(() => busBusy());
+  const protocolHealthy = createMemo(() => !(busReq() && busAck()));
+
+  // Must snapshot — batch() defers updates but reads see current
   function step() {
     batch(() => {
       const old = {
@@ -197,86 +307,120 @@ const SOLID_CODE = `function BusProtocol() {
         idx: dataIdx(), delay: grantDelay(),
         cycle: cycle(), tx: txCount(), rx: rxCount(),
       };
-
-      // Master FSM
-      if (old.master === 'Idle' && old.cycle % 8 === 0
-          && old.cycle > 0) {
-        setMasterState('Requesting');
+      if (old.master === MasterState.Idle
+          && old.cycle % 8 === 0 && old.cycle > 0) {
+        setMasterState(MasterState.Requesting);
         setBusReq(true); setDataIdx(0);
       }
-      if (old.master === 'Requesting' && old.grant) {
-        setMasterState('Transmitting');
+      if (old.master === MasterState.Requesting && old.grant) {
+        setMasterState(MasterState.Transmitting);
         setBusReq(false); setBusBusy(true);
       }
-      if (old.master === 'Transmitting') {
+      if (old.master === MasterState.Transmitting) {
         setBusData((old.tx+1)*100+old.idx);
         setBusValid(true); setDataIdx(old.idx+1);
-        if (old.idx>=3) {
-          setMasterState('WaitAck');
+        if (old.idx >= 3) {
+          setMasterState(MasterState.WaitAck);
           setBusValid(false);
         }
       }
-      if (old.master==='WaitAck' && old.ack) {
-        setMasterState('Done');
+      if (old.master === MasterState.WaitAck && old.ack) {
+        setMasterState(MasterState.Done);
         setBusBusy(false); setTxCount(old.tx+1);
       }
-      if (old.master==='Done') setMasterState('Idle');
-
-      // Arbiter
+      if (old.master === MasterState.Done)
+        setMasterState(MasterState.Idle);
       if (old.req && !old.grant) {
         setGrantDelay(d=>d+1);
-        if (old.delay>=1) {
-          setBusGrant(true); setGrantDelay(0);
-        }
+        if (old.delay>=1) { setBusGrant(true); setGrantDelay(0); }
       }
-      if (!old.req && old.grant && !old.busy)
-        setBusGrant(false);
-
-      // Slave
-      if (old.slave==='Idle' && old.valid) {
-        setSlaveState('Receiving');
+      if (!old.req && old.grant && !old.busy) setBusGrant(false);
+      if (old.slave === SlaveState.Idle && old.valid) {
+        setSlaveState(SlaveState.Receiving); setSlaveBuffer(old.data);
+      }
+      if (old.slave === SlaveState.Receiving) {
         setSlaveBuffer(old.data);
+        if (!old.valid) setSlaveState(SlaveState.Processing);
       }
-      if (old.slave==='Receiving') {
-        setSlaveBuffer(old.data);
-        if (!old.valid) setSlaveState('Processing');
-      }
-      if (old.slave==='Processing') {
-        setSlaveState('Acking');
+      if (old.slave === SlaveState.Processing) {
+        setSlaveState(SlaveState.Acking);
         setBusAck(true); setRxCount(old.rx+1);
       }
-      if (old.slave==='Acking') {
-        setBusAck(false); setSlaveState('Idle');
+      if (old.slave === SlaveState.Acking) {
+        setBusAck(false); setSlaveState(SlaveState.Idle);
       }
       setCycle(old.cycle + 1);
     });
   }
 
-  // Edge detection: track previous with createEffect
-  let prevReq = busReq();
-  createEffect(() => {
-    const cur = busReq();
-    if (!prevReq && cur) { /* posedge */ }
-    prevReq = cur;
-  });
-
-  // Temporal assertions? Not expressible.
-  // Protocol invariant:
+  // Continuous invariant
   createEffect(() => {
     if (busReq() && busAck())
       console.warn('Protocol violation');
   });
 
-  const masterLabel = createMemo(() =>
-    ({Idle:'IDLE',Requesting:'REQ',Transmitting:'TX',
-      WaitAck:'WAIT',Done:'DONE'})[masterState()]);
-  const slaveLabel = createMemo(() =>
-    ({Idle:'IDLE',Receiving:'RX',Processing:'PROC',
-      Acking:'ACK'})[slaveState()]);
+  // Edge detection (Comb: 1 line; Solid: 4 lines per signal)
+  let prevReq = busReq();
+  createEffect(() => {
+    const cur = busReq();
+    if (!prevReq && cur) { /* posedge bus_request */ }
+    prevReq = cur;
+  });
+  let prevValid = busValid();
+  createEffect(() => {
+    const cur = busValid();
+    if (!prevValid && cur) { /* posedge bus_valid */ }
+    prevValid = cur;
+  });
+  let prevBusy = busBusy();
+  createEffect(() => {
+    const cur = busBusy();
+    if (!prevBusy && cur) { /* posedge bus_busy */ }
+    prevBusy = cur;
+  });
+
+  // Temporal assertions: manual setTimeout + cleanup
+  let reqTimer = null;
+  createEffect(() => {
+    const req = busReq(), grant = busGrant();
+    if (!prevReq && req) {
+      reqTimer = setTimeout(() => {
+        if (!busGrant()) console.warn('Temporal: req->grant');
+      }, 1500);
+    }
+    if (grant && reqTimer) { clearTimeout(reqTimer); reqTimer = null; }
+  });
+  let validTimer = null;
+  createEffect(() => {
+    const valid = busValid(), ack = busAck();
+    if (!prevValid && valid) {
+      validTimer = setTimeout(() => {
+        if (!busAck()) console.warn('Temporal: valid->ack');
+      }, 5000);
+    }
+    if (ack && validTimer) { clearTimeout(validTimer); validTimer = null; }
+  });
+  let busyTimer = null;
+  createEffect(() => {
+    const busy = busBusy(), grant = busGrant();
+    if (!prevBusy && busy) {
+      busyTimer = setTimeout(() => {}, 100);
+    }
+    if (busy && !grant && busyTimer) {
+      clearTimeout(busyTimer);
+      console.warn('Temporal: busy->grant violated');
+    }
+  });
+  onCleanup(() => {
+    if (reqTimer) clearTimeout(reqTimer);
+    if (validTimer) clearTimeout(validTimer);
+    if (busyTimer) clearTimeout(busyTimer);
+  });
 
   return (
     <div class="bus-protocol">
       <h2>SPI Bus Protocol Simulator</h2>
+      <p class="bus-subtitle">Clock-driven FSMs with manual snapshots</p>
       <div class="bus-status-row">
         <div class="bus-device">
           <h3>Master</h3>
@@ -285,9 +429,9 @@ const SOLID_CODE = `function BusProtocol() {
         </div>
         <div class="bus-signals">
           <h3>Bus</h3>
-          <p>REQ:{busReq()?1:0} GNT:{busGrant()?1:0}</p>
-          <p>DATA:{busData()} VALID:{busValid()?1:0}</p>
-          <p>ACK:{busAck()?1:0} BUSY:{busBusy()?1:0}</p>
+          <p>REQ:{busReq()?1:0} | GNT:{busGrant()?1:0}</p>
+          <p>DATA:{busData()} | VALID:{busValid()?1:0}</p>
+          <p>ACK:{busAck()?1:0} | BUSY:{busBusy()?1:0}</p>
         </div>
         <div class="bus-device">
           <h3>Slave</h3>
@@ -295,16 +439,27 @@ const SOLID_CODE = `function BusProtocol() {
           <p>RX: {rxCount()} | Buf: {slaveBuffer()}</p>
         </div>
       </div>
-      <p>Cycle:{cycle()} | {busBusy()?'ACTIVE':'idle'}</p>
+      <p>Cycle:{cycle()} | {transferActive()?'ACTIVE':'idle'}
+         | {protocolHealthy()?'OK':'VIOLATION'}</p>
     </div>
   );
 }`;
 
-// Svelte 5 — runes syntax
+// Svelte 5 — apples-to-apples: attempts EVERYTHING Comb does
 const SVELTE_CODE = `<script>
+  // Enums
+  const MasterState = Object.freeze({
+    Idle: 'Idle', Requesting: 'Requesting',
+    Transmitting: 'Transmitting', WaitAck: 'WaitAck', Done: 'Done',
+  });
+  const SlaveState = Object.freeze({
+    Idle: 'Idle', Receiving: 'Receiving',
+    Processing: 'Processing', Acking: 'Acking',
+  });
+
   let cycle = $state(0);
-  let masterState = $state('Idle');
-  let slaveState = $state('Idle');
+  let masterState = $state(MasterState.Idle);
+  let slaveState = $state(SlaveState.Idle);
   let busReq = $state(false);
   let busGrant = $state(false);
   let busData = $state(0);
@@ -317,9 +472,17 @@ const SVELTE_CODE = `<script>
   let dataIdx = $state(0);
   let grantDelay = $state(0);
 
-  // Svelte $state is mutable — reads see current
-  // values during the same tick. Must snapshot
-  // for cross-FSM correctness.
+  // Derived
+  let masterLabel = $derived(
+    ({Idle:'IDLE',Requesting:'REQ',Transmitting:'TX',
+      WaitAck:'WAIT',Done:'DONE'})[masterState]);
+  let slaveLabel = $derived(
+    ({Idle:'IDLE',Receiving:'RX',Processing:'PROC',
+      Acking:'ACK'})[slaveState]);
+  let transferActive = $derived(busBusy);
+  let protocolHealthy = $derived(!(busReq && busAck));
+
+  // Must snapshot — $state reads see current values
   function step() {
     const old = {
       master: masterState, slave: slaveState,
@@ -329,85 +492,113 @@ const SVELTE_CODE = `<script>
       idx: dataIdx, delay: grantDelay,
       cycle, tx: txCount, rx: rxCount,
     };
-
-    // Master FSM
-    if (old.master==='Idle' && old.cycle%8===0
-        && old.cycle>0) {
-      masterState = 'Requesting';
+    if (old.master===MasterState.Idle
+        && old.cycle%8===0 && old.cycle>0) {
+      masterState = MasterState.Requesting;
       busReq = true; dataIdx = 0;
     }
-    if (old.master==='Requesting' && old.grant) {
-      masterState = 'Transmitting';
+    if (old.master===MasterState.Requesting && old.grant) {
+      masterState = MasterState.Transmitting;
       busReq = false; busBusy = true;
     }
-    if (old.master==='Transmitting') {
+    if (old.master===MasterState.Transmitting) {
       busData = (old.tx+1)*100+old.idx;
       busValid = true; dataIdx = old.idx+1;
       if (old.idx>=3) {
-        masterState = 'WaitAck'; busValid = false;
+        masterState = MasterState.WaitAck;
+        busValid = false;
       }
     }
-    if (old.master==='WaitAck' && old.ack) {
-      masterState = 'Done';
+    if (old.master===MasterState.WaitAck && old.ack) {
+      masterState = MasterState.Done;
       busBusy = false; txCount = old.tx+1;
     }
-    if (old.master==='Done') masterState = 'Idle';
-
-    // Arbiter
+    if (old.master===MasterState.Done)
+      masterState = MasterState.Idle;
     if (old.req && !old.grant) {
       grantDelay++;
-      if (old.delay>=1) {
-        busGrant = true; grantDelay = 0;
-      }
+      if (old.delay>=1) { busGrant = true; grantDelay = 0; }
     }
-    if (!old.req && old.grant && !old.busy)
-      busGrant = false;
-
-    // Slave
-    if (old.slave==='Idle' && old.valid) {
-      slaveState = 'Receiving';
+    if (!old.req && old.grant && !old.busy) busGrant = false;
+    if (old.slave===SlaveState.Idle && old.valid) {
+      slaveState = SlaveState.Receiving;
       slaveBuffer = old.data;
     }
-    if (old.slave==='Receiving') {
+    if (old.slave===SlaveState.Receiving) {
       slaveBuffer = old.data;
-      if (!old.valid) slaveState = 'Processing';
+      if (!old.valid) slaveState = SlaveState.Processing;
     }
-    if (old.slave==='Processing') {
-      slaveState = 'Acking';
+    if (old.slave===SlaveState.Processing) {
+      slaveState = SlaveState.Acking;
       busAck = true; rxCount = old.rx+1;
     }
-    if (old.slave==='Acking') {
-      busAck = false; slaveState = 'Idle';
+    if (old.slave===SlaveState.Acking) {
+      busAck = false; slaveState = SlaveState.Idle;
     }
     cycle = old.cycle + 1;
   }
 
-  // Edge detection: manual $effect + previous
-  let prevReq = busReq;
-  $effect(() => {
-    if (!prevReq && busReq) { /* posedge */ }
-    prevReq = busReq;
-  });
-
-  // Temporal assertions? Not expressible.
+  // Continuous invariant
   $effect(() => {
     if (busReq && busAck)
       console.warn('Protocol violation');
   });
 
-  let masterLabel = $derived(
-    masterState==='Idle'?'IDLE':
-    masterState==='Requesting'?'REQ':
-    masterState==='Transmitting'?'TX':
-    masterState==='WaitAck'?'WAIT':'DONE');
-  let slaveLabel = $derived(
-    slaveState==='Idle'?'IDLE':
-    slaveState==='Receiving'?'RX':
-    slaveState==='Processing'?'PROC':'ACK');
+  // Edge detection (Comb: 1 line; Svelte: 4 lines each)
+  let prevReq = busReq;
+  $effect(() => {
+    if (!prevReq && busReq) { /* posedge */ }
+    prevReq = busReq;
+  });
+  let prevValid = busValid;
+  $effect(() => {
+    if (!prevValid && busValid) { /* posedge */ }
+    prevValid = busValid;
+  });
+  let prevBusy = busBusy;
+  $effect(() => {
+    if (!prevBusy && busBusy) { /* posedge */ }
+    prevBusy = busBusy;
+  });
+
+  // Temporal assertions: manual setTimeout
+  let reqTimer = null;
+  $effect(() => {
+    if (!prevReq && busReq) {
+      reqTimer = setTimeout(() => {
+        if (!busGrant) console.warn('Temporal: req->grant');
+      }, 1500);
+    }
+    if (busGrant && reqTimer) {
+      clearTimeout(reqTimer); reqTimer = null;
+    }
+  });
+  let validTimer = null;
+  $effect(() => {
+    if (!prevValid && busValid) {
+      validTimer = setTimeout(() => {
+        if (!busAck) console.warn('Temporal: valid->ack');
+      }, 5000);
+    }
+    if (busAck && validTimer) {
+      clearTimeout(validTimer); validTimer = null;
+    }
+  });
+  let busyTimer = null;
+  $effect(() => {
+    if (!prevBusy && busBusy) {
+      busyTimer = setTimeout(() => {}, 100);
+    }
+    if (busBusy && !busGrant && busyTimer) {
+      clearTimeout(busyTimer);
+      console.warn('Temporal: busy->grant violated');
+    }
+  });
 </script>
 
 <div class="bus-protocol">
   <h2>SPI Bus Protocol Simulator</h2>
+  <p class="bus-subtitle">Clock-driven FSMs with manual snapshots</p>
   <div class="bus-status-row">
     <div class="bus-device">
       <h3>Master</h3>
@@ -416,9 +607,9 @@ const SVELTE_CODE = `<script>
     </div>
     <div class="bus-signals">
       <h3>Bus</h3>
-      <p>REQ:{busReq?1:0} GNT:{busGrant?1:0}</p>
-      <p>DATA:{busData} VALID:{busValid?1:0}</p>
-      <p>ACK:{busAck?1:0} BUSY:{busBusy?1:0}</p>
+      <p>REQ:{busReq?1:0} | GNT:{busGrant?1:0}</p>
+      <p>DATA:{busData} | VALID:{busValid?1:0}</p>
+      <p>ACK:{busAck?1:0} | BUSY:{busBusy?1:0}</p>
     </div>
     <div class="bus-device">
       <h3>Slave</h3>
@@ -426,16 +617,17 @@ const SVELTE_CODE = `<script>
       <p>RX: {rxCount} | Buf: {slaveBuffer}</p>
     </div>
   </div>
-  <p>Cycle:{cycle} | {busBusy?'ACTIVE':'idle'}</p>
+  <p>Cycle:{cycle} | {transferActive?'ACTIVE':'idle'}
+     | {protocolHealthy?'OK':'VIOLATION'}</p>
 </div>`;
 
 interface TabInfo { label: string; code: string; hl: (s: string) => string; color: string; note: string; }
 
 const TABS: TabInfo[] = [
   { label: 'Comb', code: combSource, hl: hlComb, color: 'var(--success)', note: 'Compiled from .comb. Delta cycles handle cross-FSM reads automatically.' },
-  { label: 'React', code: REACT_CODE, hl: hlJS, color: 'var(--event)', note: 'Must manually snapshot all 13 values before any writes. Temporal assertions impossible.' },
-  { label: 'SolidJS', code: SOLID_CODE, hl: hlJS, color: 'var(--event)', note: 'batch() defers updates but reads see current values. Same snapshot problem.' },
-  { label: 'Svelte 5', code: SVELTE_CODE, hl: hlSvelte, color: 'var(--event)', note: '$state is mutable — reads see current values in same tick. Same snapshot problem.' },
+  { label: 'React', code: REACT_CODE, hl: hlJS, color: 'var(--event)', note: 'Same features attempted. Manual snapshots, useRef edge detection, setTimeout temporal assertions.' },
+  { label: 'SolidJS', code: SOLID_CODE, hl: hlJS, color: 'var(--event)', note: 'Same features attempted. Manual snapshots inside batch(), createEffect edge detection, setTimeout temporals.' },
+  { label: 'Svelte 5', code: SVELTE_CODE, hl: hlSvelte, color: 'var(--event)', note: 'Same features attempted. Manual snapshots ($state is mutable), $effect edge detection, setTimeout temporals.' },
 ];
 
 export function mountBusProtocol(root: HTMLElement): { dispose: () => void } {
