@@ -43,78 +43,154 @@ Three things converging:
 | "Fair benchmarks" | Batched-topo baseline is a 50-line minimal recreation, not actual SolidJS/Preact code |
 | "VS Tetris proves DES" | Game logic is in JS mount file. Comb runtime provides observability, not the game semantics |
 
-## The Product: Three Packages
+## The Product: Five Packages
 
 ### Package 1: `@dut/graph` — Reactive Dependency Graph
 
-**What it is:** A lightweight layer that wraps any reactive primitive (React useState, Solid createSignal, Svelte $state, or vanilla signals) and builds an introspectable dependency graph as a side effect.
+**What it is:** The foundation layer. Builds an introspectable dependency graph from any reactive framework's primitives — signals become nodes, dep arrays become edges, effects become leaf nodes. The graph records all state changes over time (waveform data), supports diffing between snapshots, and emits a typed event stream.
 
 **What you get:**
-- Typed node registration with metadata (name, module, type, deps)
-- Edge tracking (which signal feeds which derived value)
-- Graph snapshot as serializable JSON (the `__graph` concept)
-- Graph diffing between two snapshots (`diffGraphs`)
-- Event stream (signal-change, comb-recompute, effect-run, assertion-failed)
-- Waveform recording (timestamped signal value history)
+- Typed node registration with metadata (name, module, type, deps, value bounds)
+- Edge tracking (which signal feeds which derived value, which effect depends on which signals)
+- Graph snapshot as serializable JSON (the `__graph` concept) — exportable, diffable, CI-checkable
+- Graph diffing between two snapshots (`diffGraphs`) — "your refactor removed the edge from userProfile to dashboardTitle"
+- Event stream (signal-change, comb-recompute, effect-run, assertion-failed) with subscriber API
+- Waveform recording (timestamped signal value history with configurable buffer size)
+- Graph queries: find all upstream dependencies of a node, find all downstream consumers, find roots (zero in-edges), find leaves (zero out-edges)
 
 **Source to extract from Comb:**
-- `src/runtime/circuit.ts` — `CircuitGraph` class (the graph data structure)
+- `src/runtime/circuit.ts` — `CircuitGraph` class (430 lines, the graph data structure)
 - The `registerNode`, `setNodeValue`, `notifyChange`, `getWaveformData`, `diffGraphs` methods
 - The event buffer and listener system
+- The `verifyGraph` method (detect static nodes not registered at runtime)
 
-**Framework adapters (thin wrappers):**
+**The discipline model: explicit declaration, no magic.**
+
+DUT rewards writing disciplined code. You use tracked hooks instead of bare hooks. You declare your signals, your derived values, your assertions. The tooling works because you gave it structure — same as hardware engineers writing proper signal declarations with proper sensitivity lists. There is no auto-instrumentation, no Babel plugin, no magic inference. The discipline IS the product.
+
+This means DUT is for new code (or intentional rewrites), not for sprinkling onto existing messy codebases. That's fine — the value proposition is "write your next component with DUT hooks, and never write a test case for it."
+
+**Framework adapters (explicit hooks):**
 
 ```ts
-// React adapter
-import { useState } from 'react'
-import { graph } from '@dut/graph'
+// React manual adapter
+import { useTrackedState, useTrackedMemo } from '@dut/react'
 
-function useTrackedState<T>(initial: T, name: string) {
-  const [value, setValue] = useState(initial)
-  const nodeId = graph.registerNode({ name, type: 'signal' })
-  // Track changes, record to waveform, update graph
-  const trackedSet = (next: T) => {
-    const old = value
-    setValue(next)
-    graph.notifyChange(nodeId, old, next)
-  }
-  return [value, trackedSet] as const
-}
+const [loading, setLoading] = useTrackedState(false, 'loading')
+const display = useTrackedMemo(() => loading ? '...' : 'Ready', [loading], 'display')
 ```
 
 ```ts
 // Solid adapter
-import { createSignal } from 'solid-js'
-import { graph } from '@dut/graph'
+import { createTrackedSignal, createTrackedMemo } from '@dut/solid'
 
-function createTrackedSignal<T>(initial: T, name: string) {
-  const [get, set] = createSignal(initial)
-  const nodeId = graph.registerNode({ name, type: 'signal' })
-  const trackedSet = (next: T) => {
-    const old = get()
-    set(next)
-    graph.notifyChange(nodeId, old, next)
-  }
-  return [get, trackedSet] as const
-}
+const [count, setCount] = createTrackedSignal(0, 'count')
+const doubled = createTrackedMemo(() => count() * 2, 'doubled')
 ```
 
 ```ts
-// Vanilla / TC39 Signals adapter (future)
-import { Signal } from 'signal-polyfill'
+// Vanilla / any framework
 import { graph } from '@dut/graph'
 
-function createTrackedSignal<T>(initial: T, name: string) {
-  const signal = new Signal.State(initial)
-  const nodeId = graph.registerNode({ name, type: 'signal' })
-  // Proxy writes to record changes
-  // ...
-}
+const nodeId = graph.registerNode({ name: 'count', module: 'Counter', type: 'signal' })
+graph.setNodeValue(nodeId, () => currentCount)
+// On change:
+graph.notifyChange(nodeId, oldValue, newValue)
 ```
 
-**Size estimate:** ~400 lines core + ~50 lines per adapter. Comb's `circuit.ts` is 430 lines.
+```ts
+// TC39 Signals (future)
+import { Signal } from 'signal-polyfill'
+import { trackSignal } from '@dut/signals'
 
-**Zero dependencies.** Framework adapters are peer-deps on the target framework.
+const count = trackSignal(new Signal.State(0), 'count')
+```
+
+**Framework adapter matrix:**
+
+| Framework | Auto (plugin) | Manual (hooks) | Edge extraction |
+|---|---|---|---|
+| React | Babel plugin reads dep arrays | `useTrackedState/Memo/Effect` | From `useMemo`/`useEffect` dep arrays |
+| Solid | Vite plugin wraps signal calls | `createTrackedSignal/Memo` | Auto-tracked (Solid tracks deps at runtime — we intercept) |
+| Vue 3 | Vite plugin wraps ref/computed | `trackedRef`, `trackedComputed` | From `computed` getter reads + `watch` sources |
+| Svelte 5 | Svelte preprocessor instruments runes | Use `writable()` stores with manual tracking | Compiler-derived (Svelte knows deps at compile time) |
+| Vanilla JS | N/A | Direct `graph.registerNode` API | Manual edge declaration |
+| TC39 Signals | Wrap `Signal.State`/`Signal.Computed` | `trackSignal` | Auto-tracked via `Signal.Computed` reads |
+
+**The "tick" model:**
+
+The graph defines a **tick** as one settling cycle: a signal changes → all downstream derived values recompute → all triggered effects run → system is quiescent. This maps to:
+- React: one `setState` batch → re-render → effects run (within `act()` in tests)
+- Solid: one signal write → synchronous propagation → effects run
+- Svelte: one `$state` mutation → compiler-scheduled update → `tick()` resolves
+
+Every tick gets an incrementing sequence number. Assertions and coverage reference ticks, not wall-clock time. This makes everything deterministic.
+
+**Graph persistence and CI diffing:**
+
+```bash
+# Export graph snapshot to JSON (in a test or build script):
+import { graph } from '@dut/graph'
+fs.writeFileSync('graph.json', JSON.stringify(graph.snapshot()))
+
+# Diff two snapshots in CI:
+npx dut diff graph-main.json graph-pr.json
+# Output:
+#   Removed edge: userProfile → dashboardTitle
+#   Added node: newFeatureFlag (signal, boolean)
+#   Changed node: cartTotal (comb → signal) ← was derived, now manual
+```
+
+This is the `__graph` CI diffing concept. A GitHub Action could comment on PRs with topology changes, same way codecov comments with coverage changes.
+
+**Edge-triggered effects (posedge/negedge):**
+
+Extracted from Comb's `createEdgeEffect`. Fires a callback on signal transitions, not on every change. Eliminates the 5-line `useRef` + `useEffect` + previous-value-tracking boilerplate:
+
+```ts
+import { useEdgeEffect } from '@dut/react'
+
+// Fire when loading transitions from true → false (negedge)
+useEdgeEffect(loading, 'negedge', () => {
+  showToast('Loading complete')
+}, 'loading-complete')
+
+// Fire when error transitions from null → non-null (posedge)
+useEdgeEffect(error, 'posedge', () => {
+  logError(error)
+}, 'error-occurred')
+```
+
+**CDC async boundary warnings (runtime):**
+
+Ported from Comb's `verify.ts` analysis, running at runtime instead of compile time. When a derived value (useTrackedMemo) recomputes and reads a signal that was last set from an async context (Promise callback, setTimeout, etc.), and the derived value doesn't also read a guard signal (like `loading`), emit a dev-mode warning:
+
+> "derived value 'display' reads 'data' which was set asynchronously — consider guarding with a loading check"
+
+The graph tracks which signals were last set in a sync vs. async context (detected from the JavaScript execution context at the time of the setter call). Derived values that read async-set signals without also reading a sync guard signal are flagged.
+
+Less precise than Comb's static analysis but catches the common case and requires zero compiler infrastructure. Warnings show in the devtools assertion panel.
+
+**CI graph diffing CLI:**
+
+```bash
+# Export graph snapshot to JSON (in a test or build script):
+dut snapshot --output graph.json   # renders app, captures graph, exits
+
+# Diff two snapshots:
+dut diff graph-main.json graph-pr.json
+# Output:
+#   Removed edge: userProfile → dashboardTitle
+#   Added node: newFeatureFlag (signal, boolean)
+#   Changed node: cartTotal (comb → signal) ← was derived, now manual
+
+# GitHub Action comments on PRs with topology changes
+# (like codecov but for reactive topology)
+```
+
+The `diffGraphs` algorithm is already implemented and tested in Comb's `circuit.ts`. Package as a standalone CLI.
+
+**Size estimate:** ~500 lines core graph + ~100 lines per adapter + ~50 lines edge effects + ~100 lines CDC warnings + ~150 lines CLI.
 
 ### Package 2: `@dut/coverage` — Reactive State Coverage
 
@@ -146,48 +222,204 @@ function createTrackedSignal<T>(initial: T, name: string) {
 
 ### Package 3: `@dut/devtools` — HDL-Grade Debugging
 
-**What it is:** A browser panel (embeddable or Chrome extension) that provides waveform viewing, graph visualization, and temporal assertion monitoring.
+**What it is:** A Chrome DevTools panel (like React DevTools — separate tab, doesn't interfere with the app) that provides waveform viewing, graph visualization, assertion monitoring, and coverage display. Also supports a standalone pop-out window for deep debugging sessions.
 
-**Components:**
+**Form factor:** Chrome extension that adds a "DUT" tab to Chrome DevTools. Communicates with the app via the Chrome DevTools protocol (same as React DevTools). The app includes a tiny bridge script (`@dut/devtools/bridge`) that exposes the graph instance to the extension.
 
-1. **Waveform viewer** — Canvas-based signal timeline. Zoom/pan, markers with delta measurement, compound search (AND/OR/WITHIN). Source: `src/waveform/` (690 lines across 6 files).
+Pop-out mode: a button in the DevTools panel opens a full browser tab for the waveform viewer (cramped DevTools panels are insufficient for serious multi-signal debugging with 20+ signals).
 
-2. **Circuit graph visualizer** — Canvas rendering of the dependency graph with typed nodes and edges. Source: `src/visualizer.ts` (330 lines).
+**Component 1: Waveform Viewer**
 
-3. **Coverage panel** — Shows toggle/FSM/cross coverage with heatmaps.
+Canvas-based signal timeline. The primary debugging tool — this is what makes a developer say "I can SEE what happened."
 
-4. **Assertion monitor** — Shows active temporal assertions and their pass/fail status.
+Required features (from GTKWave/Surfer research):
+- Zoom (mouse wheel with anchor at cursor), pan (click-drag), vertical scroll
+- Signal hierarchy grouped by component/module, collapsible groups
+- Dual markers (A and B) with delta measurement — "450ms between submit and toast"
+- Marker snap-to-nearest-edge — click near a signal transition, marker lands exactly on it
+- Compound search: `loading rises AND error == null` (AND/OR/WITHIN operators)
+- **Cross-signal correlation:** "find every time `loading` goes false within 2 ticks of `error` going truthy" — this is the killer feature, the thing you can't do with console.log
+- Keyboard shortcuts: +/- zoom, arrow keys pan, Home/End fit, N/P next/prev match
+- Analog rendering for numeric signals (line chart), digital for booleans (filled rectangles), labeled blocks for enums
+- Per-signal value display at cursor position (not just tooltip — inline in the label column)
+- Assertion timeline overlay: show assertion armed/passed/failed as colored regions on the waveform
+- Coverage heatmap overlay: signals with low toggle coverage highlighted
 
-**What needs to be built (not in Comb or incomplete):**
-- Cross-signal correlation in waveform search (the killer feature — find where signal A transitions within N ms of signal B)
-- Keyboard shortcuts (zoom +/-, pan arrows, Home/End for fit)
-- Persistence (save/load view state, export waveform data)
-- Marker snap-to-edge
-- Chrome extension wrapper
-- Embeddable panel mode (for Storybook, custom devtools)
+Export:
+- JSON (full waveform data, reimportable)
+- PNG/SVG screenshot
+- VCD format (standard waveform format — interoperable with GTKWave/Surfer for power users)
 
-**Size estimate:** ~1500 lines total (Comb's waveform + visualizer are ~1020 lines already).
+Persistence:
+- Save/load view state (zoom level, marker positions, signal visibility, signal ordering) to localStorage
+- Remember which signals were visible across page reloads
 
-### Optional: `@dut/test` — Graph-Directed Test Generation
+Source: `src/waveform/` (690 lines) — needs cross-signal correlation, keyboard shortcuts, persistence, export, snap-to-edge. Approximately 2x current code for full feature set.
 
-**What it is:** Reads the graph from `@dut/graph` and generates test inputs that exercise the state space.
+**Component 2: Circuit Graph Visualizer**
 
-**What it does:**
-- Discovers bounded signals (booleans, enums, bounded ints) from graph metadata
-- Identifies root signals (zero incoming edges) as test inputs
-- Drives each root through its state space while recording downstream coverage
-- Reports which states were never reached
+Interactive rendering of the dependency graph. Nodes are signals/combs/effects, edges are dependencies.
+
+Required features:
+- Auto-layout (dagre or elk.js for directed graph layout)
+- Color coding by node type (signal=blue, comb=green, effect=orange, assertion=red)
+- Live value display on nodes (current signal values update in real-time)
+- Click a node to highlight its upstream cone (everything it depends on) and downstream cone (everything that depends on it)
+- Edge highlighting on hover — trace a dependency chain visually
+- Search/filter by signal name
+- Coverage overlay: nodes with low coverage dimmed/highlighted
+- Diff mode: load two graph snapshots side-by-side, highlight added/removed/changed nodes and edges
+
+Source: `src/visualizer.ts` (330 lines) — needs auto-layout library, live values, cone-of-influence highlighting. Approximately 2x current code.
+
+**Component 3: Assertion Monitor**
+
+Live display of all declared assertions and their status.
+
+Required features:
+- List of all `assertAlways`, `assertNever`, `assertTemporal` with current status (passing/pending/violated)
+- For temporal assertions: show trigger status, tick count since trigger, whether resolution property has been met
+- For violated assertions: the signal values at the moment of violation, linkable to the waveform timeline (click to jump to that point in the waveform)
+- CDC warnings: show async boundary warnings (from the runtime CDC detection) alongside assertions
+- Assertion coverage: which assertions have been triggered vs. never triggered (untriggered assertions provide zero verification value)
+
+**Component 4: Coverage Panel**
+
+Visual display of reactive state coverage.
+
+Required features:
+- Toggle coverage: per-signal boolean true/false coverage, displayed as a simple matrix
+- FSM transition coverage: state machine diagram with visited transitions highlighted, unvisited transitions dimmed
+- Cross coverage: matrix of signal combinations with hit/miss cells
+- Summary: overall coverage percentage with breakdown by type
+- Integration with waveform: click an uncovered transition to search the waveform for the nearest time that transition ALMOST happened
+
+**Size estimate:** ~3000-4000 lines total across all four components. The waveform viewer alone is ~1500 (current 690 + cross-correlation + keyboard + persistence + export). This is a real UI project.
+
+### Package 4: `@dut/test` — Backward Graph Solving for Zero-Test-Case Verification
+
+**What it is:** Reads the dependency graph from `@dut/graph`, solves it backwards from derived values and assertions to discover which input combinations matter, generates those combinations, drives them, checks assertions, and reports coverage. The user writes assertions, not test cases.
+
+**The core insight: solve the graph backwards.**
+
+This is backward cone-of-influence analysis — the same technique hardware formal verification uses. Start from the outputs (derived values, assertions), trace back through the graph to find which inputs matter, generate the input combinations that exercise all meaningful states.
+
+**How it works:**
+
+**Step 1: Identify what matters.** Read the graph to find:
+- Derived values (combs/memos): `display = loading ? '...' : data`
+- Assertions: `assertAlways(() => !(loading && error))`
+- These are the "outputs" — the things whose behavior we want to verify.
+
+**Step 2: Trace backwards to find inputs.** For each output, walk the graph edges backwards:
+- `display` depends on `loading` and `data` → these are the inputs that matter for `display`
+- The assertion `!(loading && error)` depends on `loading` and `error` → these are the inputs that matter for this assertion
+- Keep tracing: if `loading` is itself derived from other signals, trace further back until you hit root signals (zero incoming edges)
+
+**Step 3: Determine meaningful input states from the graph structure.**
+- `display = loading ? '...' : data` has a ternary on `loading` → loading has 2 meaningful states (true/false). When `loading=false`, `data` matters — try its declared states or fuzz.
+- `assertAlways(() => !(loading && error))` → the explorer specifically tries `loading=true, error=truthy` to see if the assertion holds. This is adversarial — it's trying to BREAK the assertion.
+- `canSubmit = !loading && validated && !submitted` → 3 boolean inputs → 8 combinations. Try all 8.
+- For combs with comparisons (`score > threshold`) → the explorer tries values on both sides of the boundary (threshold-1, threshold, threshold+1).
+
+**Step 4: Generate and drive.** For each meaningful input combination:
+- Set the root signals to those values
+- Let the graph settle (all derived values recompute)
+- Check all assertions
+- Record coverage (which signal states were reached, which transitions fired)
+
+**Step 5: Handle async boundaries.** When the explorer encounters a pending `eventually` assertion:
+- The `eventually` tells the explorer: "there's an async boundary here — I need to drive a resolution"
+- The graph tells the explorer which signals are downstream of the pending assertion
+- The explorer drives those signals through their states to simulate various resolutions (success, error, timeout)
+- The assertions + invariants constrain which combinations are valid
+
+**Step 6: Coverage-driven iteration.** After the initial backward-solved pass:
+- Check coverage: which signal states were never reached? Which transitions never fired?
+- For uncovered states: trace backwards from the uncovered state to find which input combinations would reach it
+- Drive those combinations
+- Repeat until coverage target met or budget exhausted
+
+**The user's discipline scales the tool's intelligence:**
+
+| User declares | Explorer does |
+|---|---|
+| Nothing (just tracked signals) | Fuzz root signals with type-appropriate values. Booleans get true/false. Numbers get 0, 1, -1, boundary values. Report what happened. |
+| State spaces (`{ states: ['idle', 'loading', 'error'] }`) | Targeted exploration of all declared states. Coverage reports which were reached. |
+| Assertions (`assertAlways`, `assertTemporal`) | Adversarial exploration — try to break assertions. Backward cone-of-influence from each assertion to find which inputs matter. |
+| State spaces + assertions | Full backward graph solving. Combinatorial exploration of input states that exercise all derived value branches. Temporal chain navigation. Complete state space coverage. |
+
+The user is never blocked by "you didn't declare enough." They just get less precise results. We are not in the business of solving the oracle problem — that's the user's job via assertions. We provide the machinery to explore their declared state space and check their declared properties.
+
+**What this replaces:**
+- Hand-written Playwright E2E scripts → temporal assertions + exploration
+- Hand-written Vitest component tests → auto-derived from backward graph solving
+- Manual test case enumeration → combinatorial state space exploration
+- "Did I test enough?" → quantified reactive coverage metrics (toggle, FSM, cross)
+
+**What this does NOT replace:**
+- Visual regression testing (Chromatic/Percy) — this tests behavior, not appearance
+- API contract testing — this tests the UI layer only
+- Performance testing — this tests correctness, not speed
 
 **Source to extract from Comb:**
-- `src/runtime/autotest.ts` — `runAutoTest()` function (188 lines)
+- `src/runtime/autotest.ts` — `runAutoTest()` (188 lines, forward exploration — needs to be extended with backward solving)
+- `src/runtime/coverage.ts` — coverage collection infrastructure
+- `src/runtime/circuit.ts` — graph traversal (upstream/downstream queries)
 
 **What needs to be built:**
-- Combinatorial exploration (current implementation is single-variable only)
-- Integration with Vitest/Playwright
-- Property inference from TypeScript types (a signal typed `boolean` has states `[true, false]`)
-- Fast-check integration for constrained random generation targeting uncovered states
+- Backward cone-of-influence analysis (trace from outputs/assertions to inputs)
+- Branch-aware input generation (read ternaries/comparisons in comb expressions to determine meaningful input states)
+- Combinatorial input driver (not single-variable — full combinations for small input sets, coverage-steered sampling for large ones)
+- Assertion adversarial mode (specifically try to break each assertion)
+- Eventually-resolution driver (when `eventually` assertion is pending, drive downstream signals)
+- Vitest integration: `explore()` function that returns violations + coverage
+- Shrinking: when a violation is found, minimize the input sequence (fast-check's shrinking algorithm)
 
-**This is the most experimental package.** Ship last, iterate based on feedback.
+**Integration with interaction-level testing:**
+
+Signal-level exploration (drive signals directly) is the primary mode — headless, fast, finds logic bugs in the reactive graph.
+
+Interaction-level exploration (click buttons, type text) is the secondary mode for integration testing:
+- The graph knows which signals are roots (external inputs)
+- The user can optionally annotate how to trigger a root: `useTrackedState(false, 'submitted', { trigger: { element: 'button[type=submit]', action: 'click' } })`
+- Or the explorer discovers it: drive a random interaction, observe which signals change, build the mapping
+- Once the mapping exists, the explorer can drive interactions instead of raw signal writes
+- This runs in Vitest browser mode or Playwright
+
+Both modes compose: interaction-level finds the interaction→signal mapping, signal-level does deep combinatorial exploration of the discovered state space.
+
+**Example:**
+
+```ts
+// checkout.test.ts
+import { explore } from '@dut/test'
+import { graph } from '@dut/graph'
+
+test('checkout flow is correct', async () => {
+  render(<CheckoutForm />)
+
+  const result = explore(graph, {
+    budget: 1000,
+    // No test cases. Assertions declared in the component ARE the spec.
+    // The explorer solves the graph backwards to find which inputs matter.
+  })
+
+  // Did any assertion get violated?
+  expect(result.violations).toHaveLength(0)
+
+  // Did we exercise enough of the state space?
+  expect(result.coverage.toggle).toBeGreaterThan(0.9)
+  expect(result.coverage.transitions).toBeGreaterThan(0.8)
+  expect(result.coverage.cross).toBeGreaterThan(0.7)
+
+  // If a violation was found, result.violations[0] contains:
+  // - which assertion failed
+  // - the exact sequence of signal changes that triggered it
+  // - minimal reproducing sequence (shrunk)
+  // - the full waveform trace leading to the violation
+})
+```
 
 ### Temporal Assertions: Tick-Based, Not Time-Based
 
@@ -315,25 +547,19 @@ const display = useTrackedMemo(() => loading ? 'Loading...' : data, [loading, da
 
 Everything else — JSX, event handlers, effects — stays exactly the same. The tracked hooks are drop-in replacements.
 
-### Step 3: Add dev panel (2 minutes)
+### Step 3: Install Chrome extension (30 seconds)
+
+Install `@dut/devtools` Chrome extension from the Chrome Web Store. Add the bridge to your app:
 
 ```tsx
-import { CombPanel } from '@dut/devtools'
-
-function App() {
-  return (
-    <>
-      <MyActualApp />
-      {import.meta.env.DEV && <CombPanel position="bottom" />}
-    </>
-  )
-}
+import '@dut/devtools/bridge'  // exposes graph instance to Chrome DevTools
 ```
 
-Now in dev mode you see a panel at the bottom with:
+Open Chrome DevTools → click "DUT" tab. You see:
 - **Graph tab:** dependency graph of all tracked signals, visualized as a circuit diagram
-- **Waveform tab:** signal values over time — click around your app and watch signals change
-- **Assertions tab:** any temporal assertions and their status
+- **Waveform tab:** signal values over time — interact with your app and watch signals change in real-time
+- **Assertions tab:** any temporal assertions and their live status
+- **Coverage tab:** which signal states have been exercised
 
 ### Step 4: Add assertions instead of test cases (10 minutes)
 
@@ -367,8 +593,16 @@ test('checkout flow is correct', async () => {
   render(<CheckoutForm />)
 
   const result = explore(graph, {
-    budget: 500,
-    // No test cases. Assertions declared in the component ARE the spec.
+    budget: 1000,
+    // No test cases. No Playwright scripts. No manual scenarios.
+    // The explorer solves the graph backwards:
+    //   1. Reads assertions + derived values to find what matters
+    //   2. Traces backward through edges to find which inputs affect them
+    //   3. Generates input combinations that exercise all branches
+    //   4. Drives them, checks assertions, records coverage
+    //   5. When `eventually` assertions are pending, drives resolutions
+    //      (simulates async responses with various outcomes)
+    //   6. Tries to adversarially break each assertion
   })
 
   // Did any assertion get violated?
@@ -377,11 +611,13 @@ test('checkout flow is correct', async () => {
   // Did we exercise enough of the state space?
   expect(result.coverage.toggle).toBeGreaterThan(0.9)     // 90% toggle
   expect(result.coverage.transitions).toBeGreaterThan(0.8) // 80% FSM transitions
+  expect(result.coverage.cross).toBeGreaterThan(0.7)       // 70% cross-signal combinations
   
   // If a violation was found, result.violations[0] contains:
   // - which assertion failed
   // - the exact sequence of signal changes that triggered it
-  // - minimal reproducing sequence (shrunk by fast-check)
+  // - minimal reproducing sequence (shrunk)
+  // - full waveform trace viewable in @dut/devtools
 })
 ```
 
@@ -409,43 +645,69 @@ export default defineConfig({
 
 ## Extraction Priority
 
-### Phase 1: `@dut/graph` (most portable, most useful)
+All five packages ship. The ordering is about dependencies, not importance.
 
-The graph is the foundation everything else depends on. Ship it first.
+### Phase 1: `@dut/graph` + `@dut/react`
 
-**Minimum viable:**
-- `CircuitGraph` class extracted from circuit.ts
-- Waveform recording (timestamp + value per signal change)
-- `diffGraphs()` for comparing two snapshots
-- React adapter (`useTrackedState`, `useTrackedMemo`, `useTrackedEffect`)
-- Solid adapter
-- Vanilla adapter
+The graph is the foundation everything else reads from. React adapter is the first framework target.
 
-**Ship gate:** Works with a real React app. Can record signal changes, build graph, diff two snapshots, export as JSON.
+**What ships:**
+- `CircuitGraph` class with node registration, edge tracking, waveform recording, graph diffing, event stream
+- `useTrackedState`, `useTrackedMemo`, `useTrackedEffect`, `useEdgeEffect` hooks for React
+- `assertAlways`, `assertNever`, `assertTemporal` assertion API with tick-based semantics
+- Runtime CDC async boundary warnings
+- `dut diff` CLI for graph snapshot comparison
+- `dut snapshot` CLI for capturing graph from a running app
+- Vanilla JS adapter (direct `graph.registerNode` API)
 
-### Phase 2: `@dut/devtools` (most visual, most impressive)
+**Ship gate:** A real React component (e.g., a checkout form with 5-10 tracked signals, 3 assertions) builds a complete dependency graph, records waveform data, detects an async boundary warning, and the CLI diffs two graph snapshots correctly.
 
-The waveform viewer is the feature that makes people say "I want that."
+### Phase 2: `@dut/devtools`
 
-**Minimum viable:**
-- Embeddable panel (not Chrome extension — lower friction)
-- Waveform viewer with zoom/pan/markers
-- Graph visualizer
-- Reads from `@dut/graph` instance
+The debugging UI. Chrome DevTools panel + pop-out window.
 
-**Ship gate:** Embed in a Storybook story. See signals over time. Place markers. Measure delta between two events.
+**What ships:**
+- Chrome extension with "DUT" tab in DevTools
+- Waveform viewer with zoom/pan/markers/compound search/cross-signal correlation/keyboard shortcuts
+- Circuit graph visualizer with live values and cone-of-influence highlighting
+- Assertion monitor with live status and violation details
+- Bridge script for app ↔ extension communication
 
-### Phase 3: `@dut/coverage` (most novel, hardest to get right)
+**Ship gate:** Open Chrome DevTools on a React app using @dut/react. See the dependency graph. See signals changing in the waveform as you interact with the app. Place markers. Search for "loading rises AND error != null". Click a violated assertion and jump to that point in the waveform.
 
-Toggle and FSM coverage are genuinely new metrics. But they need to be wired end-to-end (collect → report → CI) to be useful.
+### Phase 3: `@dut/coverage`
 
-**Minimum viable:**
-- Toggle coverage for boolean signals
-- FSM transition coverage for enum signals
-- JSON report compatible with Vitest coverage reporters
-- Threshold/pass-fail for CI
+Reactive state coverage metrics — the thing no other tool provides.
 
-**Ship gate:** Run a Vitest test suite, get a reactive coverage report alongside Istanbul's line coverage. See "signal `isLoading` was never set to false during tests."
+**What ships:**
+- Toggle coverage (boolean signals: was it both true and false?)
+- FSM transition coverage (enum signals: which state→state transitions were exercised?)
+- Cross coverage (signal combinations: which joint states were observed?)
+- Assertion coverage (which assertions were actually triggered?)
+- JSON/HTML reporter for CI
+- Vitest integration (coverage plugin that runs alongside Istanbul)
+- Threshold/pass-fail configuration
+- Coverage merging across test runs
+- Coverage overlay in devtools (waveform heatmap, graph node dimming)
+
+**Ship gate:** Run a Vitest suite against a component with 8 tracked signals. Get a reactive coverage report: "toggle: 87% (isError was never true), transitions: 60% (4 of 10 phase transitions never fired), cross: 45% (loading=true + error=truthy never observed)". CI fails if coverage drops below configured threshold.
+
+### Phase 4: `@dut/test`
+
+The zero-test-case verification engine. Backward graph solving + exploration + assertion checking.
+
+**What ships:**
+- Backward cone-of-influence analysis (trace from outputs/assertions to inputs)
+- Branch-aware input generation (read comb expressions to determine meaningful input states)
+- Combinatorial input driver with coverage-steered sampling
+- Adversarial assertion testing (specifically try to break each assertion)
+- Eventually-resolution driver (drive async boundaries when `eventually` assertions are pending)
+- Violation shrinking (minimal reproducing input sequence)
+- Vitest integration: `explore()` function
+- Optional interaction-level exploration (annotated triggers or random DOM interaction via Playwright)
+- Full waveform trace attached to each violation report
+
+**Ship gate:** `explore(graph, { budget: 1000 })` against a checkout form component with 8 tracked signals and 5 assertions. Zero hand-written test cases. The explorer finds a real bug (e.g., double-submit race condition), produces a minimal reproducing sequence, reports 85%+ reactive coverage, and the full exploration completes in under 10 seconds.
 
 ### Phase 4: `@dut/test` (highest leverage — zero-test-case UI verification)
 
