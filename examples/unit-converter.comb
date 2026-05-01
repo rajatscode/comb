@@ -1,0 +1,104 @@
+module UnitConverter {
+  cell celsius: float = 25.0;
+  cell fahrenheit: float = 77.0;
+  cell kelvin: float = 298.15;
+  cell rankine: float = 536.67;
+
+  constraint celToFah {
+    (celsius) => {
+      fahrenheit <= round(celsius * 9.0 / 5.0 + 32.0);
+    }
+  }
+
+  constraint celToKel {
+    (celsius) => {
+      kelvin <= round(celsius + 273.15);
+    }
+  }
+
+  constraint fahToCel {
+    (fahrenheit) => {
+      celsius <= round((fahrenheit - 32.0) * 5.0 / 9.0);
+    }
+  }
+
+  constraint kelToCel {
+    (kelvin) => {
+      celsius <= round(kelvin - 273.15);
+    }
+  }
+
+  constraint fahToRan {
+    (fahrenheit) => {
+      rankine <= round(fahrenheit + 459.67);
+    }
+  }
+
+  constraint kelToRan {
+    (kelvin) => {
+      rankine <= round(kelvin * 9.0 / 5.0);
+    }
+  }
+
+  constraint ranToFah {
+    (rankine) => {
+      fahrenheit <= round(rankine - 459.67);
+    }
+  }
+
+  constraint ranToKel {
+    (rankine) => {
+      kelvin <= round(rankine * 5.0 / 9.0);
+    }
+  }
+
+  comb isFreezingC = celsius <= 0.0;
+  comb isFreezingF = fahrenheit <= 32.0;
+  comb ranViaFah = round(fahrenheit + 459.67);
+  comb ranViaKel = round(kelvin * 9.0 / 5.0);
+  comb ranConverged = ranViaFah == ranViaKel;
+  comb tempColor = "hsl(" + str(round(240.0 - celsius * 2.4)) + ", 80%, 50%)";
+
+  view {
+    <div class="unit-converter">
+      <h2>Temperature Unit Converter</h2>
+      <p class="converter-subtitle">Diamond constraint topology: C-F-R and C-K-R must converge</p>
+
+      <div class="converter-grid">
+        <div class="converter-cell">
+          <label>Celsius</label>
+          <input type="range" min="-100" max="200" step="1" @bind=celsius />
+          <span class="converter-value">{celsius}</span>
+        </div>
+        <div class="converter-cell">
+          <label>Fahrenheit</label>
+          <input type="range" min="-148" max="392" step="1" @bind=fahrenheit />
+          <span class="converter-value">{fahrenheit}</span>
+        </div>
+        <div class="converter-cell">
+          <label>Kelvin</label>
+          <input type="range" min="173" max="473" step="1" @bind=kelvin />
+          <span class="converter-value">{kelvin}</span>
+        </div>
+        <div class="converter-cell">
+          <label>Rankine</label>
+          <input type="range" min="312" max="852" step="1" @bind=rankine />
+          <span class="converter-value">{rankine}</span>
+        </div>
+      </div>
+
+      <div class="converter-status">
+        <div class="temp-preview" style={"background:" + tempColor}></div>
+        <div class="convergence-info">
+          <p>Rankine via F: {ranViaFah}</p>
+          <p>Rankine via K: {ranViaKel}</p>
+          <p class="convergence-result">{ranConverged ? "CONVERGED" : "DIVERGED"}</p>
+        </div>
+        <div class="freezing-info">
+          <p>{isFreezingC ? "FREEZING (C)" : "Above freezing"}</p>
+          <p>{isFreezingF ? "FREEZING (F)" : "Above freezing"}</p>
+        </div>
+      </div>
+    </div>
+  }
+}

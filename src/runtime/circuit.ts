@@ -25,12 +25,12 @@ export interface GraphEdge {
 }
 
 export interface GraphEvent {
-  type: 'signal-change' | 'comb-recompute' | 'effect-run' | 'assertion-failed';
+  type: 'signal-change' | 'comb-recompute' | 'effect-run' | 'assertion-failed' | 'assertion-armed' | 'assertion-passed';
   nodeId: string;
   timestamp: number;
   oldValue?: any;
   newValue?: any;
-  assertInfo?: { expr: string; module: string; values: Record<string, any> };
+  assertInfo?: { expr: string; module: string; values: Record<string, any>; deadline?: number };
 }
 
 export interface VerifyIssue {
@@ -53,10 +53,14 @@ export class CircuitGraph {
   private nodes = new Map<string, GraphNode>();
   private edges: GraphEdge[] = [];
   private events: GraphEvent[] = [];
+  private eventWriteIdx = 0;
+  private eventsFull = false;
   private listeners = new Set<(event: GraphEvent) => void>();
   private recording = false;
   private waveforms = new Map<string, Array<{ t: number; v: any }>>();
   private staticGraphs = new Map<string, StaticGraph>(); // module → static graph
+  private cachedTimestamp = 0;
+  private timestampFrame = -1;
 
   loadStaticGraph(graph: StaticGraph): void {
     // Detect module name from node IDs or default
@@ -179,24 +183,74 @@ export class CircuitGraph {
     });
   }
 
+  private now(): number {
+    // Cache timestamp per microtask frame — avoids repeated system calls during delta cycles
+    const frame = this.pendingListenerEvents.length;
+    if (frame !== this.timestampFrame) {
+      this.cachedTimestamp = performance.now();
+      this.timestampFrame = frame;
+    }
+    return this.cachedTimestamp;
+  }
+
+  private pushEvent(event: GraphEvent): void {
+    if (this.eventsFull) {
+      this.events[this.eventWriteIdx] = event;
+    } else {
+      this.events.push(event);
+    }
+    this.eventWriteIdx = (this.eventWriteIdx + 1) % EVENT_BUFFER_SIZE;
+    if (!this.eventsFull && this.events.length >= EVENT_BUFFER_SIZE) {
+      this.eventsFull = true;
+    }
+  }
+
   notifyChange(nodeId: string, oldValue: any, newValue: any): void {
     const node = this.nodes.get(nodeId);
     if (!node) return;
     const eventType: GraphEvent['type'] =
       node.type === 'signal' || node.type === 'cell' ? 'signal-change' :
       node.type === 'comb' ? 'comb-recompute' : 'effect-run';
-    const event: GraphEvent = { type: eventType, nodeId, timestamp: Date.now(), oldValue, newValue };
-    if (this.events.length >= EVENT_BUFFER_SIZE) this.events.shift();
-    this.events.push(event);
+    const event: GraphEvent = { type: eventType, nodeId, timestamp: this.now(), oldValue, newValue };
+    this.pushEvent(event);
     if (this.recording) this.recordWaveform(nodeId, newValue);
     this.pendingListenerEvents.push(event);
     this.scheduleListenerFlush();
   }
 
   notifyEffect(nodeId: string): void {
-    const event: GraphEvent = { type: 'effect-run', nodeId, timestamp: Date.now() };
-    if (this.events.length >= EVENT_BUFFER_SIZE) this.events.shift();
-    this.events.push(event);
+    const event: GraphEvent = { type: 'effect-run', nodeId, timestamp: this.now() };
+    this.pushEvent(event);
+    this.pendingListenerEvents.push(event);
+    this.scheduleListenerFlush();
+  }
+
+  assertionArmed(assertId: string, info: { expr: string; module: string; deadline?: number }): void {
+    const event: GraphEvent = {
+      type: 'assertion-armed',
+      nodeId: assertId,
+      timestamp: this.now(),
+      assertInfo: { ...info, values: {}, deadline: info.deadline },
+    };
+    this.pushEvent(event);
+    if (this.recording) {
+      this.recordWaveform(assertId, { status: 'armed', start: event.timestamp, end: info.deadline });
+    }
+    this.pendingListenerEvents.push(event);
+    this.scheduleListenerFlush();
+  }
+
+  assertionPassed(assertId: string, info: { expr: string; module: string }): void {
+    const event: GraphEvent = {
+      type: 'assertion-passed',
+      nodeId: assertId,
+      timestamp: this.now(),
+      assertInfo: { ...info, values: {} },
+    };
+    this.pushEvent(event);
+    if (this.recording) {
+      this.recordWaveform(assertId, { status: 'passed', start: event.timestamp, end: event.timestamp });
+    }
     this.pendingListenerEvents.push(event);
     this.scheduleListenerFlush();
   }
@@ -205,11 +259,13 @@ export class CircuitGraph {
     const event: GraphEvent = {
       type: 'assertion-failed',
       nodeId: assertId,
-      timestamp: Date.now(),
+      timestamp: this.now(),
       assertInfo: info,
     };
-    if (this.events.length >= EVENT_BUFFER_SIZE) this.events.shift();
-    this.events.push(event);
+    this.pushEvent(event);
+    if (this.recording) {
+      this.recordWaveform(assertId, { status: 'failed', start: event.timestamp, end: event.timestamp });
+    }
     for (const listener of this.listeners) listener(event);
     console.warn(`[Comb] Assertion failed: ${info.expr}`, info.values);
   }
@@ -228,7 +284,15 @@ export class CircuitGraph {
   }
 
   getRecentEvents(n = 50): GraphEvent[] {
-    return this.events.slice(-n);
+    if (!this.eventsFull) return this.events.slice(-n);
+    // Ring buffer: read from writeIdx backwards
+    const result: GraphEvent[] = [];
+    const total = Math.min(n, EVENT_BUFFER_SIZE);
+    for (let i = 0; i < total; i++) {
+      const idx = (this.eventWriteIdx - 1 - i + EVENT_BUFFER_SIZE) % EVENT_BUFFER_SIZE;
+      result.unshift(this.events[idx]);
+    }
+    return result;
   }
 
   snapshot(): object {
@@ -336,6 +400,18 @@ export class CircuitGraph {
   startRecording(): void {
     this.recording = true;
     this.waveforms.clear();
+    // Seed with current values so unchanged signals show flat lines
+    const t = performance.now();
+    for (const [id, node] of this.nodes) {
+      if (node.getValue && (node.type === 'signal' || node.type === 'cell' || node.type === 'comb')) {
+        try {
+          const v = node.getValue();
+          if (v !== undefined) {
+            this.waveforms.set(id, [{ t, v }]);
+          }
+        } catch (_) { /* getValue may not be ready yet */ }
+      }
+    }
   }
 
   stopRecording(): void {
@@ -349,18 +425,22 @@ export class CircuitGraph {
   private recordWaveform(nodeId: string, value: any): void {
     let buf = this.waveforms.get(nodeId);
     if (!buf) { buf = []; this.waveforms.set(nodeId, buf); }
-    buf.push({ t: Date.now(), v: value });
-    if (buf.length > 2000) buf.splice(0, buf.length - 2000);
+    buf.push({ t: this.now(), v: value });
+    if (buf.length > 2000) buf.shift();
   }
 
   reset(): void {
     this.nodes.clear();
     this.edges = [];
     this.events = [];
+    this.eventWriteIdx = 0;
+    this.eventsFull = false;
     this.listeners.clear();
     this.recording = false;
     this.waveforms.clear();
     this.staticGraphs.clear();
+    this.pendingListenerEvents = [];
+    this.listenerFlushScheduled = false;
   }
 }
 

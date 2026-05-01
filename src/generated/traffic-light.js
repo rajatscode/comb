@@ -5,27 +5,49 @@ export const __graph = {
     {
       "id": "phase",
       "name": "phase",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "Phase",
+      "states": [
+        "Phase.Red",
+        "Phase.Green",
+        "Phase.Yellow"
+      ]
     },
     {
       "id": "walk_requested",
       "name": "walk_requested",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "bool",
+      "states": [
+        "true",
+        "false"
+      ]
     },
     {
       "id": "emergency",
       "name": "emergency",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "bool",
+      "states": [
+        "true",
+        "false"
+      ]
     },
     {
       "id": "color",
       "name": "color",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "string"
     },
     {
       "id": "can_walk",
       "name": "can_walk",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "bool",
+      "states": [
+        "true",
+        "false"
+      ]
     },
     {
       "id": "event:next_phase",
@@ -177,7 +199,14 @@ export const __graph = {
       "to": "view:emergency",
       "type": "data"
     }
-  ]
+  ],
+  "enums": {
+    "Phase": [
+      "Red",
+      "Green",
+      "Yellow"
+    ]
+  }
 };
 
 export function TrafficLight(root) {

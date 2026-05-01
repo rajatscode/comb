@@ -1,0 +1,46 @@
+module Dashboard {
+  signal cpu = 0.0;
+  signal memory = 0.0;
+  signal disk = 0.0;
+  signal network = 0.0;
+
+  signal cpuThreshold = 80.0;
+  signal memThreshold = 90.0;
+
+  signal cpuUsage = 0.0;
+  comb memUsage = round(memory);
+
+  comb cpuAlert = cpuUsage > cpuThreshold;
+  comb memAlert = memUsage > memThreshold;
+
+  comb systemStatus = memAlert ? "ALERT" : "OK";
+
+  comb avgLoad = (cpu + memory + disk + network) / 4.0;
+  comb loadLevel = avgLoad > 75.0 ? "high" : avgLoad > 50.0 ? "medium" : "low";
+
+  signal lastEvent = "none";
+
+  always @(posedge cpuAlert) {
+    lastEvent <= "CPU alert triggered";
+  }
+
+  always @(posedge memAlert) {
+    lastEvent <= "Memory alert triggered";
+  }
+
+  view {
+    <div class="dashboard">
+      <h2>System Dashboard</h2>
+      <p class="status">{"Status: " + systemStatus}</p>
+      <p>{"CPU: " + str(cpuUsage) + "% | Memory: " + str(memUsage) + "%"}</p>
+      <p>{"Avg Load: " + str(round(avgLoad)) + " (" + loadLevel + ")"}</p>
+      <p>{"Last Event: " + lastEvent}</p>
+      <div class="controls">
+        <label>{"CPU: " + str(round(cpu)) + "%"} <input type="range" min="0" max="100" @bind=cpu /></label>
+        <label>{"Memory: " + str(round(memory)) + "%"} <input type="range" min="0" max="100" @bind=memory /></label>
+        <label>{"Disk: " + str(round(disk)) + "%"} <input type="range" min="0" max="100" @bind=disk /></label>
+        <label>{"Network: " + str(round(network)) + "%"} <input type="range" min="0" max="100" @bind=network /></label>
+      </div>
+    </div>
+  }
+}

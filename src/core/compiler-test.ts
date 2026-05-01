@@ -805,7 +805,7 @@ module TemporalCodegen {
   assert(js.includes('createTemporalAssert'), 'Should emit createTemporalAssert');
   assert(js.includes("'eventually'"), 'Should include eventually operator');
   assert(js.includes('duration: 3000'), 'Should include duration');
-  assert(js.includes("'temporal:0'"), 'Should name assertion temporal:0');
+  assert(js.includes("posedge(") && js.includes("eventually("), 'Should generate descriptive temporal assertion name');
 });
 
 // --- Test 39: Negedge always block ---
@@ -1593,6 +1593,78 @@ test('counter.comb — source map from file compilation', () => {
   assert(map.version === 3, 'Source map version 3');
   assert(map.sources[0] === 'counter.comb', 'Source is counter.comb');
   assert(map.mappings.length > 0, 'Non-empty mappings');
+});
+
+// =============================================
+// Feature: CDC Async Boundary Analysis
+// =============================================
+
+// --- Test: CDC detects unsynchronized async write ---
+test('CDC: detects unsynchronized async write', () => {
+  const result = compile(`module T {
+    signal data: string = "";
+    comb display = data;
+    always @(load) {
+      async { data <= "loaded"; }
+    }
+    view { <div>{display}</div> }
+  }`);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+  assert(result.warnings.some(w => w.message.includes('CDC') && w.message.includes('data') && w.message.includes('display')), `should warn about async boundary, got: ${result.warnings.map(w => w.message)}`);
+});
+
+// --- Test: CDC detects race condition on same signal ---
+test('CDC: detects race condition on same signal', () => {
+  const result = compile(`module T {
+    signal result: string = "";
+    always @(search) {
+      async { result <= "a"; }
+    }
+    always @(autoComplete) {
+      async { result <= "b"; }
+    }
+  }`);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+  assert(result.warnings.some(w => w.message.includes('CDC') && w.message.includes('result') && w.message.includes('race')), `should warn about race condition, got: ${result.warnings.map(w => w.message)}`);
+});
+
+// --- Test: CDC detects missing catch in async block ---
+test('CDC: detects missing catch in async block', () => {
+  const result = compile(`module T {
+    signal data: string = "";
+    always @(load) {
+      async { data <= "loaded"; }
+    }
+  }`);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+  assert(result.warnings.some(w => w.message.includes('CDC') && w.message.includes('catch')), `should warn about missing catch, got: ${result.warnings.map(w => w.message)}`);
+});
+
+// --- Test: CDC no warning when async block has catch ---
+test('CDC: no warning when async block has catch', () => {
+  const result = compile(`module T {
+    signal data: string = "";
+    signal error: string = "";
+    always @(load) {
+      async {
+        data <= "loaded";
+      } catch {
+        error <= "failed";
+      }
+    }
+  }`);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+  assert(!result.warnings.some(w => w.message.includes('CDC') && w.message.includes('catch')), `should NOT warn about missing catch when catch exists, got: ${result.warnings.map(w => w.message)}`);
+});
+
+// --- Test: CDC async-unsafe.comb compiles with warnings ---
+test('async-unsafe.comb — compiles with CDC warnings', () => {
+  const source = fs.readFileSync(path.resolve('examples/async-unsafe.comb'), 'utf-8');
+  const result = compile(source);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+  assert(result.js !== undefined, 'Expected JS output');
+  const cdcWarnings = result.warnings.filter(w => w.message.includes('CDC'));
+  assert(cdcWarnings.length >= 3, `Expected at least 3 CDC warnings, got ${cdcWarnings.length}: ${cdcWarnings.map(w => w.message)}`);
 });
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

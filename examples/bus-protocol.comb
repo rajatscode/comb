@@ -1,0 +1,167 @@
+module BusProtocol {
+  // === Clock ===
+  signal clk: bool = false;
+  signal cycle: int = 0;
+
+  // === Bus signals ===
+  signal bus_request: bool = false;
+  signal bus_grant: bool = false;
+  signal bus_data: int = 0;
+  signal bus_valid: bool = false;
+  signal bus_ack: bool = false;
+  signal bus_busy: bool = false;
+
+  // === Master FSM state ===
+  enum MasterState { Idle, Requesting, Transmitting, WaitAck, Done }
+  signal master_state: MasterState = MasterState.Idle;
+  signal master_data_idx: int = 0;
+  signal tx_count: int = 0;
+
+  // === Slave FSM state ===
+  enum SlaveState { Idle, Receiving, Processing, Acking }
+  signal slave_state: SlaveState = SlaveState.Idle;
+  signal slave_buffer: int = 0;
+  signal rx_count: int = 0;
+
+  // === Arbiter state ===
+  signal arbiter_grant_delay: int = 0;
+
+  // === Derived combs ===
+  comb masterStateLabel = master_state == MasterState.Idle ? "IDLE" :
+    master_state == MasterState.Requesting ? "REQ" :
+    master_state == MasterState.Transmitting ? "TX" :
+    master_state == MasterState.WaitAck ? "WAIT" : "DONE";
+
+  comb slaveStateLabel = slave_state == SlaveState.Idle ? "IDLE" :
+    slave_state == SlaveState.Receiving ? "RX" :
+    slave_state == SlaveState.Processing ? "PROC" : "ACK";
+
+  comb transferActive = bus_busy;
+  comb protocolHealthy = !(bus_request && bus_ack);
+
+  // === Master: drives bus_request, bus_data, bus_valid on posedge clk ===
+  always @(posedge clk) {
+    // All reads see OLD values — delta cycle semantics
+    if (master_state == MasterState.Idle) {
+      // Start a transfer every 8 cycles
+      if (cycle % 8 == 0 && cycle > 0) {
+        master_state <= MasterState.Requesting;
+        bus_request <= true;
+        master_data_idx <= 0;
+      }
+    }
+    if (master_state == MasterState.Requesting) {
+      if (bus_grant) {
+        master_state <= MasterState.Transmitting;
+        bus_request <= false;
+        bus_busy <= true;
+      }
+    }
+    if (master_state == MasterState.Transmitting) {
+      bus_data <= (tx_count + 1) * 100 + master_data_idx;
+      bus_valid <= true;
+      master_data_idx <= master_data_idx + 1;
+      if (master_data_idx >= 3) {
+        master_state <= MasterState.WaitAck;
+        bus_valid <= false;
+      }
+    }
+    if (master_state == MasterState.WaitAck) {
+      if (bus_ack) {
+        master_state <= MasterState.Done;
+        bus_busy <= false;
+        tx_count <= tx_count + 1;
+      }
+    }
+    if (master_state == MasterState.Done) {
+      master_state <= MasterState.Idle;
+    }
+  }
+
+  // === Arbiter: grants bus access with 1-cycle delay ===
+  always @(posedge clk) {
+    if (bus_request && !bus_grant) {
+      arbiter_grant_delay <= arbiter_grant_delay + 1;
+      if (arbiter_grant_delay >= 1) {
+        bus_grant <= true;
+        arbiter_grant_delay <= 0;
+      }
+    }
+    if (!bus_request && bus_grant && !bus_busy) {
+      bus_grant <= false;
+    }
+  }
+
+  // === Slave: receives data, processes, sends ack on posedge clk ===
+  always @(posedge clk) {
+    if (slave_state == SlaveState.Idle) {
+      if (bus_valid) {
+        slave_state <= SlaveState.Receiving;
+        slave_buffer <= bus_data;
+      }
+    }
+    if (slave_state == SlaveState.Receiving) {
+      slave_buffer <= bus_data;
+      if (!bus_valid) {
+        slave_state <= SlaveState.Processing;
+      }
+    }
+    if (slave_state == SlaveState.Processing) {
+      slave_state <= SlaveState.Acking;
+      bus_ack <= true;
+      rx_count <= rx_count + 1;
+    }
+    if (slave_state == SlaveState.Acking) {
+      bus_ack <= false;
+      slave_state <= SlaveState.Idle;
+    }
+  }
+
+  // === Clock driver: increments cycle ===
+  always @(posedge clk) {
+    cycle <= cycle + 1;
+  }
+
+  // === Assertions: protocol invariants ===
+  assert always (!(bus_request && bus_ack));
+
+  // Temporal: after request rises, grant must follow within 5 cycles
+  assert temporal @(posedge bus_request) eventually(bus_grant) within 1500;
+
+  // Temporal: after valid data appears, ack must follow within 20 cycles
+  assert temporal @(posedge bus_valid) eventually(bus_ack) within 5000;
+
+  // Temporal: bus_grant must hold for at least 100ms after bus_busy rises
+  // (bus_grant stays true for the entire transfer; 100ms is well within any tick rate)
+  assert temporal @(posedge bus_busy) always(bus_grant) within 100;
+
+  // === View ===
+  view {
+    <div class="bus-protocol">
+      <h2>SPI Bus Protocol Simulator</h2>
+      <p class="bus-subtitle">Clock-driven FSMs with delta cycle synchronization</p>
+
+      <div class="bus-status-row">
+        <div class="bus-device">
+          <h3>Master</h3>
+          <span class="bus-state">{masterStateLabel}</span>
+          <p>TX count: {tx_count}</p>
+        </div>
+        <div class="bus-signals">
+          <h3>Bus</h3>
+          <p>REQ: {bus_request ? "1" : "0"} | GNT: {bus_grant ? "1" : "0"}</p>
+          <p>DATA: {bus_data} | VALID: {bus_valid ? "1" : "0"}</p>
+          <p>ACK: {bus_ack ? "1" : "0"} | BUSY: {bus_busy ? "1" : "0"}</p>
+        </div>
+        <div class="bus-device">
+          <h3>Slave</h3>
+          <span class="bus-state">{slaveStateLabel}</span>
+          <p>RX count: {rx_count}</p>
+          <p>Buffer: {slave_buffer}</p>
+        </div>
+      </div>
+
+      <p>Cycle: {cycle} | Transfer: {transferActive ? "ACTIVE" : "idle"} | Health: {protocolHealthy ? "OK" : "VIOLATION"}</p>
+    </div>
+  }
+}

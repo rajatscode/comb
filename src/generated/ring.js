@@ -1,46 +1,58 @@
-import { createSignal, createComb, createEffect, batch, createScope, circuit, X, createEdgeEffect } from '../runtime/index.js';
+import { createSignal, createComb, createEffect, batch, createScope, circuit, X, createEdgeEffect, deferredBatch } from '../runtime/index.js';
 
 export const __graph = {
   "nodes": [
     {
       "id": "clk",
       "name": "clk",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "bool",
+      "states": [
+        "true",
+        "false"
+      ]
     },
     {
       "id": "cycle",
       "name": "cycle",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int"
     },
     {
       "id": "s0",
       "name": "s0",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int"
     },
     {
       "id": "s1",
       "name": "s1",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int"
     },
     {
       "id": "s2",
       "name": "s2",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int"
     },
     {
       "id": "s3",
       "name": "s3",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int"
     },
     {
       "id": "s4",
       "name": "s4",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int"
     },
     {
       "id": "s5",
       "name": "s5",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int"
     },
     {
       "id": "posedge:clk",
@@ -346,37 +358,37 @@ export function Ring(root) {
   const [s5, setS5] = createSignal(0, { name: 's5', module: $m, type: 'int' });
 
   createEdgeEffect(() => clk(), 'posedge', () => {
-    batch(() => {
+    deferredBatch(() => {
       setS0(s5());
     });
   }, { name: 'posedge_clk', module: $m });
 
   createEdgeEffect(() => clk(), 'posedge', () => {
-    batch(() => {
+    deferredBatch(() => {
       setS1(s0());
     });
   }, { name: 'posedge_clk', module: $m });
 
   createEdgeEffect(() => clk(), 'posedge', () => {
-    batch(() => {
+    deferredBatch(() => {
       setS2(s1());
     });
   }, { name: 'posedge_clk', module: $m });
 
   createEdgeEffect(() => clk(), 'posedge', () => {
-    batch(() => {
+    deferredBatch(() => {
       setS3(s2());
     });
   }, { name: 'posedge_clk', module: $m });
 
   createEdgeEffect(() => clk(), 'posedge', () => {
-    batch(() => {
+    deferredBatch(() => {
       setS4(s3());
     });
   }, { name: 'posedge_clk', module: $m });
 
   createEdgeEffect(() => clk(), 'posedge', () => {
-    batch(() => {
+    deferredBatch(() => {
       setS5(s4());
       setCycle((cycle() + 1));
     });

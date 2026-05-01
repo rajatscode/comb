@@ -5,12 +5,14 @@ export const __graph = {
     {
       "id": "label",
       "name": "label",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "string"
     },
     {
       "id": "clicks",
       "name": "clicks",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int"
     },
     {
       "id": "event:click",
@@ -111,7 +113,8 @@ export const __graph = {
     {
       "id": "totalClicks",
       "name": "totalClicks",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int"
     },
     {
       "id": "view:totalClicks",

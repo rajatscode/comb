@@ -33,14 +33,15 @@ Pure functions, zero Node.js dependencies, runs in the browser. The `compile(sou
 
 - `lexer.ts` — Hand-written tokenizer with JSX-mode switching inside `view {}` blocks
 - `parser.ts` — Recursive descent + Pratt expression parsing. `<=` is context-sensitive (assignment in statements, comparison in expressions)
-- `verify.ts` — Symbol table, undefined ref detection, circular dep detection (combs and `always` block read/write sets), sensitivity list validation
-- `codegen.ts` — Emits readable JS targeting the runtime API
+- `verify.ts` — Symbol table, undefined ref detection, circular dep detection, sensitivity list validation, CDC async boundary analysis, bounded state space inference (guard analysis + write patterns)
+- `codegen.ts` — Emits readable JS targeting the runtime API. Edge-triggered blocks use `deferredBatch` for correct non-blocking assignment semantics. Temporal assertions get descriptive names from their trigger/property expressions.
 - `compiler.ts` — Pipeline orchestrator + graph metadata extraction
 
 ### Runtime (src/runtime/)
 
-- `signals.ts` — Push-pull reactivity: `createSignal`, `createComb`, `createEffect`, `batch`, `untrack`, `createCell`, `createPropagator`, `createChangeCounter`
-- `circuit.ts` — `CircuitGraph` class: static graph loading, runtime node registration, event recording, snapshot/diff/verify
+- `signals.ts` — Push-pull reactivity: `createSignal`, `createComb`, `createEffect`, `batch`, `deferredBatch`, `untrack`, `createCell`, `createPropagator`, `createChangeCounter`, `createTemporalAssert`
+- `circuit.ts` — `CircuitGraph` class: static graph loading, runtime node registration, event recording (ring buffer), assertion lifecycle (armed/passed/failed), snapshot/diff/verify
+- `coverage.ts` — Toggle, FSM transition, and cross coverage collection for auto-testing
 - `SimulationEngine` fast path: single-computation batches skip deferred writes, collapsing feed-forward chains
 - Re-entrancy guard: `running` flag prevents nested `runUntilQuiescent` calls
 - Verilator-style oscillation reporting: when delta cycle limit is hit, reports which signals are oscillating with recent values

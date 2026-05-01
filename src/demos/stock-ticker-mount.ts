@@ -4,7 +4,7 @@
 import { StockTicker, __graph } from '../generated/stock-ticker.js';
 import { createDemoShell } from '../demo-shell.js';
 import { renderCircuitGraph } from '../visualizer.js';
-import { renderWaveform } from '../waveform.js';
+import { renderWaveform } from '../waveform/index.js';
 import { circuit, batch } from '../runtime/index.js';
 
 const MODULE = 'StockTicker';

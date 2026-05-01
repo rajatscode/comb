@@ -5,12 +5,14 @@ export const __graph = {
     {
       "id": "value",
       "name": "value",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int"
     },
     {
       "id": "label",
       "name": "label",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "string"
     },
     {
       "id": "event:tick",
@@ -116,27 +118,32 @@ export const __graph = {
     {
       "id": "value",
       "name": "value",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int"
     },
     {
       "id": "title",
       "name": "title",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "string"
     },
     {
       "id": "doubled",
       "name": "doubled",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "int"
     },
     {
       "id": "status",
       "name": "status",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "string"
     },
     {
       "id": "assert:0",
       "name": "assert:0",
-      "type": "assert"
+      "type": "assert",
+      "expr": "doubled == value * 2"
     },
     {
       "id": "view:title",
@@ -328,7 +335,8 @@ export const __graph = {
     {
       "id": "sensorValue",
       "name": "sensorValue",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int"
     }
   ],
   "edges": []

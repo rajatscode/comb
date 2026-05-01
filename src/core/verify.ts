@@ -455,6 +455,9 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
     }
   }
 
+  // 3c. CDC-style async boundary analysis
+  analyzeAsyncBoundaries(mod, symbols, warnings);
+
   // 4. Cycle detection among combs
   const combDeps = new Map<string, string[]>();
   for (const decl of mod.body) {
@@ -496,7 +499,7 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
   }
 
   // 5. Build static graph
-  const graph = buildGraph(mod, symbols);
+  const graph = buildGraph(mod, symbols, enumDefs, typeEnv);
 
   return { graph, errors, warnings };
 }
@@ -719,27 +722,172 @@ function exprToString(expr: any): string {
   return '...';
 }
 
-function buildGraph(mod: Module, symbols: Map<string, SymbolKind>): StaticGraph {
+function buildGraph(mod: Module, symbols: Map<string, SymbolKind>, enumDefs: Map<string, string[]>, typeEnv: Map<string, CombType>): StaticGraph {
   const nodes: GraphNode[] = [];
   const edges: GraphEdge[] = [];
   let assertIdx = 0;
   let temporalIdx = 0;
 
+  // Analyze write expressions to infer bounded state spaces for int signals.
+  // Walk all always/constraint block bodies and collect RHS of assignments to each signal.
+  const signalWriteValues = new Map<string, { literals: Set<string>; hasSelfRef: boolean; hasReset: boolean }>();
+
+  // Collect guard bounds: scan for `if (signal >= N)` or `if (signal > N)` patterns
+  // that indicate the upper bound of a counter
+  const signalGuardBounds = new Map<string, number>();
+
+  function collectGuardBounds(stmts: Statement[]) {
+    for (const stmt of stmts) {
+      if (stmt.kind === 'if' && stmt.condition.kind === 'binary') {
+        const { left, right, op } = stmt.condition;
+        if (left.kind === 'identifier' && right.kind === 'literal' && typeof right.value === 'number') {
+          if (op === '>=' || op === '>') {
+            const bound = op === '>=' ? right.value : right.value + 1;
+            const existing = signalGuardBounds.get(left.name);
+            if (existing === undefined || bound < existing) {
+              signalGuardBounds.set(left.name, bound);
+            }
+          }
+        }
+        collectGuardBounds(stmt.then);
+        if (stmt.else_) collectGuardBounds(stmt.else_);
+      }
+    }
+  }
+
+  function collectWritePatterns(stmts: Statement[], scope: Set<string>) {
+    for (const stmt of stmts) {
+      if (stmt.kind === 'assign' && stmt.target.kind === 'identifier') {
+        const name = stmt.target.name;
+        if (!symbols.has(name)) continue;
+        let info = signalWriteValues.get(name);
+        if (!info) { info = { literals: new Set(), hasSelfRef: false, hasReset: false }; signalWriteValues.set(name, info); }
+        // Check if RHS is a literal
+        if (stmt.value.kind === 'literal') {
+          info.literals.add(String(stmt.value.value));
+          info.hasReset = true;
+        }
+        // Check if RHS is an enum member (Member.Variant)
+        else if (stmt.value.kind === 'member' && stmt.value.object.kind === 'identifier') {
+          info.literals.add(`${stmt.value.object.name}.${stmt.value.property}`);
+        }
+        // Check if RHS references the signal itself (self-referencing write like x <= x + 1)
+        else {
+          const refs = new Set<string>();
+          collectAllIdentifiers(stmt.value, refs);
+          if (refs.has(name)) {
+            info.hasSelfRef = true;
+          }
+        }
+      }
+      if (stmt.kind === 'if') {
+        collectWritePatterns(stmt.then, scope);
+        if (stmt.else_) collectWritePatterns(stmt.else_, scope);
+      }
+      if (stmt.kind === 'async' && 'body' in stmt) {
+        collectWritePatterns((stmt as any).body, scope);
+      }
+    }
+  }
+
+  for (const decl of mod.body) {
+    if (decl.kind === 'always') {
+      collectWritePatterns(decl.body, new Set(decl.trigger.params));
+    }
+    if (decl.kind === 'constraint') {
+      for (const clause of decl.clauses) {
+        collectWritePatterns(clause.body, new Set(clause.inputs));
+      }
+    }
+  }
+
+  // Also collect guard bounds from all always blocks
+  for (const decl of mod.body) {
+    if (decl.kind === 'always') collectGuardBounds(decl.body);
+  }
+
+  // Helper: resolve a declaration's type to a valueType string and possible states
+  function resolveNodeType(decl: { type?: any; name: string; kind: string }): { valueType?: string; states?: string[] } {
+    if ('type' in decl && decl.type) {
+      const te = decl.type as any;
+      if (te.kind === 'simple') {
+        const typeName = te.name;
+        if (typeName === 'bool') return { valueType: 'bool', states: ['true', 'false'] };
+        if (typeName === 'float' || typeName === 'string') return { valueType: typeName };
+        if (typeName === 'int') {
+          const writeInfo = signalWriteValues.get(decl.name);
+          if (writeInfo) {
+            if (writeInfo.hasSelfRef && writeInfo.hasReset) {
+              // Self-referencing with reset (e.g. counter <= counter + 1, reset to 0)
+              // Check for guard bound: if (counter >= N) → range is 0..N
+              const guardBound = signalGuardBounds.get(decl.name);
+              if (guardBound !== undefined) {
+                const resetVal = [...writeInfo.literals].map(Number).filter(n => !isNaN(n));
+                const minVal = resetVal.length > 0 ? Math.min(...resetVal) : 0;
+                if (guardBound - minVal <= 256) {
+                  const states: string[] = [];
+                  for (let v = minVal; v <= guardBound; v++) states.push(String(v));
+                  return { valueType: 'int', states };
+                }
+              }
+              // Self-ref with reset but no detectable bound — still likely bounded,
+              // include just the literals we found
+              if (writeInfo.literals.size > 0 && writeInfo.literals.size <= 32) {
+                return { valueType: 'int', states: [...writeInfo.literals] };
+              }
+            } else if (!writeInfo.hasSelfRef && writeInfo.literals.size > 0 && writeInfo.literals.size <= 32) {
+              // No self-reference, only literal writes → finite set of values
+              return { valueType: 'int', states: [...writeInfo.literals] };
+            }
+            // Self-ref without reset (pure counter like cycle++) → unbounded
+          }
+          return { valueType: 'int' };
+        }
+        if (enumDefs.has(typeName)) return { valueType: typeName, states: enumDefs.get(typeName)!.map(v => `${typeName}.${v}`) };
+      }
+      if (te.kind === 'range') {
+        if ((te.base === 'int' || te.base === undefined) && typeof te.min === 'number' && typeof te.max === 'number' && (te.max - te.min) <= 256) {
+          const states: string[] = [];
+          for (let v = te.min; v <= te.max; v++) states.push(String(v));
+          return { valueType: te.base ?? 'int', states };
+        }
+        return { valueType: te.base };
+      }
+    }
+    return {};
+  }
+
+  // Helper: infer states for a comb from its inferred type
+  function combStates(name: string): { valueType?: string; states?: string[] } {
+    const ct = typeEnv.get(name);
+    if (!ct) return {};
+    if (ct.kind === 'bool') return { valueType: 'bool', states: ['true', 'false'] };
+    if (ct.kind === 'int') return { valueType: 'int' };
+    if (ct.kind === 'float') return { valueType: 'float' };
+    if (ct.kind === 'string') return { valueType: 'string' };
+    if (ct.kind === 'enum') return { valueType: ct.name, states: (enumDefs.get(ct.name) ?? []).map(v => `${ct.name}.${v}`) };
+    return {};
+  }
+
   for (const decl of mod.body) {
     if (decl.kind === 'input') {
-      nodes.push({ id: decl.name, name: decl.name, type: 'signal' });
+      const { valueType, states } = resolveNodeType(decl);
+      nodes.push({ id: decl.name, name: decl.name, type: 'signal', valueType, states });
     }
     if (decl.kind === 'output') {
-      nodes.push({ id: decl.name, name: decl.name, type: 'signal' });
+      const { valueType, states } = resolveNodeType(decl);
+      nodes.push({ id: decl.name, name: decl.name, type: 'signal', valueType, states });
     }
     if (decl.kind === 'signal') {
-      nodes.push({ id: decl.name, name: decl.name, type: 'signal' });
+      const { valueType, states } = resolveNodeType(decl);
+      nodes.push({ id: decl.name, name: decl.name, type: 'signal', valueType, states });
     }
     if (decl.kind === 'token') {
       nodes.push({ id: decl.name, name: decl.name, type: 'signal', isToken: true });
     }
     if (decl.kind === 'comb') {
-      nodes.push({ id: decl.name, name: decl.name, type: 'comb' });
+      const { valueType, states } = combStates(decl.name);
+      nodes.push({ id: decl.name, name: decl.name, type: 'comb', valueType, states });
       for (const dep of decl.deps) {
         edges.push({ from: dep, to: decl.name, type: 'data' });
       }
@@ -784,11 +932,16 @@ function buildGraph(mod: Module, symbols: Map<string, SymbolKind>): StaticGraph 
       }
     }
     if (decl.kind === 'temporal_assert') {
-      const tempId = `temporal:${temporalIdx++}`;
-      nodes.push({ id: tempId, name: tempId, type: 'assert' });
+      const edgeLabel = decl.triggerEdge === 'negedge' ? 'negedge' : 'posedge';
+      const triggerText = exprToString(decl.trigger);
+      const propText = exprToString(decl.property);
+      const withinText = decl.duration !== undefined ? ` within ${decl.duration}ms` : '';
+      const tempId = `${edgeLabel}(${triggerText}) ${decl.operator}(${propText})${withinText}`;
+      nodes.push({ id: tempId, name: tempId, type: 'assert', expr: tempId });
       for (const dep of decl.deps) {
         edges.push({ from: dep, to: tempId, type: 'data' });
       }
+      temporalIdx++;
     }
     if (decl.kind === 'cell') {
       nodes.push({ id: decl.name, name: decl.name, type: 'cell' });
@@ -825,7 +978,13 @@ function buildGraph(mod: Module, symbols: Map<string, SymbolKind>): StaticGraph 
     }
   }
 
-  return { nodes, edges };
+  // Build enum definitions map
+  const enums: Record<string, string[]> = {};
+  for (const [name, variants] of enumDefs) {
+    enums[name] = variants;
+  }
+
+  return { nodes, edges, enums: Object.keys(enums).length > 0 ? enums : undefined };
 }
 
 function getElementDesc(vn: VNode): string {
@@ -917,6 +1076,101 @@ function collectViewEffects(
         effects.push({ id: `view:for:${name}`, deps: iterDeps, viewTarget: { element: parentDesc, binding: 'for' } });
       }
       collectViewEffects(vn.body, parentDesc, effects, symbols);
+    }
+  }
+}
+
+// CDC-style async boundary analysis
+// Detects unsynchronized async writes, race conditions, and missing error handling
+function analyzeAsyncBoundaries(
+  mod: Module,
+  symbols: Map<string, SymbolKind>,
+  warnings: CompileWarning[],
+): void {
+  // Track which signals are written by async blocks and where
+  const asyncWrites = new Map<string, { triggerName: string; line: number }[]>();
+
+  for (const decl of mod.body) {
+    if (decl.kind !== 'always') continue;
+
+    for (const stmt of decl.body) {
+      if (stmt.kind !== 'async') continue;
+
+      // Collect writes inside this async block
+      const asyncBlockWrites = new Set<string>();
+      collectWritesFromStatements(stmt.body, asyncBlockWrites, symbols);
+
+      // Also collect writes from catchBody if present
+      if (stmt.catchBody) {
+        collectWritesFromStatements(stmt.catchBody, asyncBlockWrites, symbols);
+      }
+
+      for (const sig of asyncBlockWrites) {
+        if (!asyncWrites.has(sig)) asyncWrites.set(sig, []);
+        asyncWrites.get(sig)!.push({ triggerName: decl.trigger.name, line: stmt.loc.line });
+      }
+
+      // Warning (c): Missing catch — async block writes signals but has no catch
+      if (asyncBlockWrites.size > 0 && !stmt.catchBody) {
+        const signalList = [...asyncBlockWrites].join(', ');
+        warnings.push({
+          message: `CDC: async block in always @(${decl.trigger.name}) writes signal '${signalList}' but has no catch block — signal may be left stale on error`,
+          line: stmt.loc.line,
+          column: stmt.loc.column,
+        });
+      }
+    }
+  }
+
+  // Warning (b): Race condition — two+ async blocks write the same signal
+  for (const [sig, sources] of asyncWrites) {
+    if (sources.length >= 2) {
+      const sourceDescs = sources.map(s => `always @(${s.triggerName}) line ${s.line}`).join(', ');
+      warnings.push({
+        message: `CDC: signal '${sig}' is written by multiple async blocks (${sourceDescs}) — potential race condition`,
+        line: sources[0].line,
+        column: 1,
+      });
+    }
+  }
+
+  // Warning (a): Unsynchronized async write — a comb reads an async-written signal
+  // Build set of comb deps
+  for (const decl of mod.body) {
+    if (decl.kind !== 'comb') continue;
+    for (const dep of decl.deps) {
+      if (asyncWrites.has(dep)) {
+        const sources = asyncWrites.get(dep)!;
+        const sourceDesc = sources.map(s => `always @(${s.triggerName}), async block at line ${s.line}`).join('; ');
+        warnings.push({
+          message: `CDC: signal '${dep}' is written asynchronously (${sourceDesc}) but read synchronously by comb '${decl.name}' — consider adding a loading guard`,
+          line: decl.loc.line,
+          column: decl.loc.column,
+        });
+      }
+    }
+  }
+}
+
+// Helper: collect signal write targets from a list of statements (non-recursive into nested async)
+function collectWritesFromStatements(
+  stmts: Statement[],
+  writes: Set<string>,
+  symbols: Map<string, SymbolKind>,
+): void {
+  for (const stmt of stmts) {
+    if (stmt.kind === 'assign') {
+      if (stmt.target.kind === 'identifier' && symbols.has(stmt.target.name)) {
+        writes.add(stmt.target.name);
+      }
+    }
+    if (stmt.kind === 'if') {
+      collectWritesFromStatements(stmt.then, writes, symbols);
+      if (stmt.else_) collectWritesFromStatements(stmt.else_, writes, symbols);
+    }
+    if (stmt.kind === 'try') {
+      collectWritesFromStatements(stmt.body, writes, symbols);
+      collectWritesFromStatements(stmt.catchBody, writes, symbols);
     }
   }
 }

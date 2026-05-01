@@ -1,36 +1,42 @@
-import { createSignal, createComb, createEffect, batch, createScope, circuit } from '../runtime/index.js';
+import { createSignal, createComb, createEffect, batch, createScope, circuit, X } from '../runtime/index.js';
 
 export const __graph = {
   "nodes": [
     {
       "id": "sidebarWidth",
       "name": "sidebarWidth",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int"
     },
     {
       "id": "mainWidth",
       "name": "mainWidth",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int"
     },
     {
       "id": "inspectorWidth",
       "name": "inspectorWidth",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int"
     },
     {
       "id": "sidebarStyle",
       "name": "sidebarStyle",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "string"
     },
     {
       "id": "mainStyle",
       "name": "mainStyle",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "string"
     },
     {
       "id": "inspectorStyle",
       "name": "inspectorStyle",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "string"
     },
     {
       "id": "view:attr:style",

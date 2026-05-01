@@ -1,4 +1,4 @@
-import { createSignal, createComb, createEffect, batch, createScope, circuit, X, createEdgeEffect, createEdgeCounter } from '../runtime/index.js';
+import { createSignal, createComb, createEffect, batch, createScope, circuit, X, createEdgeEffect, deferredBatch, createEdgeCounter } from '../runtime/index.js';
 
 export const __graph = {
   "nodes": [
@@ -55,27 +55,48 @@ export const __graph = {
     {
       "id": "cpuHigh",
       "name": "cpuHigh",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "bool",
+      "states": [
+        "true",
+        "false"
+      ]
     },
     {
       "id": "memHigh",
       "name": "memHigh",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "bool",
+      "states": [
+        "true",
+        "false"
+      ]
     },
     {
       "id": "diskHigh",
       "name": "diskHigh",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "bool",
+      "states": [
+        "true",
+        "false"
+      ]
     },
     {
       "id": "anyAlert",
       "name": "anyAlert",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "bool",
+      "states": [
+        "true",
+        "false"
+      ]
     },
     {
       "id": "alertCount",
       "name": "alertCount",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "float"
     },
     {
       "id": "assert:0",
@@ -570,37 +591,37 @@ export function Monitor(root) {
   }, { name: 'assert:1', module: $m });
 
   createEdgeEffect(() => cpuHigh(), 'posedge', () => {
-    batch(() => {
+    deferredBatch(() => {
       setLastAlert("CPU crossed threshold");
     });
   }, { name: 'posedge_cpuHigh', module: $m });
 
   createEdgeEffect(() => cpuHigh(), 'negedge', () => {
-    batch(() => {
+    deferredBatch(() => {
       setLastAlert("CPU recovered");
     });
   }, { name: 'negedge_cpuHigh', module: $m });
 
   createEdgeEffect(() => memHigh(), 'posedge', () => {
-    batch(() => {
+    deferredBatch(() => {
       setLastAlert("Memory exceeded threshold");
     });
   }, { name: 'posedge_memHigh', module: $m });
 
   createEdgeEffect(() => memHigh(), 'negedge', () => {
-    batch(() => {
+    deferredBatch(() => {
       setLastAlert("Memory recovered");
     });
   }, { name: 'negedge_memHigh', module: $m });
 
   createEdgeEffect(() => diskHigh(), 'posedge', () => {
-    batch(() => {
+    deferredBatch(() => {
       setLastAlert("Storage exceeded threshold");
     });
   }, { name: 'posedge_diskHigh', module: $m });
 
   createEdgeEffect(() => diskHigh(), 'negedge', () => {
-    batch(() => {
+    deferredBatch(() => {
       setLastAlert("Storage recovered");
     });
   }, { name: 'negedge_diskHigh', module: $m });

@@ -1,56 +1,70 @@
-import { createSignal, createComb, createEffect, batch, createScope, circuit } from '../runtime/index.js';
+import { createSignal, createComb, createEffect, batch, createScope, circuit, X } from '../runtime/index.js';
 
 export const __graph = {
   "nodes": [
     {
       "id": "price",
       "name": "price",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "float"
     },
     {
       "id": "threshold",
       "name": "threshold",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "float"
     },
     {
       "id": "history",
       "name": "history",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "string"
     },
     {
       "id": "historyLen",
       "name": "historyLen",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int"
     },
     {
       "id": "movingAvg",
       "name": "movingAvg",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "float"
     },
     {
       "id": "alertFired",
       "name": "alertFired",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "bool",
+      "states": [
+        "true",
+        "false"
+      ]
     },
     {
       "id": "priceDisplay",
       "name": "priceDisplay",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "string"
     },
     {
       "id": "avgDisplay",
       "name": "avgDisplay",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "string"
     },
     {
       "id": "statusClass",
       "name": "statusClass",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "string"
     },
     {
       "id": "statusText",
       "name": "statusText",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "string"
     },
     {
       "id": "view:priceDisplay",

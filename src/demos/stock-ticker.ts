@@ -3,7 +3,7 @@
 
 import { createSignal, createComb, createEffect, batch, createScope, circuit } from '../runtime/index.js';
 import { renderCircuitGraph } from '../visualizer.js';
-import { renderWaveform } from '../waveform.js';
+import { renderWaveform } from '../waveform/index.js';
 import type { StaticGraph } from '../core/graph.js';
 
 const __graph: StaticGraph = {

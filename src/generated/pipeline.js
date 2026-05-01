@@ -1,41 +1,52 @@
-import { createSignal, createComb, createEffect, batch, createScope, circuit, X, createEdgeEffect, createEdgeCounter, createChangeCounter } from '../runtime/index.js';
+import { createSignal, createComb, createEffect, batch, createScope, circuit, X, createEdgeEffect, deferredBatch, createEdgeCounter, createChangeCounter } from '../runtime/index.js';
 
 export const __graph = {
   "nodes": [
     {
       "id": "clk",
       "name": "clk",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "bool",
+      "states": [
+        "true",
+        "false"
+      ]
     },
     {
       "id": "cycle",
       "name": "cycle",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int"
     },
     {
       "id": "fetch_out",
       "name": "fetch_out",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int"
     },
     {
       "id": "decode_out",
       "name": "decode_out",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int"
     },
     {
       "id": "execute_out",
       "name": "execute_out",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int"
     },
     {
       "id": "writeback_out",
       "name": "writeback_out",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int"
     },
     {
       "id": "next_instr",
       "name": "next_instr",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int"
     },
     {
       "id": "completed",
@@ -276,26 +287,26 @@ export function Pipeline(root) {
   const completed = createComb(() => __ec_completed_0(), { name: 'completed', module: $m, deps: ["writeback_out"] });
 
   createEdgeEffect(() => clk(), 'posedge', () => {
-    batch(() => {
+    deferredBatch(() => {
       setFetch_out(next_instr());
       setNext_instr((next_instr() + 1));
     });
   }, { name: 'posedge_clk', module: $m });
 
   createEdgeEffect(() => clk(), 'posedge', () => {
-    batch(() => {
+    deferredBatch(() => {
       setDecode_out(fetch_out());
     });
   }, { name: 'posedge_clk', module: $m });
 
   createEdgeEffect(() => clk(), 'posedge', () => {
-    batch(() => {
+    deferredBatch(() => {
       setExecute_out(decode_out());
     });
   }, { name: 'posedge_clk', module: $m });
 
   createEdgeEffect(() => clk(), 'posedge', () => {
-    batch(() => {
+    deferredBatch(() => {
       setWriteback_out(execute_out());
       setCycle((cycle() + 1));
     });

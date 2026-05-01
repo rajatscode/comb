@@ -51,7 +51,8 @@ export const __graph = {
     {
       "id": "previewStyle",
       "name": "previewStyle",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "string"
     },
     {
       "id": "view:attr:style",

@@ -1,0 +1,31 @@
+module AsyncUnsafe {
+  signal data: string = "";
+  signal result: string = "";
+  signal loading: bool = false;
+
+  comb display = data;
+
+  always @(fetchData) {
+    loading <= true;
+    async {
+      data <= "fetched";
+    }
+    loading <= false;
+  }
+
+  always @(search) {
+    async {
+      result <= "search result";
+    }
+  }
+
+  always @(autoComplete) {
+    async {
+      result <= "auto result";
+    }
+  }
+
+  view {
+    <div>{display}</div>
+  }
+}

@@ -5,77 +5,112 @@ export const __graph = {
     {
       "id": "username",
       "name": "username",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "string"
     },
     {
       "id": "email",
       "name": "email",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "string"
     },
     {
       "id": "password",
       "name": "password",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "string"
     },
     {
       "id": "confirm",
       "name": "confirm",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "string"
     },
     {
       "id": "usernameValid",
       "name": "usernameValid",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "bool",
+      "states": [
+        "true",
+        "false"
+      ]
     },
     {
       "id": "emailValid",
       "name": "emailValid",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "bool",
+      "states": [
+        "true",
+        "false"
+      ]
     },
     {
       "id": "passwordLength",
       "name": "passwordLength",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "int"
     },
     {
       "id": "requiredStrength",
       "name": "requiredStrength",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "int"
     },
     {
       "id": "passwordStrong",
       "name": "passwordStrong",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "bool",
+      "states": [
+        "true",
+        "false"
+      ]
     },
     {
       "id": "passwordsMatch",
       "name": "passwordsMatch",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "bool",
+      "states": [
+        "true",
+        "false"
+      ]
     },
     {
       "id": "canSubmit",
       "name": "canSubmit",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "bool",
+      "states": [
+        "true",
+        "false"
+      ]
     },
     {
       "id": "strengthLabel",
       "name": "strengthLabel",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "string"
     },
     {
       "id": "submitLabel",
       "name": "submitLabel",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "string"
     },
     {
       "id": "assert:0",
       "name": "assert:0",
-      "type": "assert"
+      "type": "assert",
+      "expr": "len(username) >= 0"
     },
     {
       "id": "assert:1",
       "name": "assert:1",
-      "type": "assert"
+      "type": "assert",
+      "expr": "canSubmit == usernameValid && emailValid && passwordStrong && passwordsMatch"
     },
     {
       "id": "event:submit",

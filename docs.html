@@ -136,6 +136,10 @@
       <a href="#enums">Enums</a>
       <a href="#builtins">Builtins</a>
       <div class="sidebar-group">Tooling</div>
+      <a href="#edge-triggers">Edge Triggers</a>
+      <a href="#temporal">Temporal Asserts</a>
+      <a href="#cdc">CDC Analysis</a>
+      <a href="#coverage">Coverage</a>
       <a href="#graph">The __graph</a>
       <a href="#testing">Testing</a>
       <a href="#cli">CLI Tools</a>
@@ -447,6 +451,77 @@
       </table>
 
       <!-- __graph -->
+      <!-- Edge Triggers -->
+      <h2 id="edge-triggers">Edge-Triggered Blocks</h2>
+<pre class="docs-code"><span class="kw">always</span> @(<span class="fn">posedge</span> clk) {
+  <span class="cm">// Fires once when clk transitions false -&gt; true</span>
+  <span class="cm">// All reads see OLD values (delta cycle semantics)</span>
+  <span class="cm">// All writes via &lt;= are deferred to the next delta</span>
+  stage1 <span class="op">&lt;=</span> stage0;   <span class="cm">// reads OLD stage0</span>
+  stage0 <span class="op">&lt;=</span> input;    <span class="cm">// reads OLD input</span>
+}
+
+<span class="kw">always</span> @(<span class="fn">negedge</span> reset) {
+  <span class="cm">// Fires once when reset transitions true -&gt; false</span>
+  counter <span class="op">&lt;=</span> <span class="num">0</span>;
+}</pre>
+      <p>Edge-triggered blocks use <code>deferredBatch</code> internally, which sets the engine to evaluation mode during execution. All signal reads return values from BEFORE the block started, and all <code>&lt;=</code> writes are deferred until the block completes. This is the core DES (Discrete Event Simulation) semantic that makes cross-dependent FSMs work correctly without manual value snapshots.</p>
+      <p>Without delta cycles, writing <code>stage1 &lt;= stage0; stage0 &lt;= input;</code> in the same block would cause <code>stage1</code> to see the new <code>stage0</code> value. With delta cycles, both reads see old values and both writes apply atomically after the block finishes.</p>
+
+      <!-- Temporal Assertions -->
+      <h2 id="temporal">Temporal Assertions</h2>
+<pre class="docs-code"><span class="cm">// Eventually: property must become true within duration</span>
+<span class="kw">assert</span> <span class="kw">temporal</span> @(<span class="fn">posedge</span> request) <span class="fn">eventually</span>(grant) <span class="kw">within</span> <span class="num">1500</span>;
+
+<span class="cm">// Always: property must remain true for duration</span>
+<span class="kw">assert</span> <span class="kw">temporal</span> @(<span class="fn">posedge</span> busy) <span class="fn">always</span>(grant) <span class="kw">within</span> <span class="num">100</span>;
+
+<span class="cm">// Next: property must be true after next delta cycle</span>
+<span class="kw">assert</span> <span class="kw">temporal</span> @(<span class="fn">posedge</span> trigger) <span class="fn">next</span>(result) <span class="kw">within</span> <span class="num">0</span>;</pre>
+      <p>Temporal assertions arm on a trigger posedge, then monitor a property for a duration window. Three operators: <code>eventually</code> (property must become true), <code>always</code> (property must stay true), <code>next</code> (property must be true after the next delta cycle). Assertion lifecycle events (armed, passed, failed) are recorded in the waveform viewer as colored overlays &mdash; green for passed, red for failed, amber for pending.</p>
+      <p>Inspired by SystemVerilog Assertions (SVA). The <code>within</code> duration is currently wall-clock milliseconds.</p>
+
+      <!-- CDC Analysis -->
+      <h2 id="cdc">CDC Async Boundary Analysis</h2>
+      <p>The compiler performs Clock Domain Crossing (CDC) style static analysis on async blocks. Three warnings:</p>
+      <table class="docs-table">
+        <thead><tr><th>Warning</th><th>What it catches</th></tr></thead>
+        <tbody>
+          <tr><td>Unsynchronized async write</td><td>Signal written in <code>async {}</code> but read synchronously by a comb without a loading guard</td></tr>
+          <tr><td>Race condition</td><td>Two or more <code>async {}</code> blocks write the same signal</td></tr>
+          <tr><td>Missing error handling</td><td><code>async {}</code> block writes signals but has no <code>catch</code> block</td></tr>
+        </tbody>
+      </table>
+<pre class="docs-code"><span class="kw">always</span> @(fetchData) {
+  loading <span class="op">&lt;=</span> <span class="kw">true</span>;
+  <span class="kw">async</span> {
+    data <span class="op">&lt;=</span> <span class="str">"fetched"</span>;   <span class="cm">// CDC warning: no catch block</span>
+  }
+}
+<span class="kw">comb</span> display = data;        <span class="cm">// CDC warning: reads async-written signal</span></pre>
+      <p>Analogous to Spyglass CDC in hardware design. No other web framework performs systematic async boundary analysis.</p>
+
+      <!-- Coverage -->
+      <h2 id="coverage">Coverage Infrastructure</h2>
+      <p>The <code>__graph</code> artifact carries the finite state space for every bounded signal, computed at compile time by static analysis:</p>
+      <table class="docs-table">
+        <thead><tr><th>Signal Type</th><th>State Space</th><th>How Inferred</th></tr></thead>
+        <tbody>
+          <tr><td><code>signal x: bool</code></td><td>{true, false}</td><td>Type declaration</td></tr>
+          <tr><td><code>signal s: MyEnum</code></td><td>Enum variants</td><td>Enum definition</td></tr>
+          <tr><td><code>comb c = a > b</code></td><td>{true, false}</td><td>Inferred bool from comparison</td></tr>
+          <tr><td><code>signal idx: int</code> with <code>if (idx >= 3)</code> guard + reset to 0</td><td>{0, 1, 2, 3}</td><td>Guard analysis + write pattern detection</td></tr>
+          <tr><td><code>signal counter: int</code> (unbounded)</td><td>null (excluded)</td><td>Self-referencing increment with no reset</td></tr>
+        </tbody>
+      </table>
+      <p>Three coverage types at runtime:</p>
+      <ul>
+        <li><strong>Toggle coverage</strong> &mdash; has every boolean signal been both true and false?</li>
+        <li><strong>FSM transition coverage</strong> &mdash; which state transitions have been exercised?</li>
+        <li><strong>Cross coverage</strong> &mdash; which combinations of boolean signal values have been observed? Unreachable combinations are flagged after test completion.</li>
+      </ul>
+      <p>The auto-test reads the graph to discover bounded signals, drives clock inputs identified from sensitivity block edges, and stops when 100% state coverage is achieved or coverage plateaus. No random fuzzing &mdash; the graph directs the test generation.</p>
+
       <h2 id="graph">The __graph Artifact</h2>
       <p>Every <code>.comb</code> file compiles to JavaScript that exports <code>__graph</code> &mdash; a JSON-serializable static dependency graph containing every node (signal, comb, cell, event, view binding, assertion) and every edge (data flow, trigger, write).</p>
       <p>This single data structure powers:</p>

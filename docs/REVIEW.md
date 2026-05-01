@@ -125,23 +125,32 @@ Every compiled `.comb` file exports `__graph` as JSON with typed nodes and edges
 | DES / delta cycles | Yes | For narrow use cases | Only for simulation UIs |
 | Edge-triggered sensitivity | Yes | Yes (simple) | Sugar, not essential |
 | `__test()` headless harness | Yes | No (no events, no runner) | **Yes** |
-| Waveform debugger | Yes (zoom/pan/filter) | No (no persist/export) | **Yes** |
+| Waveform debugger | Yes (hierarchy, dual markers, search, digital/analog) | No (no persist/export) | **Yes** |
 | `__graph` static artifact | Yes | No (no CI) | **Yes** |
-| Graph diffing | CLI works, human-readable output | No (no CI integration) | **Yes** |
-| Temporal assertions | Yes | No (console.warn only) | Maybe |
+| Graph diffing | CLI + visual diff demo with regression scenario | No (no CI integration) | **Yes** |
+| Temporal assertions | Yes (armed/passed/failed lifecycle, waveform overlays) | No | **Yes** |
+| CDC async boundary analysis | Yes (3 checks) | No (warnings only) | **Yes** |
 | Propagator networks / cells | Yes | Basic | Research interest |
 | Type system | Warnings only | No | Needs real type errors |
 | SSR | Yes | Basic | Needs hydration |
 | Source maps | Yes | Basic | Needs testing |
 | Router | Yes | Hash-only | Needs history API |
+| Toggle/FSM/cross coverage | Yes (3 types) | No (runtime only) | **Yes** |
+| Graph-directed auto-testing | Yes (state space from static analysis) | No | **Yes** |
+| `deferredBatch` (non-blocking assignment) | Yes (engine-level fix) | Yes | Core DES correctness |
+| Bounded state inference | Yes (guard analysis + write patterns) | Yes | **Yes** |
 
 ---
 
 ## What's Genuinely Novel (Holds Up Under Scrutiny)
 
-1. **DES as UI execution model.** No web framework uses formal delta cycles. The thesis is sound for simulation-class UIs. Now backed by empirical proof: the pipeline and ring counter demos show side-by-side comparisons where DES produces correct results and topological sort / naive JS does not.
-2. **Static `__graph` as build artifact.** No framework emits the dependency graph as a diffable JSON artifact. Enables CI topology diffing, dead code detection, and static analysis.
+1. **DES as UI execution model.** No web framework uses formal delta cycles. The thesis is sound for simulation-class UIs. Now backed by empirical proof: pipeline, ring counter, unit converter (diamond constraint propagation), and bus protocol (3 cross-dependent FSMs) demos all show side-by-side comparisons where DES produces correct results and naive JS does not.
+2. **Static `__graph` as build artifact.** No framework emits the dependency graph as a diffable JSON artifact. Enables CI topology diffing, dead code detection, and static analysis. Dashboard diff demo proves the tool catches silent regressions that compile clean but break behavior.
 3. **Auto-derived `__test()` from component definition.** No framework auto-generates a headless test harness from the component source.
+4. **CDC-style async boundary analysis for UI.** Static analysis that classifies signal writes into sync vs async domains and detects unsynchronized crossings, race conditions, and missing error handling. No web framework or linting tool performs systematic async boundary analysis analogous to hardware CDC checks (Spyglass CDC).
+5. **HDL-grade observability suite for reactive UI.** Waveform viewer with signal hierarchy, dual cursors, pattern search, analog/digital rendering modes, and assertion lifecycle overlays (armed/passed/failed). Combined with toggle/FSM/cross coverage tracking. No web framework offers GTKWave-style signal debugging.
+6. **Static state space inference from dependency graph.** The compiler analyzes write expressions and guard conditions (`if (x >= N)`) to infer bounded state spaces for ALL signals — not just enums. Bool signals get {true, false}, enum signals get their variants, and bounded int signals get their range inferred from the code structure. The `__graph` carries this metadata as `states` arrays on each node. No other framework computes the finite state space of reactive signals at compile time.
+7. **Graph-directed coverage-driven auto-testing.** The auto-test reads `__graph` to discover: (a) which signals have finite state spaces, (b) which signals are clock drivers (feed into posedge sensitivity blocks), (c) the complete target state space. It drives inputs identified by the graph, tracks coverage against the compile-time-known state space, and stops when 100% is achieved or coverage plateaus. Unreachable cross-coverage combinations are flagged after the test completes. No web framework has coverage-driven test generation from a static reactive dependency graph.
 
 ## What's Not Novel (Stop Claiming These)
 

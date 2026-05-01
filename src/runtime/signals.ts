@@ -2,6 +2,7 @@
 // Replaces microtask-based reactivity with a proper delta-cycle simulation engine.
 
 import { circuit } from './circuit.js';
+import { coverage } from './coverage.js';
 
 // --- X (unknown / uninitialized) sentinel ---
 
@@ -196,6 +197,10 @@ function notify(signal: SignalNode<any>): void {
 }
 
 function applyUpdate<T>(signal: SignalNode<T>, nodeId: string, value: T, oldValue: T): void {
+  // Coverage: record boolean toggles
+  if (coverage.isEnabled() && typeof value === 'boolean') {
+    coverage.recordToggle(nodeId, value);
+  }
   const old = signal.value;
   signal.value = value;
   circuit.notifyChange(nodeId, old, value);
@@ -272,6 +277,10 @@ export function createSignal<T>(
       ? (next as (prev: T) => T)(signal.value)
       : next;
     if (Object.is(nextVal, signal.value)) return;
+    // Coverage: record boolean toggles
+    if (coverage.isEnabled() && typeof nextVal === 'boolean') {
+      coverage.recordToggle(nodeId, nextVal);
+    }
     const old = signal.value;
 
     if (engine.evaluating) {
@@ -403,6 +412,26 @@ export function batch(fn: () => void): void {
     fn();
   } finally {
     engine.exitBatch();
+  }
+}
+
+/**
+ * Deferred batch: runs callback with `evaluating = true`, so all signal writes
+ * via `<=` are deferred to the next delta cycle (non-blocking assignment semantics).
+ * This is what `always @(posedge/negedge)` blocks need — reads see OLD values,
+ * writes apply AFTER the block finishes.
+ */
+export function deferredBatch(fn: () => void): void {
+  const wasEvaluating = engine.evaluating;
+  engine.evaluating = true;
+  try {
+    fn();
+  } finally {
+    engine.evaluating = wasEvaluating;
+    // Apply deferred writes and run to quiescence
+    if (!wasEvaluating) {
+      engine.runUntilQuiescent();
+    }
   }
 }
 
@@ -673,17 +702,23 @@ export function createTemporalAssert(
 
   function armAssertion(): void {
     armed = true;
+    circuit.assertionArmed(nodeId, {
+      expr: `${operator} within ${meta.duration}ms`,
+      module: meta.module,
+      deadline: Date.now() + meta.duration,
+    });
 
     if (operator === 'eventually') {
       // Check immediately
       if (propertyFn()) {
         armed = false;
+        circuit.assertionPassed(nodeId, { expr: `eventually within ${meta.duration}ms`, module: meta.module });
         return;
       }
       // Set deadline
       eventuallyTimer = setTimeout(() => {
         if (armed && !propertyFn()) {
-          circuit.assertionFailed(meta.name, {
+          circuit.assertionFailed(nodeId, {
             expr: `eventually within ${meta.duration}ms`,
             module: meta.module,
             values: { property: propertyFn() },
@@ -708,6 +743,7 @@ export function createTemporalAssert(
           if (result) {
             armed = false;
             if (eventuallyTimer) { clearTimeout(eventuallyTimer); eventuallyTimer = null; }
+            circuit.assertionPassed(nodeId, { expr: `eventually within ${meta.duration}ms`, module: meta.module });
             propComp.disposed = true;
           }
         },
@@ -723,7 +759,7 @@ export function createTemporalAssert(
     } else if (operator === 'always') {
       // Property must remain true for duration ms
       if (!propertyFn()) {
-        circuit.assertionFailed(meta.name, {
+        circuit.assertionFailed(nodeId, {
           expr: `always for ${meta.duration}ms`,
           module: meta.module,
           values: { property: false },
@@ -745,7 +781,7 @@ export function createTemporalAssert(
           currentComputation = prev;
 
           if (!result) {
-            circuit.assertionFailed(meta.name, {
+            circuit.assertionFailed(nodeId, {
               expr: `always for ${meta.duration}ms`,
               module: meta.module,
               values: { property: false },
@@ -767,6 +803,7 @@ export function createTemporalAssert(
       alwaysTimer = setTimeout(() => {
         armed = false;
         propComp.disposed = true;
+        circuit.assertionPassed(nodeId, { expr: `always for ${meta.duration}ms`, module: meta.module });
       }, meta.duration);
 
     } else if (operator === 'next') {
@@ -777,11 +814,13 @@ export function createTemporalAssert(
       queueMicrotask(() => {
         if (nextCyclePending && armed) {
           if (!propertyFn()) {
-            circuit.assertionFailed(meta.name, {
+            circuit.assertionFailed(nodeId, {
               expr: `next delta cycle`,
               module: meta.module,
               values: { property: propertyFn() },
             });
+          } else {
+            circuit.assertionPassed(nodeId, { expr: `next delta cycle`, module: meta.module });
           }
           armed = false;
           nextCyclePending = false;

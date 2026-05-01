@@ -4,7 +4,7 @@
 import { Pipeline, __graph } from '../generated/pipeline.js';
 import { createDemoShell } from '../demo-shell.js';
 import { renderCircuitGraph } from '../visualizer.js';
-import { renderWaveform } from '../waveform.js';
+import { renderWaveform } from '../waveform/index.js';
 import { circuit, batch } from '../runtime/index.js';
 
 const M = 'Pipeline';

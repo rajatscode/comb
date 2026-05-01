@@ -11,17 +11,23 @@ export const __graph = {
     {
       "id": "count",
       "name": "count",
-      "type": "signal"
+      "type": "signal",
+      "valueType": "int",
+      "states": [
+        "0"
+      ]
     },
     {
       "id": "label",
       "name": "label",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "string"
     },
     {
       "id": "doubled",
       "name": "doubled",
-      "type": "comb"
+      "type": "comb",
+      "valueType": "int"
     },
     {
       "id": "event:increment",

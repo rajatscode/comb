@@ -230,7 +230,7 @@ export function generateWithSourceMap(mod: Module, graph: StaticGraph): Generate
   const importParts = ['createSignal', 'createComb', 'createEffect', 'batch', 'createScope', 'circuit', 'X'];
   if (hasCells) importParts.push('createCell');
   if (hasConstraints) importParts.push('createPropagator');
-  if (hasEdgeTriggers) importParts.push('createEdgeEffect');
+  if (hasEdgeTriggers) { importParts.push('createEdgeEffect'); importParts.push('deferredBatch'); }
   if (hasEdgeCounters) {
     importParts.push('createEdgeCounter');
     // Also check for changeCount specifically
@@ -546,7 +546,7 @@ function emitAlways(decl: AlwaysBlock, ctx: GenContext): string[] {
     const exprCode = emitExpr(decl.edgeExpr, ctx);
     const lines = [
       `${i}createEdgeEffect(() => ${exprCode}, '${decl.triggerKind}', () => {`,
-      `${i}  batch(() => {`,
+      `${i}  deferredBatch(() => {`,
     ];
     ctx.indent += 2;
     for (const stmt of decl.body) lines.push(...emitStmt(stmt, ctx));
@@ -616,10 +616,15 @@ function emitAssert(decl: AssertDecl, ctx: GenContext): string[] {
 function emitTemporalAssert(decl: TemporalAssertDecl, ctx: GenContext): string[] {
   const i = ind(ctx);
   const idx = ctx.temporalCount++;
-  const temporalId = `temporal:${idx}`;
   const triggerExpr = emitExpr(decl.trigger, ctx);
   const propertyExpr = emitExpr(decl.property, ctx);
   const durationStr = decl.duration !== undefined ? `, duration: ${decl.duration}` : '';
+  // Build a descriptive label: "posedge(trigger) → operator(property) within Nms"
+  const triggerLabel = emitExpr(decl.trigger, ctx).replace(/\(\)/g, '');
+  const propLabel = emitExpr(decl.property, ctx).replace(/\(\)/g, '');
+  const edgeLabel = decl.triggerEdge === 'negedge' ? 'negedge' : 'posedge';
+  const withinLabel = decl.duration !== undefined ? ` within ${decl.duration}ms` : '';
+  const temporalId = `${edgeLabel}(${escapeStr(triggerLabel)}) ${decl.operator}(${escapeStr(propLabel)})${withinLabel}`;
   return [
     `${i}createTemporalAssert(`,
     `${i}  () => ${triggerExpr},`,

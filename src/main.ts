@@ -1,7 +1,7 @@
 import { circuit } from './runtime/index.js';
 import { batch } from './runtime/index.js';
 import { renderCircuitGraph } from './visualizer.js';
-import { renderWaveform } from './waveform.js';
+import { renderWaveform } from './waveform/index.js';
 import monitorSrc from '../examples/monitor.comb?raw';
 
 const app = document.getElementById('app')!;
@@ -520,6 +520,10 @@ function createLanding(): HTMLElement {
           <h3>Circuit Diff</h3>
           <p>Diff reactive topology across refactors. Zero prior art.</p>
         </a>
+        <a href="#dashboard-diff" class="demo-card demo-card-highlight">
+          <h3>Regression Detector</h3>
+          <p>A clean refactoring that silently breaks three things. The graph diff catches all of them.</p>
+        </a>
         <a href="#color" class="demo-card">
           <h3>Color Picker</h3>
           <p>Bidirectional constraints via propagator networks. Try doing this in React.</p>
@@ -564,8 +568,11 @@ nav.innerHTML = `
   <a href="#registration" class="nav-link" data-demo="registration">Dependency Debugger</a>
   <a href="#ticker" class="nav-link" data-demo="ticker">Waveform Debugger</a>
   <a href="#diff" class="nav-link" data-demo="diff">Circuit Diff</a>
+  <a href="#dashboard-diff" class="nav-link" data-demo="dashboard-diff">Regression Detector</a>
   <a href="#color" class="nav-link" data-demo="color">Color Picker</a>
   <a href="#layout" class="nav-link" data-demo="layout">Constraint Layout</a>
+  <a href="#converter" class="nav-link" data-demo="converter">Unit Converter</a>
+  <a href="#bus" class="nav-link" data-demo="bus">Bus Protocol</a>
 `;
 app.appendChild(nav);
 
@@ -1043,6 +1050,12 @@ function loadDemo(name: string) {
     loadColor(demoWrap);
   } else if (name === 'layout') {
     loadLayout(demoWrap);
+  } else if (name === 'converter') {
+    loadConverter(demoWrap);
+  } else if (name === 'bus') {
+    loadBus(demoWrap);
+  } else if (name === 'dashboard-diff') {
+    loadDashboardDiff(demoWrap);
   }
 }
 
@@ -1230,6 +1243,24 @@ async function loadColor(container: HTMLElement) {
 async function loadLayout(container: HTMLElement) {
   const { mountResizableLayout } = await import('./demos/resizable-layout-mount.js');
   const result = mountResizableLayout(container);
+  currentDispose = result.dispose;
+}
+
+async function loadConverter(container: HTMLElement) {
+  const { mountUnitConverter } = await import('./demos/unit-converter-mount.js');
+  const result = mountUnitConverter(container);
+  currentDispose = result.dispose;
+}
+
+async function loadDashboardDiff(container: HTMLElement) {
+  const { mountDashboardDiff } = await import('./demos/dashboard-diff-mount.js');
+  const result = mountDashboardDiff(container);
+  currentDispose = result.dispose;
+}
+
+async function loadBus(container: HTMLElement) {
+  const { mountBusProtocol } = await import('./demos/bus-protocol-mount.js');
+  const result = mountBusProtocol(container);
   currentDispose = result.dispose;
 }
 

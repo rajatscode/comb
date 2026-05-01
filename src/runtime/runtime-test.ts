@@ -3,6 +3,7 @@
 
 import { createSignal, createComb, createEffect, batch, untrack, createScope, onMount, onDestroy, createEdgeEffect, createTemporalAssert } from './signals.js';
 import { circuit } from './circuit.js';
+import { coverage } from './coverage.js';
 import { reconcileKeyed } from './reconcile.js';
 import type { KeyedState } from './reconcile.js';
 
@@ -559,6 +560,77 @@ test('reconcileKeyed — update function called for existing keys', () => {
   reconcileKeyed(container as any, anchor as any, items2, (item) => item.id, createFn, updateFn, state);
   assertEqual(updateCalled, true, 'update function should be called');
   assertEqual(updatedName, 'Updated', 'update should receive new item data');
+});
+
+// --- Coverage Tests ---
+
+test('coverage: toggle records true and false', () => {
+  coverage.reset();
+  coverage.enable();
+  const [val, setVal] = createSignal(false, { name: 'tog', module: 'test', type: 'bool' });
+  setVal(true);
+  setVal(false);
+  const report = coverage.getReport();
+  const tog = report.toggle.find(t => t.signalId.includes('tog'));
+  assert(tog !== undefined, 'should have toggle entry');
+  assert(tog!.seenTrue, 'should have seen true');
+  assert(tog!.seenFalse, 'should have seen false');
+  coverage.disable();
+});
+
+test('coverage: cross coverage tracks combos', () => {
+  coverage.reset();
+  coverage.enable();
+  coverage.registerCrossGroup('test-cross', ['a', 'b']);
+  coverage.recordCross('test-cross', [true, true]);
+  coverage.recordCross('test-cross', [true, false]);
+  coverage.recordCross('test-cross', [false, true]);
+  const report = coverage.getReport();
+  const cross = report.cross.find(c => c.groupId === 'test-cross');
+  assert(cross !== undefined, 'should have cross entry');
+  assertEqual(cross!.observed.size, 3, 'should have 3 observed combos');
+  assertEqual(cross!.total, 4, 'should have 4 total combos');
+  coverage.disable();
+});
+
+test('coverage: transition coverage tracks FSM states', () => {
+  coverage.reset();
+  coverage.enable();
+  coverage.recordTransition('fsm1', 'idle', 'loading');
+  coverage.recordTransition('fsm1', 'loading', 'success');
+  coverage.recordTransition('fsm1', 'idle', 'loading');
+  const report = coverage.getReport();
+  const fsm = report.transitions.find(t => t.fsmId === 'fsm1');
+  assert(fsm !== undefined, 'should have transition entry');
+  assertEqual(fsm!.states.size, 3, 'should have 3 states');
+  assertEqual(fsm!.transitions.get('idle->loading'), 2, 'idle->loading should have count 2');
+  assertEqual(fsm!.transitions.get('loading->success'), 1, 'loading->success should have count 1');
+  coverage.disable();
+});
+
+test('coverage: summary percentage calculation', () => {
+  coverage.reset();
+  coverage.enable();
+  // One boolean signal, seen both values = 2/2 toggle points
+  const [flag, setFlag] = createSignal(false, { name: 'pct', module: 'test', type: 'bool' });
+  setFlag(true);
+  setFlag(false);
+  const report = coverage.getReport();
+  assertEqual(report.summary.totalPoints, 2, 'should have 2 total points');
+  assertEqual(report.summary.coveredPoints, 2, 'should have 2 covered points');
+  assertEqual(report.summary.percentage, 100, 'should be 100% coverage');
+  coverage.disable();
+});
+
+test('coverage: disabled collector does not record', () => {
+  coverage.reset();
+  // Do NOT enable
+  coverage.recordToggle('disabled-sig', true);
+  coverage.recordTransition('disabled-fsm', 'a', 'b');
+  coverage.recordCross('disabled-cross', [true, false]);
+  const report = coverage.getReport();
+  assertEqual(report.toggle.length, 0, 'no toggle entries when disabled');
+  assertEqual(report.transitions.length, 0, 'no transition entries when disabled');
 });
 
 // --- Deferred test: verify onMount actually fires via microtask ---
