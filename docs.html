@@ -479,7 +479,7 @@
 <span class="cm">// Next: property must be true after next delta cycle</span>
 <span class="kw">assert</span> <span class="kw">temporal</span> @(<span class="fn">posedge</span> trigger) <span class="fn">next</span>(result) <span class="kw">within</span> <span class="num">0</span>;</pre>
       <p>Temporal assertions arm on a trigger posedge, then monitor a property for a duration window. Three operators: <code>eventually</code> (property must become true), <code>always</code> (property must stay true), <code>next</code> (property must be true after the next delta cycle). Assertion lifecycle events (armed, passed, failed) are recorded in the waveform viewer as colored overlays &mdash; green for passed, red for failed, amber for pending.</p>
-      <p>Inspired by SystemVerilog Assertions (SVA). The <code>within</code> duration is currently wall-clock milliseconds.</p>
+      <p>Inspired by SystemVerilog Assertions (SVA). The <code>within</code> value counts <strong>trigger evaluations</strong> (simulation ticks), not wall-clock time. This ensures assertions behave identically regardless of clock speed or JS event loop jitter.</p>
 
       <!-- CDC Analysis -->
       <h2 id="cdc">CDC Async Boundary Analysis</h2>
@@ -521,6 +521,7 @@
         <li><strong>Cross coverage</strong> &mdash; which combinations of boolean signal values have been observed? Unreachable combinations are flagged after test completion.</li>
       </ul>
       <p>The auto-test reads the graph to discover bounded signals, drives clock inputs identified from sensitivity block edges, and stops when 100% state coverage is achieved or coverage plateaus. No random fuzzing &mdash; the graph directs the test generation.</p>
+      <p>Auto-tests run <strong>headless</strong> &mdash; a separate simulation that doesn't affect the live UI. The VS Tetris demo runs 500 headless ticks with both boards AI-driven, tracking piece type coverage (7 types &times; 2 players), boolean state toggles, and garbage mechanic exercising (line clears, garbage sent, garbage received).</p>
 
       <h2 id="graph">The __graph Artifact</h2>
       <p>Every <code>.comb</code> file compiles to JavaScript that exports <code>__graph</code> &mdash; a JSON-serializable static dependency graph containing every node (signal, comb, cell, event, view binding, assertion) and every edge (data flow, trigger, write).</p>
@@ -531,7 +532,8 @@
           <tr><td>Circuit Visualizer</td><td>Renders the reactive topology as a live diagram with pulse animations</td></tr>
           <tr><td>Waveform Debugger</td><td>Records signal traces over time, like a hardware logic analyzer</td></tr>
           <tr><td>Circuit Diff</td><td>Compares __graph across two versions to detect topology changes</td></tr>
-          <tr><td>Coverage Testing</td><td>Combs are pure functions of their deps, so they ARE testable specs</td></tr>
+          <tr><td>Coverage Testing</td><td>Each node carries its finite state space (enum variants, bool {true,false}, bounded int ranges). Auto-tests track coverage against these.</td></tr>
+          <tr><td>State Space Inference</td><td>Compiler analyzes write expressions and guard conditions to compute bounded state spaces for int signals</td></tr>
         </tbody>
       </table>
 

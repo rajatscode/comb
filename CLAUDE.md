@@ -88,10 +88,14 @@ npm run dev                    # Visual testing in browser
 
 ### Demos & Benchmarks
 
+- **VS Tetris** — Two-player battle with AI opponent. Garbage mechanic as cross-dependency (both boards read other's OLD state via delta cycles). Headless auto-test with piece/state/garbage coverage.
+- **Bus protocol** — 3 cross-dependent FSMs with tick-based temporal assertions, live naive JS comparison, coverage panel
 - **Pipeline demo** — 4-stage pipeline proving delta cycle correctness with side-by-side DES vs naive comparison
 - **Ring counter demo** — feedback loop proving delta cycles work for circular dependencies
-- **Benchmark page** — interactive DES vs topological sort performance comparison
-- **Waveform debugger** — zoom (wheel), pan (drag), signal filter (click to toggle)
+- **Dashboard diff** — Regression detection via `__graph` diffing
+- **Unit converter** — Diamond constraint propagation with 8 bidirectional constraints
+- **Benchmark page** — DES vs batched-topo vs naive comparison across 5 topologies
+- **Waveform debugger** — hierarchy browser, dual markers, keyboard shortcuts, cross-signal search, assertion overlays
 
 ## Known Limitations
 
