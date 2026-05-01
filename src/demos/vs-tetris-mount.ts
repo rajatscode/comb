@@ -6,7 +6,8 @@ import { VsTetris, __graph } from '../generated/vs-tetris.js';
 import { createDemoShell } from '../demo-shell.js';
 import { renderCircuitGraph } from '../visualizer.js';
 import { renderWaveform } from '../waveform/index.js';
-import { circuit, batch, deferredBatch } from '../runtime/index.js';
+import { circuit, batch, deferredBatch, runAutoTest, renderAutoTestResult } from '../runtime/index.js';
+import type { StaticGraph } from '../core/graph.js';
 
 const M = 'VsTetris';
 const COLS = 10;
@@ -519,14 +520,15 @@ export function mountVsTetris(root: HTMLElement): { dispose: () => void } {
   }
   window.addEventListener('keydown', handleKeyDown);
 
+  // Start recording BEFORE game loop so all ticks are captured
+  circuit.startRecording();
+
   // Game loop
   const gameInterval = setInterval(gameTick, 800);
 
-  // Initial draw
+  // Initial draw + sync initial state to waveform
+  syncToComb();
   draw();
-
-  // Start recording for waveform
-  circuit.startRecording();
 
   // Waveform
   const wfDiv = document.createElement('div');
@@ -540,13 +542,14 @@ export function mountVsTetris(root: HTMLElement): { dispose: () => void } {
   ]);
 
   // === Coverage & Auto-Test Panel ===
-  // Runs a HEADLESS simulation (separate from the live game) to measure coverage
+  // Uses the generic runAutoTest() — reads __graph, drives all bounded signals
+  // through their state spaces automatically. No game-specific logic.
   const coveragePanel = document.createElement('div');
   coveragePanel.style.cssText = 'margin:0 8px 8px; padding:12px 16px; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px;';
 
   const coverageHeader = document.createElement('div');
   coverageHeader.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;';
-  coverageHeader.innerHTML = `<h3 style="margin:0; font-size:0.85rem; color:var(--accent-2); text-transform:uppercase; letter-spacing:1px;">Coverage (Headless Auto-Test)</h3>`;
+  coverageHeader.innerHTML = `<h3 style="margin:0; font-size:0.85rem; color:var(--accent-2); text-transform:uppercase; letter-spacing:1px;">Graph-Directed Auto-Test</h3>`;
 
   const autoTestBtn = document.createElement('button');
   autoTestBtn.className = 'pipeline-btn';
@@ -555,226 +558,33 @@ export function mountVsTetris(root: HTMLElement): { dispose: () => void } {
   coverageHeader.appendChild(autoTestBtn);
   coveragePanel.appendChild(coverageHeader);
 
-  const coverageGrid = document.createElement('div');
-  coverageGrid.style.cssText = 'display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; font-family:var(--mono); font-size:0.7rem;';
-  coveragePanel.appendChild(coverageGrid);
-
-  const covCol1 = document.createElement('div');
-  covCol1.innerHTML = '<div style="color:var(--text-faint); text-transform:uppercase; font-size:0.65rem; margin-bottom:4px;">Piece Coverage</div><div class="cov-pieces">Run auto-test</div>';
-  const covCol2 = document.createElement('div');
-  covCol2.innerHTML = '<div style="color:var(--text-faint); text-transform:uppercase; font-size:0.65rem; margin-bottom:4px;">State Coverage</div><div class="cov-states">Run auto-test</div>';
-  const covCol3 = document.createElement('div');
-  covCol3.innerHTML = '<div style="color:var(--text-faint); text-transform:uppercase; font-size:0.65rem; margin-bottom:4px;">Garbage Mechanics</div><div class="cov-garbage">Run auto-test</div>';
-  coverageGrid.appendChild(covCol1);
-  coverageGrid.appendChild(covCol2);
-  coverageGrid.appendChild(covCol3);
+  const coverageBody = document.createElement('div');
+  coverageBody.style.cssText = 'font-family:var(--mono); font-size:0.7rem; color:var(--text-muted);';
+  coverageBody.textContent = 'Reads __graph to discover bounded signals and drives each through all possible states.';
+  coveragePanel.appendChild(coverageBody);
 
   const covSummary = document.createElement('div');
   covSummary.style.cssText = 'margin-top:8px; text-align:center; font-family:var(--mono); font-size:0.75rem; color:var(--text-faint);';
   coveragePanel.appendChild(covSummary);
 
-  // Read graph state space
-  const graphTyped = __graph as { nodes: any[]; edges: any[]; enums?: Record<string, string[]> };
-  const trackedNodes = graphTyped.nodes.filter((n: any) => n.states && n.states.length > 0);
-  const pieceStates = graphTyped.enums?.PieceType ?? [];
-
   autoTestBtn.addEventListener('click', () => {
     autoTestBtn.disabled = true;
     autoTestBtn.textContent = 'Running...';
 
-    // Headless simulation — completely separate from the live game
-    // === State-directed test: force each state from __graph ===
-    // Phase 1: exercise every piece type for both players
-    // Phase 2: force line clears + garbage exchange
-    // Phase 3: force game over
+    // Generic graph-directed auto-test — no game-specific logic needed.
+    // The framework reads __graph, finds bounded signals, drives each
+    // through all possible states, ticks clocks, and tracks coverage.
+    const result = runAutoTest(__graph as StaticGraph, circuit, M);
 
-    const allPieceTypes = pieceStates.filter((p: string) => p !== 'None');
-    const p1PiecesSeen = new Set<string>();
-    const p2PiecesSeen = new Set<string>();
-    let garbageSentP1toP2 = false;
-    let garbageSentP2toP1 = false;
-    let garbageReceived = false;
-    let linesClearedP1 = false;
-    let linesClearedP2 = false;
-    let gameOverSeen = false;
-    let ticks = 0;
+    // Render results
+    coverageBody.innerHTML = renderAutoTestResult(result);
 
-    // Phase 1: spawn each piece type explicitly for both players
-    // This guarantees 100% piece type coverage without relying on randomness
-    const phase1Boards: Array<{ board: BoardState; pieces: string[]; seen: Set<string>; label: string }> = [
-      { board: createBoard(), pieces: [...allPieceTypes], seen: p1PiecesSeen, label: 'P1' },
-      { board: createBoard(), pieces: [...allPieceTypes], seen: p2PiecesSeen, label: 'P2' },
-    ];
+    const pctColor = result.percentage >= 90 ? 'var(--success)' : result.percentage >= 60 ? 'var(--warning)' : 'var(--event)';
+    covSummary.innerHTML = `<span style="color:${pctColor}; font-weight:700;">${result.percentage.toFixed(1)}%</span> state coverage | ${result.steps} steps | Drove ${result.inputsDriven.length} inputs, ticked ${result.clocksDriven.length} clock(s)`;
+    covSummary.innerHTML += `<br><span style="color:var(--text-faint); font-size:0.65rem;">Inputs: ${result.inputsDriven.join(', ') || 'none'} | Clocks: ${result.clocksDriven.join(', ') || 'none'}</span>`;
 
-    for (const entry of phase1Boards) {
-      for (const pieceType of entry.pieces) {
-        entry.board.piece = pieceType;
-        entry.board.x = 3; entry.board.y = 0; entry.board.rot = 0;
-        entry.seen.add(pieceType);
-        // AI places it
-        const move = aiMove(entry.board);
-        entry.board.x = move.x; entry.board.rot = move.rot;
-        while (!collides(entry.board.grid, entry.board.piece, entry.board.x, entry.board.y + 1, entry.board.rot)) entry.board.y++;
-        if (!collides(entry.board.grid, entry.board.piece, entry.board.x, entry.board.y, entry.board.rot)) {
-          lockPiece(entry.board);
-          const cleared = clearLines(entry.board);
-          if (cleared > 0) {
-            entry.board.lines += cleared;
-            entry.board.score += [0, 100, 300, 500, 800][cleared] ?? 1000;
-            if (entry.label === 'P1') linesClearedP1 = true;
-            else linesClearedP2 = true;
-          }
-        }
-        ticks++;
-      }
-    }
-
-    // Phase 2: force line clears and garbage exchange
-    // Fill P1's board nearly full, then clear with an I-piece
-    const testP1 = phase1Boards[0].board;
-    const testP2 = phase1Boards[1].board;
-
-    // Force a line clear scenario: fill bottom 3 rows of P1 leaving column 0 empty
-    for (let r = ROWS - 3; r < ROWS; r++) {
-      for (let c = 1; c < COLS; c++) testP1.grid[r][c] = 1;
-    }
-    // Drop an I-piece horizontally at column 0 to NOT clear (wrong column)
-    // Then fill column 0 to trigger a 3-line clear
-    for (let r = ROWS - 3; r < ROWS; r++) testP1.grid[r][0] = 1;
-    const p1Cleared = clearLines(testP1);
-    if (p1Cleared > 0) {
-      testP1.lines += p1Cleared;
-      testP1.linesJustCleared = p1Cleared;
-      testP1.score += [0, 100, 300, 500, 800][p1Cleared] ?? 1000;
-      linesClearedP1 = true;
-      ticks++;
-    }
-
-    // Garbage exchange: P1's clears send garbage to P2
-    if (testP1.linesJustCleared > 1) {
-      testP2.pendingGarbage += testP1.linesJustCleared - 1;
-      garbageSentP1toP2 = true;
-    }
-
-    // Apply garbage to P2 (delta cycle: read old, apply)
-    if (testP2.pendingGarbage > 0) {
-      addGarbage(testP2, testP2.pendingGarbage);
-      testP2.pendingGarbage = 0;
-      garbageReceived = true;
-    }
-    ticks++;
-
-    // Same for P2 → P1
-    for (let r = ROWS - 2; r < ROWS; r++) {
-      for (let c = 0; c < COLS; c++) testP2.grid[r][c] = 2;
-    }
-    const p2Cleared = clearLines(testP2);
-    if (p2Cleared > 0) {
-      testP2.lines += p2Cleared;
-      testP2.linesJustCleared = p2Cleared;
-      testP2.score += [0, 100, 300, 500, 800][p2Cleared] ?? 1000;
-      linesClearedP2 = true;
-      if (p2Cleared > 1) {
-        testP1.pendingGarbage += p2Cleared - 1;
-        garbageSentP2toP1 = true;
-      }
-    }
-    if (testP1.pendingGarbage > 0) {
-      addGarbage(testP1, testP1.pendingGarbage);
-      testP1.pendingGarbage = 0;
-      garbageReceived = true;
-    }
-    ticks++;
-
-    // Phase 3: force game over (fill board to top)
-    for (let r = 0; r < 4; r++) {
-      for (let c = 0; c < COLS; c++) testP1.grid[r][c] = 1;
-    }
-    testP1.piece = 'T'; testP1.x = 3; testP1.y = 0; testP1.rot = 0;
-    if (collides(testP1.grid, testP1.piece, testP1.x, testP1.y, testP1.rot)) {
-      testP1.gameOver = true;
-    }
-    gameOverSeen = true;
-    ticks++;
-
-    // Render results immediately (no interval needed — it's synchronous)
-    renderCov();
-    finish();
-
-    function renderCov() {
-      // Piece coverage
-      const allPieces = pieceStates.filter((p: string) => p !== 'None');
-      const p1Chips = allPieces.map((p: string) => {
-        const hit = p1PiecesSeen.has(p);
-        return `<span style="display:inline-block; padding:1px 5px; border-radius:2px; margin:1px; font-size:0.6rem; background:${hit ? 'rgba(114,241,184,0.15)' : 'var(--bg-elevated)'}; border:1px solid ${hit ? 'var(--success)' : 'var(--border)'}; color:${hit ? 'var(--success)' : 'var(--text-faint)'};">${p}</span>`;
-      }).join('');
-      const p2Chips = allPieces.map((p: string) => {
-        const hit = p2PiecesSeen.has(p);
-        return `<span style="display:inline-block; padding:1px 5px; border-radius:2px; margin:1px; font-size:0.6rem; background:${hit ? 'rgba(167,139,250,0.15)' : 'var(--bg-elevated)'}; border:1px solid ${hit ? 'var(--accent-2)' : 'var(--border)'}; color:${hit ? 'var(--accent-2)' : 'var(--text-faint)'};">${p}</span>`;
-      }).join('');
-      covCol1.querySelector('.cov-pieces')!.innerHTML = `<div style="margin-bottom:4px;"><span style="color:var(--accent); font-weight:600;">P1</span> ${p1PiecesSeen.size}/${allPieces.length}</div>${p1Chips}<div style="margin:6px 0 4px;"><span style="color:var(--accent-2); font-weight:600;">P2</span> ${p2PiecesSeen.size}/${allPieces.length}</div>${p2Chips}`;
-
-      // State coverage — computed from graph state spaces
-      const stateLines: string[] = [];
-      let totalStates = 0;
-      let coveredStates = 0;
-
-      for (const node of trackedNodes) {
-        const states = node.states as string[];
-        totalStates += states.length;
-
-        // Determine which states were actually visited
-        let visited = 0;
-        if (node.id === 'p1_piece') { visited = p1PiecesSeen.size; /* None is also a state */ if (gameOverSeen) visited++; /* None when game over */ }
-        else if (node.id === 'p2_piece') { visited = p2PiecesSeen.size; }
-        else if (node.valueType === 'bool') {
-          // Bools: gameOver, tick, gameActive — the test exercises both states
-          if (node.id === 'p1_gameOver') visited = gameOverSeen ? 2 : 1;
-          else if (node.id === 'p2_gameOver') visited = 1; // P2 didn't die
-          else visited = 2; // tick and gameActive always toggle
-        } else if (node.id === 'p1_linesCleared' || node.id === 'p2_linesCleared') {
-          visited = states.length; // these only have ["0"]
-        } else {
-          visited = states.length; // default: assume covered
-        }
-        coveredStates += Math.min(visited, states.length);
-      }
-
-      const covPct = totalStates > 0 ? ((coveredStates / totalStates) * 100).toFixed(0) : '0';
-      const covColor = coveredStates === totalStates ? 'var(--success)' : 'var(--warning)';
-      stateLines.push(`<div>Bounded signals: ${trackedNodes.length}</div>`);
-      stateLines.push(`<div>States covered: <span style="color:${covColor}; font-weight:600;">${coveredStates}/${totalStates} (${covPct}%)</span></div>`);
-      stateLines.push(`<div style="margin-top:4px;">P1: ${testP1.lines} lines, ${testP1.score} pts</div>`);
-      stateLines.push(`<div>P2: ${testP2.lines} lines, ${testP2.score} pts</div>`);
-      covCol2.querySelector('.cov-states')!.innerHTML = stateLines.join('');
-
-      // Garbage mechanics
-      const garbageLines: string[] = [];
-      const checks = [
-        { label: 'P1 clears lines', hit: linesClearedP1 },
-        { label: 'P2 clears lines', hit: linesClearedP2 },
-        { label: 'P1→P2 garbage sent', hit: garbageSentP1toP2 },
-        { label: 'P2→P1 garbage sent', hit: garbageSentP2toP1 },
-        { label: 'Garbage received', hit: garbageReceived },
-      ];
-      for (const check of checks) {
-        const icon = check.hit ? '\u2713' : '\u2717';
-        const color = check.hit ? 'var(--success)' : 'var(--text-faint)';
-        garbageLines.push(`<div><span style="color:${color};">${icon}</span> ${check.label}</div>`);
-      }
-      covCol3.querySelector('.cov-garbage')!.innerHTML = garbageLines.join('');
-
-      // Summary
-      const garbageHits = checks.filter(c => c.hit).length;
-      covSummary.innerHTML = `Headless: ${ticks} ticks | Piece types: ${p1PiecesSeen.size + p2PiecesSeen.size}/${allPieces.length * 2} | Garbage: ${garbageHits}/${checks.length}`;
-    }
-
-    function finish() {
-      renderCov();
-      autoTestBtn.disabled = false;
-      covSummary.innerHTML += `<br><span style="color:var(--success); font-size:0.7rem;">State-directed: ${ticks} steps. All piece types, line clears, garbage exchange, and game-over exercised.</span>`;
-      autoTestBtn.textContent = 'Run Auto-Test';
-    }
+    autoTestBtn.disabled = false;
+    autoTestBtn.textContent = 'Run Auto-Test';
   });
 
   shell.app.appendChild(coveragePanel);
