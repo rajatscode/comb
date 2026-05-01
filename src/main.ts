@@ -573,6 +573,7 @@ nav.innerHTML = `
   <a href="#layout" class="nav-link" data-demo="layout">Constraint Layout</a>
   <a href="#converter" class="nav-link" data-demo="converter">Unit Converter</a>
   <a href="#bus" class="nav-link" data-demo="bus">Bus Protocol</a>
+  <a href="#tetris" class="nav-link" data-demo="tetris">VS Tetris</a>
 `;
 app.appendChild(nav);
 
@@ -1056,6 +1057,8 @@ function loadDemo(name: string) {
     loadBus(demoWrap);
   } else if (name === 'dashboard-diff') {
     loadDashboardDiff(demoWrap);
+  } else if (name === 'tetris') {
+    loadTetris(demoWrap);
   }
 }
 
@@ -1261,6 +1264,12 @@ async function loadDashboardDiff(container: HTMLElement) {
 async function loadBus(container: HTMLElement) {
   const { mountBusProtocol } = await import('./demos/bus-protocol-mount.js');
   const result = mountBusProtocol(container);
+  currentDispose = result.dispose;
+}
+
+async function loadTetris(container: HTMLElement) {
+  const { mountVsTetris } = await import('./demos/vs-tetris-mount.js');
+  const result = mountVsTetris(container);
   currentDispose = result.dispose;
 }
 

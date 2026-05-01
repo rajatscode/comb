@@ -1667,5 +1667,83 @@ test('async-unsafe.comb — compiles with CDC warnings', () => {
   assert(cdcWarnings.length >= 3, `Expected at least 3 CDC warnings, got ${cdcWarnings.length}: ${cdcWarnings.map(w => w.message)}`);
 });
 
+// --- State Space Inference Tests ---
+
+test('state-space: enum signal has correct states', () => {
+  const result = compile(`module T { enum Phase { Red, Yellow, Green } signal p: Phase = Phase.Red; view { <div></div> } }`);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+  const graph = result.graph!;
+  const node = graph.nodes.find(n => n.name === 'p');
+  assert(node !== undefined, 'Expected node p');
+  assert(node!.valueType === 'Phase', `Expected valueType='Phase', got '${node!.valueType}'`);
+  assert(Array.isArray(node!.states), 'Expected states to be an array');
+  assert(node!.states!.length === 3, `Expected 3 states, got ${node!.states!.length}`);
+  assert(node!.states!.includes('Phase.Red'), 'Expected Phase.Red in states');
+  assert(node!.states!.includes('Phase.Yellow'), 'Expected Phase.Yellow in states');
+  assert(node!.states!.includes('Phase.Green'), 'Expected Phase.Green in states');
+});
+
+test('state-space: bool signal has states [true, false]', () => {
+  const result = compile(`module T { signal active: bool = false; view { <div></div> } }`);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+  const graph = result.graph!;
+  const node = graph.nodes.find(n => n.name === 'active');
+  assert(node !== undefined, 'Expected node active');
+  assert(node!.valueType === 'bool', `Expected valueType='bool', got '${node!.valueType}'`);
+  assert(Array.isArray(node!.states), 'Expected states to be an array');
+  assert(node!.states!.length === 2, `Expected 2 states, got ${node!.states!.length}`);
+  assert(node!.states!.includes('true'), 'Expected true in states');
+  assert(node!.states!.includes('false'), 'Expected false in states');
+});
+
+test('state-space: bounded int with guard pattern has correct states', () => {
+  const result = compile(`module T { signal idx: int = 0; always @(tick) { idx <= idx + 1; if (idx >= 3) { idx <= 0; } } view { <div></div> } }`);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+  const graph = result.graph!;
+  const node = graph.nodes.find(n => n.name === 'idx');
+  assert(node !== undefined, 'Expected node idx');
+  assert(Array.isArray(node!.states), `Expected states to be an array, got ${JSON.stringify(node!.states)}`);
+  assert(node!.states!.includes('0'), 'Expected 0 in states');
+  assert(node!.states!.includes('3'), 'Expected 3 in states');
+  assert(node!.states!.length === 4, `Expected 4 states (0,1,2,3), got ${node!.states!.length}: ${JSON.stringify(node!.states)}`);
+});
+
+test('state-space: unbounded int counter has no states', () => {
+  const result = compile(`module T { signal cycle: int = 0; always @(tick) { cycle <= cycle + 1; } view { <div></div> } }`);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+  const graph = result.graph!;
+  const node = graph.nodes.find(n => n.name === 'cycle');
+  assert(node !== undefined, 'Expected node cycle');
+  assert(node!.states === undefined || node!.states === null, `Expected no states for unbounded int, got ${JSON.stringify(node!.states)}`);
+});
+
+test('state-space: bool comb has states [true, false]', () => {
+  const result = compile(`module T { signal x: int = 0; comb isPositive = x > 0; view { <div></div> } }`);
+  assert(result.errors.length === 0, `Expected no errors, got: ${result.errors.map(e => e.message).join(', ')}`);
+  const graph = result.graph!;
+  const node = graph.nodes.find(n => n.name === 'isPositive');
+  assert(node !== undefined, 'Expected node isPositive');
+  assert(node!.valueType === 'bool', `Expected valueType='bool', got '${node!.valueType}'`);
+  assert(Array.isArray(node!.states), 'Expected states to be an array');
+  assert(node!.states!.length === 2, `Expected 2 states, got ${node!.states!.length}`);
+  assert(node!.states!.includes('true'), 'Expected true in states');
+  assert(node!.states!.includes('false'), 'Expected false in states');
+});
+
+test('CDC: transitive taint through comb chain', () => {
+  const result = compile(`module T {
+    signal data: string = "";
+    comb derived = data;
+    comb downstream = derived;
+    always @(load) {
+      async { data <= "loaded"; }
+    }
+    view { <div>{downstream}</div> }
+  }`);
+  // downstream transitively reads async-written 'data' through 'derived'
+  assert(result.warnings.some(w => w.message.includes('CDC') && w.message.includes('downstream')),
+    'should warn about transitive async taint on downstream');
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

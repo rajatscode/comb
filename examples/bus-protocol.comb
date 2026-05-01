@@ -125,15 +125,14 @@ module BusProtocol {
   // === Assertions: protocol invariants ===
   assert always (!(bus_request && bus_ack));
 
-  // Temporal: after request rises, grant must follow within 5 cycles
-  assert temporal @(posedge bus_request) eventually(bus_grant) within 1500;
+  // Temporal: after request rises, grant must follow within 5 ticks
+  assert temporal @(posedge bus_request) eventually(bus_grant) within 5;
 
-  // Temporal: after valid data appears, ack must follow within 20 cycles
-  assert temporal @(posedge bus_valid) eventually(bus_ack) within 5000;
+  // Temporal: after valid data appears, ack must follow within 10 ticks
+  assert temporal @(posedge bus_valid) eventually(bus_ack) within 10;
 
-  // Temporal: bus_grant must hold for at least 100ms after bus_busy rises
-  // (bus_grant stays true for the entire transfer; 100ms is well within any tick rate)
-  assert temporal @(posedge bus_busy) always(bus_grant) within 100;
+  // Temporal: bus_grant must hold for at least 3 ticks after bus_busy rises
+  assert temporal @(posedge bus_busy) always(bus_grant) within 3;
 
   // === View ===
   view {

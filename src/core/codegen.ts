@@ -619,11 +619,11 @@ function emitTemporalAssert(decl: TemporalAssertDecl, ctx: GenContext): string[]
   const triggerExpr = emitExpr(decl.trigger, ctx);
   const propertyExpr = emitExpr(decl.property, ctx);
   const durationStr = decl.duration !== undefined ? `, duration: ${decl.duration}` : '';
-  // Build a descriptive label: "posedge(trigger) → operator(property) within Nms"
+  // Build a descriptive label: "posedge(trigger) → operator(property) within N"
   const triggerLabel = emitExpr(decl.trigger, ctx).replace(/\(\)/g, '');
   const propLabel = emitExpr(decl.property, ctx).replace(/\(\)/g, '');
   const edgeLabel = decl.triggerEdge === 'negedge' ? 'negedge' : 'posedge';
-  const withinLabel = decl.duration !== undefined ? ` within ${decl.duration}ms` : '';
+  const withinLabel = decl.duration !== undefined ? ` within ${decl.duration}` : '';
   const temporalId = `${edgeLabel}(${escapeStr(triggerLabel)}) ${decl.operator}(${escapeStr(propLabel)})${withinLabel}`;
   return [
     `${i}createTemporalAssert(`,

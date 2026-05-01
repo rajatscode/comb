@@ -198,22 +198,22 @@ export const __graph = {
       "expr": "!bus_request && bus_ack"
     },
     {
-      "id": "posedge(bus_request) eventually(bus_grant) within 1500ms",
-      "name": "posedge(bus_request) eventually(bus_grant) within 1500ms",
+      "id": "posedge(bus_request) eventually(bus_grant) within 5",
+      "name": "posedge(bus_request) eventually(bus_grant) within 5",
       "type": "assert",
-      "expr": "posedge(bus_request) eventually(bus_grant) within 1500ms"
+      "expr": "posedge(bus_request) eventually(bus_grant) within 5"
     },
     {
-      "id": "posedge(bus_valid) eventually(bus_ack) within 5000ms",
-      "name": "posedge(bus_valid) eventually(bus_ack) within 5000ms",
+      "id": "posedge(bus_valid) eventually(bus_ack) within 10",
+      "name": "posedge(bus_valid) eventually(bus_ack) within 10",
       "type": "assert",
-      "expr": "posedge(bus_valid) eventually(bus_ack) within 5000ms"
+      "expr": "posedge(bus_valid) eventually(bus_ack) within 10"
     },
     {
-      "id": "posedge(bus_busy) always(bus_grant) within 100ms",
-      "name": "posedge(bus_busy) always(bus_grant) within 100ms",
+      "id": "posedge(bus_busy) always(bus_grant) within 3",
+      "name": "posedge(bus_busy) always(bus_grant) within 3",
       "type": "assert",
-      "expr": "posedge(bus_busy) always(bus_grant) within 100ms"
+      "expr": "posedge(bus_busy) always(bus_grant) within 3"
     },
     {
       "id": "view:masterStateLabel",
@@ -470,32 +470,32 @@ export const __graph = {
     },
     {
       "from": "bus_request",
-      "to": "posedge(bus_request) eventually(bus_grant) within 1500ms",
+      "to": "posedge(bus_request) eventually(bus_grant) within 5",
       "type": "data"
     },
     {
       "from": "bus_grant",
-      "to": "posedge(bus_request) eventually(bus_grant) within 1500ms",
+      "to": "posedge(bus_request) eventually(bus_grant) within 5",
       "type": "data"
     },
     {
       "from": "bus_valid",
-      "to": "posedge(bus_valid) eventually(bus_ack) within 5000ms",
+      "to": "posedge(bus_valid) eventually(bus_ack) within 10",
       "type": "data"
     },
     {
       "from": "bus_ack",
-      "to": "posedge(bus_valid) eventually(bus_ack) within 5000ms",
+      "to": "posedge(bus_valid) eventually(bus_ack) within 10",
       "type": "data"
     },
     {
       "from": "bus_busy",
-      "to": "posedge(bus_busy) always(bus_grant) within 100ms",
+      "to": "posedge(bus_busy) always(bus_grant) within 3",
       "type": "data"
     },
     {
       "from": "bus_grant",
-      "to": "posedge(bus_busy) always(bus_grant) within 100ms",
+      "to": "posedge(bus_busy) always(bus_grant) within 3",
       "type": "data"
     },
     {
@@ -744,21 +744,21 @@ export function BusProtocol(root) {
     () => bus_request(),
     'eventually',
     () => bus_grant(),
-    { name: 'posedge(bus_request) eventually(bus_grant) within 1500ms', module: $m, duration: 1500 }
+    { name: 'posedge(bus_request) eventually(bus_grant) within 5', module: $m, duration: 5 }
   );
 
   createTemporalAssert(
     () => bus_valid(),
     'eventually',
     () => bus_ack(),
-    { name: 'posedge(bus_valid) eventually(bus_ack) within 5000ms', module: $m, duration: 5000 }
+    { name: 'posedge(bus_valid) eventually(bus_ack) within 10', module: $m, duration: 10 }
   );
 
   createTemporalAssert(
     () => bus_busy(),
     'always',
     () => bus_grant(),
-    { name: 'posedge(bus_busy) always(bus_grant) within 100ms', module: $m, duration: 100 }
+    { name: 'posedge(bus_busy) always(bus_grant) within 3', module: $m, duration: 3 }
   );
 
   const el0 = document.createElement('div');
@@ -960,21 +960,21 @@ export function __test() {
     () => bus_request(),
     'eventually',
     () => bus_grant(),
-    { name: 'posedge(bus_request) eventually(bus_grant) within 1500ms', module: $m, duration: 1500 }
+    { name: 'posedge(bus_request) eventually(bus_grant) within 5', module: $m, duration: 5 }
   );
 
   createTemporalAssert(
     () => bus_valid(),
     'eventually',
     () => bus_ack(),
-    { name: 'posedge(bus_valid) eventually(bus_ack) within 5000ms', module: $m, duration: 5000 }
+    { name: 'posedge(bus_valid) eventually(bus_ack) within 10', module: $m, duration: 10 }
   );
 
   createTemporalAssert(
     () => bus_busy(),
     'always',
     () => bus_grant(),
-    { name: 'posedge(bus_busy) always(bus_grant) within 100ms', module: $m, duration: 100 }
+    { name: 'posedge(bus_busy) always(bus_grant) within 3', module: $m, duration: 3 }
   );
 
   return {

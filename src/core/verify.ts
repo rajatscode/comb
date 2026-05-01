@@ -935,7 +935,7 @@ function buildGraph(mod: Module, symbols: Map<string, SymbolKind>, enumDefs: Map
       const edgeLabel = decl.triggerEdge === 'negedge' ? 'negedge' : 'posedge';
       const triggerText = exprToString(decl.trigger);
       const propText = exprToString(decl.property);
-      const withinText = decl.duration !== undefined ? ` within ${decl.duration}ms` : '';
+      const withinText = decl.duration !== undefined ? ` within ${decl.duration}` : '';
       const tempId = `${edgeLabel}(${triggerText}) ${decl.operator}(${propText})${withinText}`;
       nodes.push({ id: tempId, name: tempId, type: 'assert', expr: tempId });
       for (const dep of decl.deps) {
@@ -1135,18 +1135,52 @@ function analyzeAsyncBoundaries(
   }
 
   // Warning (a): Unsynchronized async write — a comb reads an async-written signal
-  // Build set of comb deps
+  // Build transitive taint set: start with directly async-written signals,
+  // then propagate through comb dependency chains (fixed-point iteration)
+  const taintedSignals = new Set<string>(asyncWrites.keys());
+
+  // Build a map of comb name -> deps for propagation
+  const combDepMap = new Map<string, string[]>();
+  for (const decl of mod.body) {
+    if (decl.kind === 'comb') {
+      combDepMap.set(decl.name, decl.deps);
+    }
+  }
+
+  // Fixed-point: propagate taint through combs
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [combName, deps] of combDepMap) {
+      if (!taintedSignals.has(combName) && deps.some(d => taintedSignals.has(d))) {
+        taintedSignals.add(combName);
+        changed = true;
+      }
+    }
+  }
+
+  // Check each comb for tainted dependencies
   for (const decl of mod.body) {
     if (decl.kind !== 'comb') continue;
     for (const dep of decl.deps) {
-      if (asyncWrites.has(dep)) {
-        const sources = asyncWrites.get(dep)!;
-        const sourceDesc = sources.map(s => `always @(${s.triggerName}), async block at line ${s.line}`).join('; ');
-        warnings.push({
-          message: `CDC: signal '${dep}' is written asynchronously (${sourceDesc}) but read synchronously by comb '${decl.name}' — consider adding a loading guard`,
-          line: decl.loc.line,
-          column: decl.loc.column,
-        });
+      if (taintedSignals.has(dep)) {
+        if (asyncWrites.has(dep)) {
+          // Direct: dep is itself async-written
+          const sources = asyncWrites.get(dep)!;
+          const sourceDesc = sources.map(s => `always @(${s.triggerName}), async block at line ${s.line}`).join('; ');
+          warnings.push({
+            message: `CDC: signal '${dep}' is written asynchronously (${sourceDesc}) but read synchronously by comb '${decl.name}' — consider adding a loading guard`,
+            line: decl.loc.line,
+            column: decl.loc.column,
+          });
+        } else {
+          // Transitive: dep is a comb that transitively reads an async-written signal
+          warnings.push({
+            message: `CDC: comb '${decl.name}' transitively reads async-written signal through '${dep}' — consider adding a loading guard`,
+            line: decl.loc.line,
+            column: decl.loc.column,
+          });
+        }
       }
     }
   }
@@ -1171,6 +1205,12 @@ function collectWritesFromStatements(
     if (stmt.kind === 'try') {
       collectWritesFromStatements(stmt.body, writes, symbols);
       collectWritesFromStatements(stmt.catchBody, writes, symbols);
+    }
+    if (stmt.kind === 'async') {
+      collectWritesFromStatements((stmt as any).body, writes, symbols);
+      if ((stmt as any).catchBody) {
+        collectWritesFromStatements((stmt as any).catchBody, writes, symbols);
+      }
     }
   }
 }

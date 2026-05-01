@@ -291,10 +291,11 @@ export function renderWaveform(
     }
   });
 
-  window.addEventListener('mouseup', () => {
+  const handleMouseUp = () => {
     isPanning = false;
     canvas.style.cursor = 'crosshair';
-  });
+  };
+  window.addEventListener('mouseup', handleMouseUp);
 
   canvas.addEventListener('wheel', (e) => {
     if (e.ctrlKey || e.metaKey) {
@@ -325,6 +326,77 @@ export function renderWaveform(
     }
   }, { passive: false });
 
+  // --- Keyboard shortcuts (only when mouse is over container) ---
+  let mouseIsOver = false;
+  container.addEventListener('mouseenter', () => { mouseIsOver = true; });
+  container.addEventListener('mouseleave', () => { mouseIsOver = false; });
+
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (!mouseIsOver) return;
+    const range = viewEnd - viewStart;
+    const mid = (viewStart + viewEnd) / 2;
+
+    switch (e.key) {
+      case '+':
+      case '=': {
+        // Zoom in: shrink range by 30% around center
+        e.preventDefault();
+        userInteracted = true;
+        const newRange = range * 0.7;
+        viewStart = mid - newRange / 2;
+        viewEnd = mid + newRange / 2;
+        draw();
+        break;
+      }
+      case '-': {
+        // Zoom out: expand range by 40%
+        e.preventDefault();
+        userInteracted = true;
+        const newRange = range * 1.4;
+        viewStart = mid - newRange / 2;
+        viewEnd = mid + newRange / 2;
+        draw();
+        break;
+      }
+      case 'ArrowLeft': {
+        // Pan left 10%
+        e.preventDefault();
+        userInteracted = true;
+        const shift = range * 0.1;
+        viewStart -= shift;
+        viewEnd -= shift;
+        draw();
+        break;
+      }
+      case 'ArrowRight': {
+        // Pan right 10%
+        e.preventDefault();
+        userInteracted = true;
+        const shift = range * 0.1;
+        viewStart += shift;
+        viewEnd += shift;
+        draw();
+        break;
+      }
+      case 'Home': {
+        // Fit all
+        e.preventDefault();
+        viewInitialized = false;
+        userInteracted = false;
+        draw();
+        break;
+      }
+      case 'Escape': {
+        // Clear markers
+        e.preventDefault();
+        markers.clear();
+        draw();
+        break;
+      }
+    }
+  };
+  window.addEventListener('keydown', handleKeyDown);
+
   // --- Initialize ---
   resize();
   draw();
@@ -339,6 +411,8 @@ export function renderWaveform(
   function dispose() {
     disposed = true;
     clearInterval(interval);
+    window.removeEventListener('mouseup', handleMouseUp);
+    window.removeEventListener('keydown', handleKeyDown);
     hierarchyBrowser?.dispose();
     container.innerHTML = '';
   }

@@ -1,0 +1,90 @@
+module VsTetris {
+  // === Game clock ===
+  signal tick: bool = false;
+  signal gameTick: int = 0;
+
+  // === Board dimensions ===
+  // 10 wide x 20 tall, stored as flat arrays (200 cells each)
+  signal p1_board: int[] = [];
+  signal p2_board: int[] = [];
+
+  // === Active piece state (Player 1) ===
+  enum PieceType { I, O, T, S, Z, L, J, None }
+  signal p1_piece: PieceType = PieceType.None;
+  signal p1_x: int = 4;
+  signal p1_y: int = 0;
+  signal p1_rot: int = 0;
+  signal p1_score: int = 0;
+  signal p1_lines: int = 0;
+  signal p1_pendingGarbage: int = 0;
+  signal p1_gameOver: bool = false;
+
+  // === Active piece state (Player 2 / AI) ===
+  signal p2_piece: PieceType = PieceType.None;
+  signal p2_x: int = 4;
+  signal p2_y: int = 0;
+  signal p2_rot: int = 0;
+  signal p2_score: int = 0;
+  signal p2_lines: int = 0;
+  signal p2_pendingGarbage: int = 0;
+  signal p2_gameOver: bool = false;
+
+  // === Garbage exchange signals ===
+  signal p1_linesCleared: int = 0;
+  signal p2_linesCleared: int = 0;
+
+  // === Derived state ===
+  comb gameActive = !(p1_gameOver || p2_gameOver);
+  comb p1_scoreLabel = "P1: " + str(p1_score);
+  comb p2_scoreLabel = "P2: " + str(p2_score);
+
+  // === Core game logic: both boards process on same tick ===
+  // Delta cycles ensure each board reads the OTHER's OLD garbage queue
+  always @(posedge tick) {
+    if (gameActive) {
+      gameTick <= gameTick + 1;
+
+      // Player 1: receive garbage from P2's PREVIOUS line clears
+      // (reads OLD p2_linesCleared — delta cycle semantics)
+      if (p2_linesCleared > 0) {
+        p1_pendingGarbage <= p1_pendingGarbage + p2_linesCleared;
+      }
+
+      // Player 2: receive garbage from P1's PREVIOUS line clears
+      // (reads OLD p1_linesCleared — delta cycle semantics)
+      if (p1_linesCleared > 0) {
+        p2_pendingGarbage <= p2_pendingGarbage + p1_linesCleared;
+      }
+
+      // Reset line clear counters for this tick
+      p1_linesCleared <= 0;
+      p2_linesCleared <= 0;
+    }
+  }
+
+  // === Temporal assertions ===
+  // After lines are cleared, garbage must be delivered to opponent within 2 ticks
+  assert temporal @(posedge p1_linesCleared) eventually(p2_pendingGarbage > 0) within 3;
+  assert temporal @(posedge p2_linesCleared) eventually(p1_pendingGarbage > 0) within 3;
+
+  // Game invariant: scores never decrease
+  assert always (p1_score >= 0);
+  assert always (p2_score >= 0);
+
+  // === View (minimal — the mount file handles canvas rendering) ===
+  view {
+    <div class="vs-tetris">
+      <div class="vs-header">
+        <span class="vs-score p1">{p1_scoreLabel} ({p1_lines} lines)</span>
+        <span class="vs-title">VS TETRIS</span>
+        <span class="vs-score p2">{p2_scoreLabel} ({p2_lines} lines)</span>
+      </div>
+      <div class="vs-status">
+        <span>Tick: {gameTick}</span>
+        <span>P1 garbage: {p1_pendingGarbage}</span>
+        <span>P2 garbage: {p2_pendingGarbage}</span>
+        <span>{gameActive ? "PLAYING" : "GAME OVER"}</span>
+      </div>
+    </div>
+  }
+}

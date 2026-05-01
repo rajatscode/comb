@@ -197,9 +197,16 @@ function notify(signal: SignalNode<any>): void {
 }
 
 function applyUpdate<T>(signal: SignalNode<T>, nodeId: string, value: T, oldValue: T): void {
-  // Coverage: record boolean toggles
-  if (coverage.isEnabled() && typeof value === 'boolean') {
-    coverage.recordToggle(nodeId, value);
+  // Coverage: record boolean toggles and enum transitions
+  if (coverage.isEnabled()) {
+    if (typeof value === 'boolean') {
+      coverage.recordToggle(nodeId, value);
+    } else {
+      const node = circuit.getNode(nodeId);
+      if (node?.valueType && node.valueType !== 'int' && node.valueType !== 'float' && node.valueType !== 'string' && node.valueType !== 'bool') {
+        coverage.recordTransition(nodeId, String(oldValue), String(value));
+      }
+    }
   }
   const old = signal.value;
   signal.value = value;
@@ -277,9 +284,14 @@ export function createSignal<T>(
       ? (next as (prev: T) => T)(signal.value)
       : next;
     if (Object.is(nextVal, signal.value)) return;
-    // Coverage: record boolean toggles
-    if (coverage.isEnabled() && typeof nextVal === 'boolean') {
-      coverage.recordToggle(nodeId, nextVal);
+    // Coverage: record boolean toggles and enum transitions
+    if (coverage.isEnabled()) {
+      if (typeof nextVal === 'boolean') {
+        coverage.recordToggle(nodeId, nextVal);
+      } else if (meta.type && meta.type !== 'int' && meta.type !== 'float' && meta.type !== 'string') {
+        // Enum-typed signal: record FSM transition
+        coverage.recordTransition(nodeId, String(signal.value), String(nextVal));
+      }
     }
     const old = signal.value;
 
@@ -344,6 +356,10 @@ export function createComb<T>(
       const old = value;
       value = newVal;
       signal.value = newVal;
+      // Coverage: track boolean comb toggles
+      if (coverage.isEnabled() && typeof newVal === 'boolean') {
+        coverage.recordToggle(nodeId, newVal);
+      }
       circuit.notifyChange(nodeId, old, newVal);
       // Notify subscribers through the engine
       notify(signal);
@@ -474,6 +490,10 @@ export function createCell<T>(
   const set = (incoming: T): void => {
     const merged = merge(signal.value, incoming);
     if (Object.is(merged, signal.value)) return;
+    // Coverage: record boolean toggles for cells
+    if (coverage.isEnabled() && typeof merged === 'boolean') {
+      coverage.recordToggle(nodeId, merged as boolean);
+    }
     const old = signal.value;
 
     if (engine.evaluating) {
@@ -662,11 +682,10 @@ export function createTemporalAssert(
   let previousTrigger = false;
   let triggerInitialized = false;
 
-  // State for active assertions
+  // State for active assertions — tick-based counting (no setTimeout)
   let armed = false;
-  let alwaysTimer: ReturnType<typeof setTimeout> | null = null;
-  let eventuallyTimer: ReturnType<typeof setTimeout> | null = null;
-  let nextCyclePending = false;
+  let ticksRemaining = 0;
+  let activePropComp: Computation | null = null;
 
   const triggerComp: Computation = {
     execute: checkTrigger,
@@ -695,43 +714,61 @@ export function createTemporalAssert(
       armAssertion();
     }
 
+    // Tick-based deadline: count each trigger evaluation while armed
+    if (armed && triggerInitialized) {
+      ticksRemaining--;
+      if (ticksRemaining <= 0) {
+        // Deadline reached
+        if (operator === 'eventually') {
+          if (!propertyFn()) {
+            circuit.assertionFailed(nodeId, {
+              expr: `eventually within ${meta.duration} ticks`,
+              module: meta.module,
+              values: { property: false },
+            });
+          } else {
+            circuit.assertionPassed(nodeId, { expr: `eventually within ${meta.duration} ticks`, module: meta.module });
+          }
+          disarmAssertion();
+        } else if (operator === 'always') {
+          // Survived the full window — pass
+          circuit.assertionPassed(nodeId, { expr: `always for ${meta.duration} ticks`, module: meta.module });
+          disarmAssertion();
+        }
+      }
+    }
+
     previousTrigger = currentTrigger;
     triggerInitialized = true;
     circuit.notifyEffect(nodeId);
   }
 
+  function disarmAssertion(): void {
+    armed = false;
+    if (activePropComp) { activePropComp.disposed = true; activePropComp = null; }
+  }
+
   function armAssertion(): void {
     armed = true;
+    ticksRemaining = meta.duration;
     circuit.assertionArmed(nodeId, {
-      expr: `${operator} within ${meta.duration}ms`,
+      expr: `${operator} within ${meta.duration} ticks`,
       module: meta.module,
-      deadline: Date.now() + meta.duration,
+      deadline: performance.now() + meta.duration * 200, // approximate for waveform display
     });
 
     if (operator === 'eventually') {
       // Check immediately
       if (propertyFn()) {
-        armed = false;
-        circuit.assertionPassed(nodeId, { expr: `eventually within ${meta.duration}ms`, module: meta.module });
+        circuit.assertionPassed(nodeId, { expr: `eventually within ${meta.duration} ticks`, module: meta.module });
+        disarmAssertion();
         return;
       }
-      // Set deadline
-      eventuallyTimer = setTimeout(() => {
-        if (armed && !propertyFn()) {
-          circuit.assertionFailed(nodeId, {
-            expr: `eventually within ${meta.duration}ms`,
-            module: meta.module,
-            values: { property: propertyFn() },
-          });
-        }
-        armed = false;
-      }, meta.duration);
 
-      // Also monitor on each change via a property watcher
+      // Also monitor on each property change (early success)
       const propComp: Computation = {
         execute: () => {
           if (!armed || propComp.disposed) return;
-          // Clear old tracking
           for (const dep of propComp.dependencies) dep.subscribers.delete(propComp);
           propComp.dependencies.clear();
 
@@ -741,10 +778,8 @@ export function createTemporalAssert(
           currentComputation = prev;
 
           if (result) {
-            armed = false;
-            if (eventuallyTimer) { clearTimeout(eventuallyTimer); eventuallyTimer = null; }
-            circuit.assertionPassed(nodeId, { expr: `eventually within ${meta.duration}ms`, module: meta.module });
-            propComp.disposed = true;
+            circuit.assertionPassed(nodeId, { expr: `eventually within ${meta.duration} ticks`, module: meta.module });
+            disarmAssertion();
           }
         },
         dependencies: new Set(),
@@ -752,23 +787,23 @@ export function createTemporalAssert(
         disposed: false,
         isDom: false,
       };
+      activePropComp = propComp;
       if (currentScope) currentScope.track(propComp);
-      // Run once to set up tracking
       propComp.execute();
 
     } else if (operator === 'always') {
-      // Property must remain true for duration ms
+      // Property must remain true for duration ticks
       if (!propertyFn()) {
         circuit.assertionFailed(nodeId, {
-          expr: `always for ${meta.duration}ms`,
+          expr: `always for ${meta.duration} ticks`,
           module: meta.module,
           values: { property: false },
         });
-        armed = false;
+        disarmAssertion();
         return;
       }
 
-      // Monitor property changes
+      // Monitor property — fail immediately if it goes false
       const propComp: Computation = {
         execute: () => {
           if (!armed || propComp.disposed) return;
@@ -782,13 +817,11 @@ export function createTemporalAssert(
 
           if (!result) {
             circuit.assertionFailed(nodeId, {
-              expr: `always for ${meta.duration}ms`,
+              expr: `always for ${meta.duration} ticks`,
               module: meta.module,
               values: { property: false },
             });
-            armed = false;
-            if (alwaysTimer) { clearTimeout(alwaysTimer); alwaysTimer = null; }
-            propComp.disposed = true;
+            disarmAssertion();
           }
         },
         dependencies: new Set(),
@@ -796,23 +829,15 @@ export function createTemporalAssert(
         disposed: false,
         isDom: false,
       };
+      activePropComp = propComp;
       if (currentScope) currentScope.track(propComp);
       propComp.execute();
 
-      // Success after duration
-      alwaysTimer = setTimeout(() => {
-        armed = false;
-        propComp.disposed = true;
-        circuit.assertionPassed(nodeId, { expr: `always for ${meta.duration}ms`, module: meta.module });
-      }, meta.duration);
-
     } else if (operator === 'next') {
-      // Property must be true after the next delta cycle completes
-      nextCyclePending = true;
-      // Schedule a check after current simulation quiesces
-      // We use a microtask to check after the current batch/simulation finishes
+      // Property must be true after the next evaluation
+      // Use microtask to check after current simulation quiesces
       queueMicrotask(() => {
-        if (nextCyclePending && armed) {
+        if (armed) {
           if (!propertyFn()) {
             circuit.assertionFailed(nodeId, {
               expr: `next delta cycle`,
@@ -822,8 +847,7 @@ export function createTemporalAssert(
           } else {
             circuit.assertionPassed(nodeId, { expr: `next delta cycle`, module: meta.module });
           }
-          armed = false;
-          nextCyclePending = false;
+          disarmAssertion();
         }
       });
     }

@@ -621,6 +621,85 @@ const SVELTE_CODE = `<script>
      | {protocolHealthy?'OK':'VIOLATION'}</p>
 </div>`;
 
+// === Naive JS bus protocol (immediate writes, no delta cycles) ===
+interface NaiveState {
+  cycle: number; masterState: string; slaveState: string;
+  busReq: boolean; busGrant: boolean; busData: number;
+  busValid: boolean; busAck: boolean; busBusy: boolean;
+  txCount: number; rxCount: number; slaveBuffer: number;
+  dataIdx: number; grantDelay: number;
+}
+
+function createNaiveState(): NaiveState {
+  return {
+    cycle: 0, masterState: 'Idle', slaveState: 'Idle',
+    busReq: false, busGrant: false, busData: 0,
+    busValid: false, busAck: false, busBusy: false,
+    txCount: 0, rxCount: 0, slaveBuffer: 0,
+    dataIdx: 0, grantDelay: 0,
+  };
+}
+
+function runNaiveStep(s: NaiveState): NaiveState {
+  // All reads see CURRENT values (no snapshots, no delta cycles)
+  // This causes the master to skip the Requesting state
+  // because the arbiter grants immediately in the same tick
+
+  // Master FSM — initiate request
+  if (s.masterState === 'Idle' && s.cycle % 8 === 0 && s.cycle > 0) {
+    s.masterState = 'Requesting'; s.busReq = true; s.dataIdx = 0;
+  }
+
+  // Arbiter runs in same tick — grants immediately
+  if (s.busReq && !s.busGrant) {
+    s.grantDelay++;
+    if (s.grantDelay >= 1) { s.busGrant = true; s.grantDelay = 0; }
+  }
+  if (!s.busReq && s.busGrant && !s.busBusy) {
+    s.busGrant = false;
+  }
+
+  // Master sees the JUST-WRITTEN grant — skips Requesting!
+  if (s.masterState === 'Requesting' && s.busGrant) {
+    s.masterState = 'Transmitting'; s.busReq = false; s.busBusy = true;
+  }
+  if (s.masterState === 'Transmitting') {
+    s.busData = (s.txCount + 1) * 100 + s.dataIdx;
+    s.busValid = true; s.dataIdx++;
+    if (s.dataIdx > 3) {
+      s.masterState = 'WaitAck'; s.busValid = false;
+    }
+  }
+  if (s.masterState === 'WaitAck' && s.busAck) {
+    s.masterState = 'Done'; s.busBusy = false; s.txCount++;
+  }
+  if (s.masterState === 'Done') {
+    s.masterState = 'Idle';
+  }
+
+  // Slave FSM — also reads immediate values
+  if (s.slaveState === 'Idle' && s.busValid) {
+    s.slaveState = 'Receiving'; s.slaveBuffer = s.busData;
+  }
+  if (s.slaveState === 'Receiving') {
+    s.slaveBuffer = s.busData;
+    if (!s.busValid) s.slaveState = 'Processing';
+  }
+  if (s.slaveState === 'Processing') {
+    s.slaveState = 'Acking'; s.busAck = true; s.rxCount++;
+  }
+  if (s.slaveState === 'Acking') {
+    s.busAck = false; s.slaveState = 'Idle';
+  }
+
+  s.cycle++;
+  return s;
+}
+
+const MASTER_LABELS: Record<string, string> = {
+  Idle: 'IDLE', Requesting: 'REQ', Transmitting: 'TX', WaitAck: 'WAIT', Done: 'DONE',
+};
+
 interface TabInfo { label: string; code: string; hl: (s: string) => string; color: string; note: string; }
 
 const TABS: TabInfo[] = [
@@ -667,6 +746,86 @@ export function mountBusProtocol(root: HTMLElement): { dispose: () => void } {
   controls.appendChild(resetBtn);
   shell.app.appendChild(controls);
 
+  // === Naive JS comparison state ===
+  let naiveState = createNaiveState();
+  let divergenceCount = 0;
+
+  const comparePanel = document.createElement('div');
+  comparePanel.style.cssText = 'margin:0 16px 12px; padding:12px 16px; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px;';
+  comparePanel.innerHTML = `
+    <h3 style="margin:0 0 10px; font-size:0.85rem; color:var(--accent-2); text-transform:uppercase; letter-spacing:1px;">Comb vs Naive JS — Behavioral Divergence</h3>
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
+      <div>
+        <div style="font-size:0.72rem; color:var(--success); font-weight:600; margin-bottom:4px;">COMB (Delta Cycles)</div>
+        <div class="comb-state-display" style="font-family:var(--mono); font-size:0.75rem; color:var(--text-muted);">Master: IDLE | Slave: IDLE</div>
+      </div>
+      <div>
+        <div style="font-size:0.72rem; color:var(--event); font-weight:600; margin-bottom:4px;">NAIVE JS (Immediate Writes)</div>
+        <div class="naive-state-display" style="font-family:var(--mono); font-size:0.75rem; color:var(--text-muted);">Master: IDLE | Slave: IDLE</div>
+      </div>
+      <div>
+        <div style="font-size:0.72rem; color:var(--text-faint); font-weight:600; margin-bottom:4px;">DIVERGENCE</div>
+        <div class="divergence-display" style="font-family:var(--mono); font-size:0.75rem; color:var(--text-muted);">0 ticks diverged</div>
+      </div>
+    </div>
+    <div class="compare-log" style="margin-top:10px; max-height:120px; overflow-y:auto; font-family:var(--mono); font-size:0.65rem; line-height:1.6; color:var(--text-faint);"></div>
+  `;
+  shell.app.appendChild(comparePanel);
+
+  const combStateEl = comparePanel.querySelector('.comb-state-display') as HTMLElement;
+  const naiveStateEl = comparePanel.querySelector('.naive-state-display') as HTMLElement;
+  const divergenceEl = comparePanel.querySelector('.divergence-display') as HTMLElement;
+  const compareLog = comparePanel.querySelector('.compare-log') as HTMLElement;
+
+  // Map enum index to label for Comb's master_state / slave_state
+  const COMB_MASTER_LABELS = ['Idle', 'Requesting', 'Transmitting', 'WaitAck', 'Done'];
+  const COMB_SLAVE_LABELS = ['Idle', 'Receiving', 'Processing', 'Acking'];
+
+  function getCombMasterState(): string {
+    const node = circuit.getNode(`${M}.master_state`);
+    const val = node?.getValue?.();
+    if (typeof val === 'number' && val >= 0 && val < COMB_MASTER_LABELS.length) return COMB_MASTER_LABELS[val];
+    return String(val ?? 'unknown');
+  }
+  function getCombSlaveState(): string {
+    const node = circuit.getNode(`${M}.slave_state`);
+    const val = node?.getValue?.();
+    if (typeof val === 'number' && val >= 0 && val < COMB_SLAVE_LABELS.length) return COMB_SLAVE_LABELS[val];
+    return String(val ?? 'unknown');
+  }
+
+  function updateComparePanel() {
+    const combMaster = getCombMasterState();
+    const combSlave = getCombSlaveState();
+    const naiveMaster = naiveState.masterState;
+    const naiveSlave = naiveState.slaveState;
+
+    const combMLabel = MASTER_LABELS[combMaster] || combMaster;
+    const naiveMLabel = MASTER_LABELS[naiveMaster] || naiveMaster;
+
+    combStateEl.innerHTML = `Master: <strong>${combMLabel}</strong> | Slave: <strong>${combSlave}</strong>`;
+    naiveStateEl.innerHTML = `Master: <strong>${naiveMLabel}</strong> | Slave: <strong>${naiveSlave}</strong>`;
+
+    const masterDiverged = combMaster !== naiveMaster;
+    const slaveDiverged = combSlave !== naiveSlave;
+    const diverged = masterDiverged || slaveDiverged;
+    if (diverged) divergenceCount++;
+
+    const pctColor = diverged ? 'var(--event)' : 'var(--success)';
+    divergenceEl.innerHTML = `<span style="color:${pctColor}; font-weight:700;">${divergenceCount}</span> ticks diverged`;
+
+    // Log entry
+    const tick = naiveState.cycle;
+    if (diverged) {
+      const entry = `<div style="color:var(--event);">Tick ${tick}: Comb ${combMLabel} | Naive ${naiveMLabel} <strong>DIVERGED</strong>${masterDiverged ? ' (master)' : ''}${slaveDiverged ? ' (slave)' : ''}</div>`;
+      compareLog.innerHTML += entry;
+    } else {
+      const entry = `<div>Tick ${tick}: ${combMLabel} = ${naiveMLabel}</div>`;
+      compareLog.innerHTML += entry;
+    }
+    compareLog.scrollTop = compareLog.scrollHeight;
+  }
+
   const clkNode = circuit.getNode(`${M}.clk`);
   let autoRunInterval: ReturnType<typeof setInterval> | null = null;
   let running = false;
@@ -674,7 +833,13 @@ export function mountBusProtocol(root: HTMLElement): { dispose: () => void } {
   function step() {
     if (clkNode?.setValue) {
       batch(() => { clkNode.setValue!(true); });
-      setTimeout(() => { batch(() => { clkNode.setValue!(false); }); }, 10);
+      // Run naive step synchronously
+      runNaiveStep(naiveState);
+      setTimeout(() => {
+        batch(() => { clkNode.setValue!(false); });
+        // Update comparison after Comb settles
+        updateComparePanel();
+      }, 10);
     }
   }
 
@@ -707,6 +872,13 @@ export function mountBusProtocol(root: HTMLElement): { dispose: () => void } {
         if (node?.setValue) node.setValue(val);
       }
     });
+    // Reset naive state and comparison
+    naiveState = createNaiveState();
+    divergenceCount = 0;
+    combStateEl.innerHTML = 'Master: <strong>IDLE</strong> | Slave: <strong>IDLE</strong>';
+    naiveStateEl.innerHTML = 'Master: <strong>IDLE</strong> | Slave: <strong>IDLE</strong>';
+    divergenceEl.innerHTML = '<span style="color:var(--success); font-weight:700;">0</span> ticks diverged';
+    compareLog.innerHTML = '';
   });
 
   // Side-by-side code comparison: Comb (left) vs selected framework (right)
@@ -1108,9 +1280,9 @@ export function mountBusProtocol(root: HTMLElement): { dispose: () => void } {
     `${M}.cycle`,
   ], {
     extraSignals: [
-      { id: `${M}.posedge(bus_request) eventually(bus_grant) within 1500ms`, displayName: 'req\u2192grant', group: 'Assertions', type: 'assertion' },
-      { id: `${M}.posedge(bus_valid) eventually(bus_ack) within 5000ms`, displayName: 'valid\u2192ack', group: 'Assertions', type: 'assertion' },
-      { id: `${M}.posedge(bus_busy) always(bus_grant) within 100ms`, displayName: 'busy\u2192grant', group: 'Assertions', type: 'assertion' },
+      { id: `${M}.posedge(bus_request) eventually(bus_grant) within 5`, displayName: 'req\u2192grant', group: 'Assertions', type: 'assertion' },
+      { id: `${M}.posedge(bus_valid) eventually(bus_ack) within 10`, displayName: 'valid\u2192ack', group: 'Assertions', type: 'assertion' },
+      { id: `${M}.posedge(bus_busy) always(bus_grant) within 3`, displayName: 'busy\u2192grant', group: 'Assertions', type: 'assertion' },
     ],
   });
 
