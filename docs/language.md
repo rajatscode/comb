@@ -143,18 +143,23 @@ Runtime invariants registered as nodes in the `__graph`. The test harness auto-e
 
 Inspired by SystemVerilog Assertions (SVA). Prior art: Quickstrom (PLDI 2022) applies LTL to web app testing externally; Comb's temporal assertions are embedded in the component model as graph nodes, with three operators: `eventually`, `always`, and `next`.
 
+The `within N` value counts **trigger evaluations** (simulation ticks), not wall-clock time. This ensures assertions behave identically regardless of clock speed.
+
 ```sv
-// "whenever submit fires, loading must eventually become false"
-assert temporal @(posedge submitted)
-  eventually(!loading) within 10s;
+// "after request rises, grant must follow within 5 ticks"
+assert temporal @(posedge bus_request)
+  eventually(bus_grant) within 5;
 
-// "form submission must lead to success or error"
-assert temporal @(posedge submitted)
-  eventually(showSuccess || showError) within 5s;
+// "bus_grant must stay true for 3 ticks after bus_busy rises"
+assert temporal @(posedge bus_busy)
+  always(bus_grant) within 3;
 
-// "no navigation while form is dirty without confirmation"
-assert temporal @(navigateAway) !formDirty || confirmed;
+// "after submit, show result on next tick"
+assert temporal @(posedge submitted)
+  next(showResult) within 0;
 ```
+
+Assertion lifecycle events (armed, passed, failed) are recorded in the waveform viewer as colored overlays — green for passed, red for failed, amber for pending.
 
 ---
 
@@ -405,6 +410,18 @@ always @(loadUsers) {
 
 `async { }` blocks run asynchronously — the always block returns immediately and the async body executes in the background. Signal writes inside async blocks trigger new simulation cycles when they resolve. `await` is only valid inside async blocks.
 
+### CDC Async Boundary Analysis
+
+The compiler performs static analysis on async blocks, inspired by Clock Domain Crossing (CDC) analysis in hardware design. Three warnings:
+
+| Warning | What it catches |
+|---|---|
+| Unsynchronized async write | Signal written in `async {}` but read synchronously by a comb without a loading guard |
+| Race condition | Two or more `async {}` blocks write the same signal |
+| Missing error handling | `async {}` block writes signals but has no `catch` block |
+
+Taint propagation is **transitive** — if comb B reads async-tainted signal A, and comb C reads B, then C is also flagged. The analysis uses fixed-point iteration over the comb dependency graph.
+
 ---
 
 ## Component Children / Slots
@@ -460,11 +477,20 @@ Every `.comb` file compiles to JavaScript that exports `__graph` — a JSON-seri
 
 No other framework emits this as a build artifact (see docs/research/honest-prior-art.md for details).
 
+Each node carries metadata:
+- `valueType` — `'bool'`, `'int'`, `'float'`, `'string'`, or enum name
+- `states` — finite state space when bounded (e.g. `['true','false']` for bool, `['Phase.Red','Phase.Green','Phase.Yellow']` for enum, `['0','1','2','3']` for bounded int with guard analysis)
+- `expr` — assertion expression text for assert nodes
+
+The graph also includes an `enums` map with all enum definitions and their variants.
+
 This single data structure powers:
 
 - **Circuit Visualization** — render the reactive topology as a live diagram
 - **Circuit Diff** — compare `__graph` across two versions to detect topology changes
-- **Auto-derived Testing** — combs are pure functions of their deps, so they ARE testable specs
+- **Graph-Directed Auto-Testing** — `runAutoTest()` reads the graph to discover inputs, drive state coverage, and track results
+- **State Space Inference** — compiler analyzes write patterns and guard conditions to compute bounded state spaces
+- **Waveform Debugger** — signal hierarchy, assertion overlays, cross-signal search
 - **Runtime Overlay** — static graph merged with live signal values via `loadStaticGraph()`
 
 ---
@@ -483,6 +509,8 @@ Event enters → Delta 0: combinational logic (combs) settles
 
 Delta cycles give formal guarantees: combs always see consistent state, concurrent always blocks execute deterministically, DOM updates only after stabilization. Standard topological sorting (Solid, Preact) is a single pass; delta cycles are multi-pass.
 
+**Non-blocking assignment (`<=`):** Inside `always @(posedge/negedge)` blocks, all `<=` writes are deferred until the block completes. This means all reads see **pre-update values** — you don't need manual snapshots. The compiler emits `deferredBatch()` which sets `engine.evaluating = true` during execution, causing all signal writes to be queued for the next delta cycle instead of applying immediately.
+
 **Fast path optimization:** When the dependency graph is a pure feed-forward chain (no feedback edges), the engine detects this statically and collapses the multi-pass delta cycle into a single topological pass — identical cost to Solid/Preact for the common case. The full delta cycle machinery only activates when feedback edges are present.
 
 **Oscillation detection:** The compiler statically warns when an `always` block's sensitivity list creates a circular dependency (writing to a signal that feeds back into the same block's inputs). At runtime, if a delta cycle exceeds the iteration limit, the engine reports which signals are oscillating — listing their names and alternating values — rather than silently diverging or throwing an opaque error.
@@ -491,16 +519,56 @@ Delta cycles give formal guarantees: combs always see consistent state, concurre
 
 ## Testing
 
+### __test() — Headless signal access
+
+Every compiled module exports `__test()` for headless testing without a DOM:
+
+```javascript
+const t = __test();
+t.signals.username.set("alice");
+assert(t.combs.usernameValid() === true);
+t.dispose();
+```
+
+### runAutoTest() — Graph-directed coverage
+
+The generic auto-test framework reads `__graph` and covers the state space automatically:
+
+```javascript
+import { runAutoTest, renderAutoTestResult } from '../runtime/index.js';
+
+const result = runAutoTest(__graph, circuit, 'MyModule');
+// result.percentage      → 100 (all bounded states covered)
+// result.inputsDriven    → ['tick', 'p1_piece', ...]
+// result.clocksDriven    → ['tick']
+// result.signalCoverage  → per-signal visited states
+```
+
+Algorithm:
+1. Find bounded signals (nodes with `states[]` in `__graph`)
+2. Find root signals (no incoming edges — drivable inputs)
+3. Find clocks (signals feeding posedge sensitivity blocks)
+4. Drive each root through all states via `setValue()`
+5. Tick clocks to propagate effects
+6. Track which states each signal reached
+
+Works for **any** compiled module with zero module-specific logic.
+
+### CoverageCollector — Runtime instrumentation
+
+The runtime automatically tracks:
+- **Toggle coverage** — `recordToggle()` for boolean signals, combs, and cells
+- **FSM transition coverage** — `recordTransition()` for enum-typed signals
+
+No manual instrumentation needed — the `createSignal` and `createComb` primitives call these automatically when values change.
+
+### CLI test runner
+
 ```bash
 npx tsx src/cli/test.ts examples/registration.comb
 ```
 
-The test harness:
-1. Instantiates the module headlessly (no DOM)
-2. Generates random inputs for all signals
-3. Evaluates all `assert` declarations
-4. Reports boolean coverage (how many true/false combinations of combs were hit)
-5. Returns pass/fail with coverage percentage
+Instantiates the module headlessly, generates inputs, evaluates assertions, reports coverage.
 
 ---
 

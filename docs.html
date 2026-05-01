@@ -520,8 +520,30 @@
         <li><strong>FSM transition coverage</strong> &mdash; which state transitions have been exercised?</li>
         <li><strong>Cross coverage</strong> &mdash; which combinations of boolean signal values have been observed? Unreachable combinations are flagged after test completion.</li>
       </ul>
-      <p>The auto-test reads the graph to discover bounded signals, drives clock inputs identified from sensitivity block edges, and stops when 100% state coverage is achieved or coverage plateaus. No random fuzzing &mdash; the graph directs the test generation.</p>
-      <p>Auto-tests run <strong>headless</strong> &mdash; a separate simulation that doesn't affect the live UI. The VS Tetris demo runs 500 headless ticks with both boards AI-driven, tracking piece type coverage (7 types &times; 2 players), boolean state toggles, and garbage mechanic exercising (line clears, garbage sent, garbage received).</p>
+      <h3>Graph-Directed Auto-Test Framework</h3>
+      <p>The runtime provides <code>runAutoTest(graph, circuit, module)</code> &mdash; a generic framework that reads <code>__graph</code> and automatically covers the state space. No module-specific knowledge needed:</p>
+<pre class="docs-code"><span class="kw">import</span> { runAutoTest, renderAutoTestResult } <span class="kw">from</span> <span class="str">'../runtime/index.js'</span>;
+
+<span class="cm">// Run auto-test — works for ANY compiled .comb module</span>
+<span class="kw">const</span> result = <span class="fn">runAutoTest</span>(__graph, circuit, <span class="str">'MyModule'</span>);
+
+<span class="cm">// result.percentage    → coverage %</span>
+<span class="cm">// result.signalCoverage → per-signal state chips</span>
+<span class="cm">// result.inputsDriven   → which signals it drove</span>
+<span class="cm">// result.clocksDriven   → which clocks it ticked</span>
+
+<span class="cm">// Render as HTML</span>
+panel.innerHTML = <span class="fn">renderAutoTestResult</span>(result);</pre>
+      <p>The algorithm:</p>
+      <ol>
+        <li><strong>Find bounded signals</strong> &mdash; nodes in <code>__graph</code> with <code>states[]</code> arrays (bool, enum, bounded int)</li>
+        <li><strong>Find root signals</strong> &mdash; signals with no incoming data/write edges (these are drivable inputs)</li>
+        <li><strong>Find clock signals</strong> &mdash; signals that feed into <code>posedge</code> sensitivity blocks</li>
+        <li><strong>Drive each root signal</strong> through every state value via <code>circuit.getNode(id).setValue()</code></li>
+        <li><strong>Tick clocks</strong> after each state change to propagate effects through the reactive graph</li>
+        <li><strong>Track coverage</strong> &mdash; record which states each bounded signal actually reached</li>
+      </ol>
+      <p>No random fuzzing, no module-specific logic. The graph tells the test engine what to drive and what to measure. The VS Tetris demo uses the same <code>runAutoTest()</code> as the bus protocol demo &mdash; one API for all modules.</p>
 
       <h2 id="graph">The __graph Artifact</h2>
       <p>Every <code>.comb</code> file compiles to JavaScript that exports <code>__graph</code> &mdash; a JSON-serializable static dependency graph containing every node (signal, comb, cell, event, view binding, assertion) and every edge (data flow, trigger, write).</p>
@@ -539,13 +561,27 @@
 
       <!-- Testing -->
       <h2 id="testing">Testing</h2>
-      <p>Every compiled module exports a <code>__test()</code> function for headless testing:</p>
+
+      <h3>__test() &mdash; Headless signal access</h3>
+      <p>Every compiled module exports a <code>__test()</code> function that instantiates signals and combs without mounting a DOM:</p>
 <pre class="docs-code"><span class="cm">// Headless test — no DOM needed</span>
 <span class="kw">const</span> t = <span class="fn">__test</span>();
 t.signals.username.<span class="fn">set</span>(<span class="str">"alice"</span>);
 <span class="fn">assert</span>(t.combs.<span class="fn">usernameValid</span>() === <span class="num">true</span>);
 t.<span class="fn">dispose</span>();</pre>
-      <p>The test harness instantiates the module headlessly, generates random inputs for all signals, evaluates all <code>assert</code> declarations, and reports boolean coverage (how many true/false combinations of combs were hit).</p>
+
+      <h3>runAutoTest() &mdash; Graph-directed coverage</h3>
+      <p>The generic auto-test framework reads <code>__graph</code> to discover inputs and drive coverage automatically:</p>
+<pre class="docs-code"><span class="kw">import</span> { runAutoTest } <span class="kw">from</span> <span class="str">'../runtime/index.js'</span>;
+
+<span class="kw">const</span> result = <span class="fn">runAutoTest</span>(__graph, circuit, <span class="str">'MyModule'</span>);
+console.<span class="fn">log</span>(result.percentage);       <span class="cm">// 100</span>
+console.<span class="fn">log</span>(result.inputsDriven);      <span class="cm">// ['tick', 'p1_piece', ...]</span>
+console.<span class="fn">log</span>(result.signalCoverage);    <span class="cm">// per-signal state chips</span></pre>
+      <p>Works for <strong>any</strong> compiled module. The bus protocol, unit converter, and VS Tetris demos all use the same <code>runAutoTest()</code> call.</p>
+
+      <h3>CoverageCollector &mdash; Runtime instrumentation</h3>
+      <p>The runtime automatically records toggle coverage (boolean signals/combs/cells) and FSM transition coverage (enum signals) during execution. No manual instrumentation needed &mdash; the <code>createSignal</code> and <code>createComb</code> primitives call <code>coverage.recordToggle()</code> and <code>coverage.recordTransition()</code> when values change.</p>
 
       <!-- CLI Tools -->
       <h2 id="cli">CLI Tools</h2>
