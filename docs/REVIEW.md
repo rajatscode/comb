@@ -215,11 +215,32 @@ Large reactive codebases become "change something, pray nothing breaks."
 
 **Verdict: Real annoyance, marginal improvement.** The boilerplate is real but minor. ~5 lines → 1 line is nice DX but doesn't justify a new language.
 
+### Correction: Glitches and effect ordering ARE real problems
+
+The initial review dismissed these. The research says otherwise.
+
+**SolidJS has documented, production-affecting glitch issues:**
+- solidjs/solid#1199: Effect execution order changed silently in 1.5 upgrade. Code depending on effect ordering broke with no documentation.
+- solidjs/solid#879: Within `batch()`, setting a signal and immediately reading it returns the *old* value. By design, but causes real bugs.
+- solidjs/solid Discussion #2420: "How do I guarantee the order of some effects?" Answer: you cannot.
+- solidjs/solid#1843: `createEffect` fires in dev mode but not in production builds.
+
+**Svelte 5's `$effect` has circular dependency problems:**
+- sveltejs/svelte#9944: "$effect is unusable (produces circular dependencies and endless updates)." Hundreds of upvotes.
+- sveltejs/svelte#13207: Request for manual dependency specification — indicating automatic tracking is insufficient.
+
+**Angular signals fail silently on conditional dependencies:**
+- angular/angular#54859: `computed()` displays initial value but never refreshes.
+- angular/angular#54050: Computed inside observable pipe runs once, never recalculates.
+- Conditional dependency loss: if `computed()` reads signal A only when signal B is true, and B becomes false, A drops from the dep set. When A changes, the computed doesn't update. No error thrown.
+
+**The TC39 Signals proposal (Stage 1) explicitly acknowledges glitch-free computation as a design goal** — a tacit admission from the standards body that existing frameworks solve this inconsistently.
+
+**Revised verdict:** Delta cycles don't solve a theoretical problem — they solve a real one that existing frameworks handle with ad-hoc batching, undocumented ordering, and silent failures. The question is whether the DES formalism is the right fix, or whether better tooling around existing models is sufficient.
+
 ### NOT real pain points (stop optimizing for these)
 
-- **"Signal graph glitches."** Solved by batching in every modern framework. Nobody ships bugs because of topological sort vs. delta cycles.
-- **"Effect ordering is non-deterministic."** Rarely causes bugs in practice. When it does, explicit dependency declaration fixes it without DES.
-- **"I need formal temporal assertions in my component."** Nobody has this problem. It's a solution looking for a problem in web UI. (It's a real problem in hardware verification, but that's a different domain.)
+- **"I need formal temporal assertions in my component."** Nobody has this problem in daily web dev. It's real in hardware verification, but the UI analog is better served by external testing tools (Bombadil).
 - **"I need propagator networks for bidirectional constraints."** Extremely niche. Layout engines and possibly complex form validation, but CSS and existing constraint libraries handle this.
 
 ---
@@ -257,13 +278,270 @@ If the goal is to build things people would use, the highest-value work is extra
 
 ---
 
+---
+
+## Literature Review: HDL Concepts Applied to UI
+
+Deep research into academic papers, shipped tools, and the actual state of the art. The question: which HDL concepts solve real UI problems that nobody else is solving?
+
+### Prior Art: Synchronous Reactive Languages for Web UI
+
+This has been explored more than expected. The French synchronous languages community has done serious work here:
+
+- **HipHop.js** (Berry & Serrano, PLDI 2020) — Gerard Berry (creator of Esterel) and Manuel Serrano built a synchronous reactive language that compiles to JavaScript and runs in unmodified browsers. Their key argument: "the synchronous model is very appealing for programming the asynchronous patterns of Web applications because it makes synchronization trivially explicit and deterministic." The synchronous hypothesis holds *within* a reaction; asynchrony exists *between* reactions — which maps directly to delta-cycle semantics.
+  - Paper: https://dl.acm.org/doi/abs/10.1145/3385412.3385984
+
+- **Pendulum** (Zorg, REBLS 2016) — OCaml syntax extension for synchronous-reactive web client programming. Enforces static guarantees of determinism, coherency, and causality.
+  - Paper: https://dl.acm.org/doi/10.1145/3001929.3001931
+
+- **Ceu** (ACM TECS 2017) — Synchronous reactive language following Esterel's lineage. Compile-time detection of conflicting concurrent statements.
+
+- **SCADE** — Industrial-grade synchronous design environment (Lustre + Esterel), qualified to DO-178C Level A. Used in Airbus A380 flight controls. Proves synchronous reactive can scale to safety-critical systems.
+
+**Assessment:** The synchronous reactive model for web UI has been *researched* but never *adopted*. HipHop.js is the most complete realization. The ideas are validated; the vehicle (a new language) killed adoption every time. Same lesson as Comb.
+
+### Prior Art: Reactive Dependency Graphs
+
+- **Nico Ritschel's Master's thesis (UBC)** — "A Meta Representation for Reactive Dependency Graphs." The single most relevant academic work. Proposes an external meta-representation for reactive programs, making the structure and semantics of the data-flow accessible as a first-class artifact. This is exactly the `__graph` idea, formalized academically.
+  - PDF: https://www.cs.ubc.ca/~ritschel/files/masterthesis.pdf
+
+- **Reactive Inspector** (Salvaneschi & Mezini, ICSE 2016) — Eclipse plugin that visualizes the reactive dependency graph, profiles node recomputation efficiency (detecting nodes recomputed many times without producing new values), and allows graph navigation/search.
+  - Paper: https://programming-group.com/assets/pdf/papers/2016_Debugging-for-Reactive-Programming.pdf
+
+- **RxFiddle** (Banken, Meijer, Gousios, ICSE 2018) — Visualization tool for RxJS dependency flows with dynamic marble diagrams. Evaluated with 111 developers; showed faster debugging task completion.
+
+- **IceDust** (Harkes & Visser, ECOOP 2016) — DSL for data modeling with derived values. Uses path-based abstract interpretation for static dependency analysis. Extended in IceDust 2 (ECOOP 2017) with bidirectional relations.
+
+### Prior Art: LTL/Temporal Logic for Web Testing
+
+- **Quickstrom** (Wickstrom & O'Connor, PLDI 2022) — Property-based acceptance testing using Linear Temporal Logic (LTL). Custom DSL (Specstrom). Found bugs in almost half of TodoMVC implementations. Never gained adoption because "nobody wanted to learn a new language just to write tests."
+
+- **Bombadil** (Wickstrom at Antithesis, January 2026) — Quickstrom rebuilt with TypeScript instead of a custom DSL. LTL operators: `always()`, `eventually()` (with timeouts), `.implies()`. Open source: github.com/antithesishq/bombadil. This is the current state of the art for temporal UI testing.
+
+- **Web-TLR** — Uses Linear Temporal Logic of Rewriting (LTLR) with the Maude model checker to verify web applications.
+
+**Assessment of Comb's temporal assertions vs. prior art:** Comb's `assert temporal` is less expressive than Quickstrom/Bombadil's LTL operators, and less expressive than SVA sequences. The embedded-in-component approach is novel but the operator set is too limited to compete.
+
+### Prior Art: Closest Framework Comparisons
+
+- **Jane Street's Bonsai** — Incremental computation (Umut Acar's self-adjusting computation model), not DES. `stabilize` operation is analogous to "process delta cycles until quiescence" but without explicit simulation time. Most sophisticated production reactive UI system.
+
+- **Signia (tldraw)** — Uses a global logical clock (single integer incremented on every state update) for cache invalidation. Structurally similar to simulation time in DES.
+
+- **SolidJS 2.0 roadmap** — Mentions "reactive graph serialization" for hydration, which would be the first time a mainstream framework treats the graph as a transferable artifact.
+
+- **TC39 Signals Proposal** (Stage 1) — Native `Signal.State` and `Signal.Computed` for JavaScript. Input from Angular, Solid, Vue, Svelte, Preact, Qwik, MobX maintainers. Standardizes the reactive primitive that is structurally analogous to HDL signals.
+
+### What Nobody Has Done (Genuinely Novel Territory)
+
+Based on the full literature survey, these ideas have **no prior art**:
+
+1. **Emitting the reactive dependency graph as a serializable build artifact and diffing it in CI.** Ritschel's thesis proposes this theoretically. React Compiler, Svelte, and Marko all build the graph internally and discard it. Angular's `getSignalGraph()` is runtime-only and debug-only. Nobody serializes it. Nobody diffs it. Nobody runs it in CI.
+
+2. **Systematic CDC-style async boundary analysis for UI.** Hardware has mature static analysis (Spyglass CDC) that finds every clock domain crossing and verifies proper synchronization. The UI analog — finding every place where async-originated data flows into synchronous rendering state and verifying that race conditions are impossible — does not exist. `exhaustive-deps` catches stale closures but not concurrent-fetch races, Web Worker boundaries, or state machine timing conflicts.
+
+3. **SVA-style sequence assertions mapped to UI interaction patterns.** SVA sequences (`req |-> ##[1:3] ack`) with bounded delays, repetition (`[*n]`), and composition (`intersect`, `within`, `throughout`) are more expressive than Quickstrom/Bombadil's LTL operators. Nobody has mapped SVA's sequence language to UI testing.
+
+4. **Functional coverage (HDL-style) for UI testing.** Hardware engineers declaratively specify what scenarios must be verified (coverpoints, bins, cross coverage) and measure completion. Web has code coverage (Istanbul/c8) but no framework for "which user-visible scenarios have been tested?"
+
+5. **Toggle coverage for reactive state.** "Has every Boolean signal been both true and false during the test suite?" Would catch `isLoading` variables that are set to `true` but never back to `false` (bug), or never set to `true` at all (dead feature). No tool measures this.
+
+---
+
+## HDL Tooling Gap Analysis
+
+What hardware engineers have that web developers don't, ranked by severity of the gap.
+
+### Gap 1: Waveform Viewer — ENORMOUS
+
+Hardware engineers see every signal in their design over time, hierarchically grouped, with measurement tools. Web developers get `console.log` and Redux DevTools.
+
+**What GTKWave/Surfer have that a UI waveform viewer needs:**
+- Signal hierarchy browser (mirrors component tree)
+- Dual markers with delta measurement ("how long between click and loading=false?")
+- Pattern search ("find next time `isAuth` goes false while `route` is not `/login`")
+- Analog vs. digital rendering (numeric signals as line charts, booleans as filled rectangles)
+- Protocol decode (raw fetch/XHR decoded into labeled request/response pairs)
+- Cross-signal correlation — the killer feature. See that `isLoading` went true at T=1200ms, `fetchError` went truthy at T=1450ms, but `isLoading` never went back to false. Bug spotted visually.
+
+**Surfer** (Rust, CAV 2025 paper) is particularly relevant — it has a VSCode extension, runs in the browser, has a command palette with fuzzy search, and a JSON-based remote control protocol (WCP). These are exactly the integration patterns a UI waveform tool would need.
+
+**What exists today:** Redux DevTools (Redux only, action log, not signal-level), Angular 21 Signal Graph (current state only, no history), solid-devtools (immature, the README says "most packages are not much more than just ideas and experiments"), Preact signals devtools (open feature request, preactjs/signals#384).
+
+### Gap 2: Async Boundary Analysis (CDC Equivalent) — ENORMOUS
+
+In hardware, Clock Domain Crossing (CDC) analysis is a static structural analysis that finds every place where data crosses a clock domain boundary and verifies that proper synchronization exists. Spyglass CDC checks for: missing synchronizer flip-flops, multi-bit signals crossing domains without gray coding, reset signals crossing domains without proper de-assertion.
+
+**The UI analog:** Every place where async-originated data (fetch response, setTimeout callback, Web Worker message, event listener) flows into synchronous rendering state. Problems include:
+- Concurrent fetches writing the same state (race condition)
+- Signal reads after `await` silently losing reactive context (Angular signals, documented in angular/angular issues)
+- Stale closures capturing old values across async boundaries (React's #1 complaint, facebook/react#15865 with 600+ comments)
+
+**What exists:** `react-hooks/exhaustive-deps` catches stale closures (the direct analog of incomplete sensitivity lists). Nothing catches concurrent-fetch races or async context loss systematically.
+
+**This is the single most impactful idea to port from HDL.** A static analysis tool that finds every async boundary in a reactive codebase and verifies correct synchronization would catch entire classes of bugs that no existing tool addresses.
+
+### Gap 3: Functional Coverage — LARGE
+
+**Hardware:** Declarative specification of what scenarios must be verified. Coverpoints, bins, cross coverage. "I want every combination of {opcode} x {data_size} to be exercised." The coverage database is a first-class artifact that persists across runs.
+
+**Web:** Istanbul/c8 measures code coverage (which lines executed). Nobody measures "which user-visible scenarios have been tested." No framework for declaring "here are the scenarios that matter" and measuring whether tests have covered them.
+
+**Specific missing coverage types:**
+- Toggle coverage: has every Boolean state been both true and false?
+- FSM transition coverage: of the 12 possible transitions in the checkout flow, which have been tested? (XState can do this for declared machines, but most UI state is ad-hoc)
+- Cross coverage: has every combination of {0 rows, 1 row, many rows} x {no filter, active filter} x {sorted, unsorted} been tested?
+- Assertion coverage: of all the assertions I wrote, how many have actually been triggered? An untriggered assertion provides zero verification value.
+
+### Gap 4: Temporal Property Specification — LARGE
+
+**Hardware:** SVA sequences with bounded delays, implication operators, repetition, composition. `assert property(@(posedge clk) $rose(req) |-> ##[1:3] $rose(ack))` — "after request rises, acknowledge within 1-3 cycles." Solvers prove this for ALL possible inputs.
+
+**Web:** Bombadil provides `always()`, `eventually()`, `.implies()` in TypeScript. But SVA's sequence language is significantly more expressive — `##[1:3]` delays, `[*n]` repetition, `intersect`, `within`, `throughout`, `first_match`. Nobody has mapped this full expressiveness to UI interaction patterns.
+
+**What would this look like?** "After the user clicks Submit, within 500ms either a success toast or an error message must appear, AND the submit button must be disabled for the entire duration." In SVA-style: `@(click(submit)) |-> disable(submit) throughout ##[0:500ms] (toast || error)`.
+
+### Gap 5: Structured Test Architecture (UVM) — LARGE (Architectural)
+
+**Hardware UVM separates concerns:**
+- Driver: applies stimulus (translates "click login" → actual DOM events)
+- Monitor: observes state changes and produces typed transactions
+- Scoreboard: compares actual vs. expected behavior using a reference model
+- Coverage collector: measures what's been exercised
+
+**Web testing mixes all of these** into monolithic test functions. There is no "LoginAgent" with a reusable driver/monitor/scoreboard that different tests compose with different sequences.
+
+This is an architectural/cultural gap rather than a tooling gap. But the UVM pattern — stimulus generation separate from observation separate from checking separate from coverage — would dramatically improve test reuse and composability.
+
+### Gap 6: Coverage-Driven Constrained Random Testing — MEDIUM
+
+**Hardware CRV:** Declare random variables with constraints, call `randomize()`, SAT solver generates values satisfying all constraints. Combined with coverage: measure coverage → identify holes → add constraints → re-randomize.
+
+**Web:** fast-check provides property-based testing with shrinking. fast-check-frontend extends to random user interactions. But the coverage-driven steering loop (measure coverage, automatically steer generation toward uncovered regions) doesn't exist.
+
+### Gap 7: Formal Verification of State Machines — MEDIUM
+
+**Hardware:** SymbiYosys/JasperGold prove properties over ALL reachable states. Bounded model checking, unbounded verification, counterexample generation.
+
+**Web:** XState's `@xstate/graph` generates test paths by graph traversal. But no temporal property checking ("the payment form can never reach 'submitted' without passing through 'validated'"), no deadlock/livelock detection, no invariant checking over all reachable states. Academic work exists (WAVer, Web-TLR) but none integrated into JS tools.
+
+### Gap 8: Static Critical Path Analysis — MEDIUM
+
+**Hardware STA:** Analyzes ALL signal paths structurally to find the longest propagation delay.
+
+**Web analog:** Static analysis of data-fetch dependency chains to find the longest sequential chain. "This component depends on 3 sequential API calls totaling 800ms. Call 3 doesn't depend on call 1's result — parallelizing them would reduce the critical path from 800ms to 550ms." Lighthouse measures timing dynamically but doesn't analyze the dependency graph structurally.
+
+---
+
+## What Frameworks Are Building Internally (and Don't Expose)
+
+Key finding: the major frameworks already build reactive dependency graphs at compile time. They just throw them away.
+
+| Framework | Internal Graph? | Exposed? | Notes |
+|---|---|---|---|
+| **React Compiler** | Yes — HIR, SSA, reactive scope inference | No (visible in playground only) | Most sophisticated static analysis. ReactiveIR PR (#31974) suggests movement toward explicit graph. |
+| **Svelte** | Yes — topologically-sorted dep graph of reactive declarations | No (AST marked unstable) | `svelte.compile()` returns `vars` with dependencies but full graph is internal. |
+| **Marko** | Yes — cross-file reactive analysis, analyze stage | No (metadata on `.extra` AST properties) | Closest to serializable graph. Enables cross-template hydration pruning. |
+| **Angular** | Runtime only — `getSignalGraph(injector)` debug API | Partially (debug mode only, Angular 19+) | Returns `DebugSignalGraph` with `nodes` and `edges`. Runtime, not static. |
+| **SolidJS** | Runtime only | No | 2.0 roadmap mentions "reactive graph serialization" for hydration. |
+
+**The opportunity:** Intercept any of these internal graphs and serialize them. A Babel plugin wrapping React Compiler's reactive scope output. A Svelte preprocessor extracting the dep graph. A Marko plugin serializing the analyze stage. The infrastructure is *already built* — it just isn't exposed.
+
+---
+
+## Revised: What to Actually Build Next
+
+Updated based on the full literature review and gap analysis.
+
+### Tier 1: Genuine frontier — real pain, no solution, HDL concept maps cleanly
+
+1. **Static reactive dependency graph as build artifact + CI diffing.**
+   - Pain: dependency tracking failures across all frameworks (React stale closures, Angular conditional dep loss, Svelte $effect cycles)
+   - HDL analog: synthesis tools analyze full circuit graph at compile time
+   - Prior art: Ritschel thesis (theoretical), nobody ships this
+   - Implementation path: compiler plugin for Svelte or Solid that emits `__graph` JSON, CLI differ using Graphtage-style structural diffing, GitHub Action that comments on PRs
+   - Why Comb proves the concept: the `__graph` pipeline and `CircuitGraph.diffGraphs()` already work end-to-end
+
+2. **Async boundary analysis (CDC analog).**
+   - Pain: concurrent fetches writing shared state, async context loss, stale closures — the #1 complaint across React, Angular, Vue
+   - HDL analog: Spyglass CDC finds every clock domain crossing
+   - Prior art: nothing systematic exists
+   - Implementation path: ESLint plugin or standalone static analyzer that treats sync rendering and async callbacks as different "clock domains," flags every crossing point, verifies proper synchronization patterns (AbortController, race condition guards, state batching)
+   - Why this is huge: would catch entire classes of bugs no existing tool addresses
+
+3. **Signal waveform devtools with GTKWave-grade features.**
+   - Pain: "what happened?" debugging has no good tools for fine-grained signals
+   - HDL analog: GTKWave/Surfer — hierarchical signal browsing, dual markers, pattern search, cross-signal correlation
+   - Prior art: Redux DevTools (Redux only), solid-devtools (immature), Reactive Inspector (academic, Eclipse-only, 2016)
+   - Implementation path: Chrome extension + embedded panel, works with SolidJS/Preact Signals/TC39 Signals. Record all signal changes with timestamps. Render as waveforms with hierarchy, markers, measurement, and pattern search.
+   - Key feature to prioritize: cross-signal correlation. Seeing two signals side-by-side, time-aligned, with markers showing "loading went true here, error appeared here, loading never went false" — this is how hardware engineers find bugs visually.
+
+### Tier 2: Strong potential, partial solutions exist
+
+4. **SVA-style sequence assertions for UI testing.**
+   - Prior art: Bombadil provides basic LTL operators in TypeScript. SVA sequences are significantly more expressive.
+   - What to build: extend Bombadil's model with SVA-style bounded-delay sequences, `throughout` (property holds for entire duration), `first_match`, implication with delay ranges. TypeScript API, not a DSL.
+
+5. **Functional coverage framework for UI.**
+   - What to build: declarative coverage spec (coverpoints, bins, cross coverage) that integrates with Playwright/Cypress. "Define the scenarios that matter, measure whether your tests hit them, identify holes."
+   - Key concept to port: coverage merging across test suites.
+
+6. **Toggle/FSM coverage for reactive state.**
+   - What to build: instrument signals to track value transitions during test runs. Report: "signal `isLoading` was true 47 times but never went false→true→false within a single test" or "state machine has 12 transitions, 4 never exercised."
+
+### Tier 3: Research interest, worth prototyping
+
+7. **Formal verification for XState machines.** Bounded model checking with counterexample generation. "Prove that the checkout flow can never reach 'shipped' without passing through 'payment_confirmed'." Generate a minimal interaction sequence that violates the property.
+
+8. **UVM-style test architecture patterns for UI.** Not a tool but a methodology: reusable Agent (driver + monitor), Scoreboard (reference model comparison), Coverage (declarative scenario specification). Would work with Playwright.
+
+### What NOT to build (confirmed by research)
+
+- **More Comb language features.** HipHop.js, Pendulum, and Ceu prove that synchronous reactive languages for web UI are academically validated and universally ignored. The language is always the wrong vehicle.
+- **Temporal assertions embedded in components.** Bombadil does this better as an external tool with TypeScript, learning from Quickstrom's failure (nobody wants a new DSL for testing).
+- **DES runtime as a standalone scheduler.** The delta cycle gap is real but too narrow to justify a new runtime. Better to push for the TC39 Signals proposal to incorporate formal stabilization guarantees.
+
+---
+
+## Key References
+
+### Academic Papers
+- Berry & Serrano, "HipHop.js: (A)Synchronous Reactive Web Programming," PLDI 2020
+- Wickstrom & O'Connor, "Quickstrom: Property-based acceptance testing with LTL specifications," PLDI 2022
+- Salvaneschi & Mezini, "Debugging for Reactive Programming," ICSE 2016
+- Banken, Meijer, Gousios, "Debugging Data Flows in Reactive Programs" (RxFiddle), ICSE 2018
+- Harkes & Visser, "IceDust: Incremental and Eventual Computation of Derived Values," ECOOP 2016
+- Ritschel, "A Meta Representation for Reactive Dependency Graphs," UBC Master's thesis
+- Surfer waveform viewer, CAV 2025
+
+### Tools and Frameworks
+- Bombadil (Wickstrom/Antithesis): github.com/antithesishq/bombadil
+- Surfer waveform viewer: github.com/surfer-project/surfer
+- ng-reactive-lint: arxiv.org/abs/2512.00250
+- Graphtage (Trail of Bits): github.com/trailofbits/graphtage
+- oasdiff (OpenAPI diffing): oasdiff.com
+- fast-check-frontend: github.com/mdubourg001/fast-check-frontend
+- Signia (tldraw): signia.tldraw.dev
+
+### Relevant GitHub Issues (Evidence of Pain)
+- facebook/react#15865 — useEffect dependency confusion (600+ comments)
+- solidjs/solid#1199 — effect ordering breakage in 1.5
+- solidjs/solid#879 — batch() read-after-write inconsistency
+- sveltejs/svelte#9944 — "$effect is unusable"
+- sveltejs/svelte#10244 — unit testing $derived fails
+- angular/angular#54859 — computed() never refreshes
+- preactjs/signals#384 — "Devtools for debug" (open)
+- React Compiler silent bailouts: facebook/react#35644, acusti.ca analysis
+
+---
+
 ## Open Questions for Further Investigation
 
 - [ ] Can `__graph` diffing catch real regressions? Need to test with a non-trivial refactor.
-- [ ] How does delta cycle performance compare to topological sort at scale? (1000+ signals)
-- [ ] Could the `__test()` pattern work as a Svelte preprocessor?
-- [ ] Is the propagator network implementation correct for non-trivial constraint systems? (Only tested with simple bidirectional conversions)
-- [ ] Does the waveform debugger add value over console.log-based debugging in practice?
-- [ ] What's the right integration point for temporal assertions — component-embedded or external testing tool?
+- [ ] What's the minimal viable CDC-style analyzer? Can we prototype async boundary detection as an ESLint rule?
+- [ ] Could we intercept React Compiler's reactive scope output via a Babel plugin to emit `__graph`?
+- [ ] Surfer's WCP (Waveform Control Protocol) — could we adapt this for a UI signal waveform viewer?
+- [ ] SVA sequence operators mapped to UI interactions — what's the right TypeScript API surface?
 - [ ] Is there a market for `__graph`-style topology diffing as a standalone tool? Who would pay for this?
-- [ ] Could the DES runtime be offered as a Solid.js-compatible scheduler without changing the API surface?
+- [ ] Can we prototype toggle coverage as a SolidJS devtools plugin?
+- [ ] fast-check + coverage-driven steering: what would the integration look like?
