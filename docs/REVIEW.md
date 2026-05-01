@@ -125,18 +125,19 @@ Every compiled `.comb` file exports `__graph` as JSON with typed nodes and edges
 | DES / delta cycles | Yes | For narrow use cases | Only for simulation UIs |
 | Edge-triggered sensitivity | Yes | Yes (simple) | Sugar, not essential |
 | `__test()` headless harness | Yes | No (no events, no runner) | **Yes** |
-| Waveform debugger | Yes (hierarchy, dual markers, search, digital/analog) | No (no persist/export) | **Yes** |
+| Waveform debugger | Yes (zoom/pan/markers/search) | No (no cross-signal, no persist, no keyboard shortcuts) | **Yes** |
 | `__graph` static artifact | Yes | No (no CI) | **Yes** |
-| Graph diffing | CLI + visual diff demo with regression scenario | No (no CI integration) | **Yes** |
-| Temporal assertions | Yes (armed/passed/failed lifecycle, waveform overlays) | No | **Yes** |
-| CDC async boundary analysis | Yes (3 checks) | No (warnings only) | **Yes** |
+| Graph diffing | CLI + visual diff demo | No (no CI integration) | **Yes** |
+| Temporal assertions | Yes (armed/passed/failed lifecycle) | No | **Yes** |
+| CDC async boundary analysis | 3 pattern checks | No (pattern matching, not data flow — no transitive taint, no CFG) | **Yes (concept)** |
 | Propagator networks / cells | Yes | Basic | Research interest |
 | Type system | Warnings only | No | Needs real type errors |
 | SSR | Yes | Basic | Needs hydration |
 | Source maps | Yes | Basic | Needs testing |
 | Router | Yes | Hash-only | Needs history API |
-| Toggle/FSM/cross coverage | Yes (3 types) | No (runtime only) | **Yes** |
-| Graph-directed auto-testing | Yes (state space from static analysis) | No | **Yes** |
+| Toggle coverage | Partially wired (boolean signals only) | No (misses combs, cells, non-booleans) | **Yes (concept)** |
+| FSM/cross coverage | Data structures exist | No (dead API — compiler emits zero instrumentation, test runner ignores it) | **Yes (concept)** |
+| Graph-directed auto-testing | State space inference (heuristic) | No (zero dedicated tests) | Maybe |
 | `deferredBatch` (non-blocking assignment) | Yes (engine-level fix) | Yes | Core DES correctness |
 | Bounded state inference | Yes (guard analysis + write patterns) | Yes | **Yes** |
 
@@ -544,13 +545,132 @@ Updated based on the full literature review and gap analysis.
 
 ---
 
+---
+
+## Re-Review: Post-Hackathon Updates (commits 8e977de..49b322a)
+
+~8,000 lines added across 2 major commits. Four areas to evaluate: waveform viewer refactor, coverage system, CDC-style analysis in verify.ts, and new demos/benchmarks.
+
+### Waveform Viewer — Real Progress, Core Features Still Missing
+
+The 200-line monolith was refactored into 6 files (~690 lines total) in `src/waveform/`. What improved:
+
+| Feature | Before | After | Grade |
+|---|---|---|---|
+| Zoom/Pan/Scroll | None | Mouse wheel zoom (anchor at cursor), click-drag pan, vertical scroll | A |
+| Signal Hierarchy | None | Flat grouping by dotted prefix, collapsible groups, per-signal visibility toggle | B- |
+| Dual Markers | None | Alt+click sets A, Shift sets B, shows delta (dt = Xms) | B |
+| Pattern Search | None | Single-signal predicates (`signal > value`, `signal rises`), match navigation | B- |
+
+**What's still missing (the features that make GTKWave indispensable):**
+
+- **Cross-signal correlation** — completely absent. No compound predicates (`clk rises AND data > 5`), no temporal correlation ("find where A transitions within 10ms of B falling"). This is the killer feature for debugging complex reactive flows and it's not here.
+- **Persistence/export** — completely absent. No save/load of view state, no VCD/JSON export, no screenshot. The `WaveformState` type in `types.ts` defines the right shape but nothing reads or writes it — dead type.
+- **Keyboard shortcuts** — zero. No +/- for zoom, no arrow keys for pan, no Home/End for fit. These are daily-use essentials.
+- **Time range selection** — no rubber-band drag-to-zoom.
+- **Marker snap-to-edge** — markers land at arbitrary time points, don't snap to nearest signal transition.
+- **Event-driven updates** — still on 500ms `setInterval` polling. No subscription to circuit state changes.
+- **Memory leak** — `index.ts` adds `mouseup` listener to `window` but never removes it in `dispose()`.
+
+**Verdict:** Solid refactor with clean file separation. The zoom/pan and markers are real. But "GTKWave-grade" is still a stretch — the three features that make waveform debugging actually powerful (cross-signal correlation, compound triggers, save/restore) are all absent.
+
+### Coverage System — Well-Typed Skeleton, Zero Integration
+
+`src/runtime/coverage.ts` (181 lines) implements a `CoverageCollector` class with three coverage types. Critical finding: **the compiler emits zero coverage instrumentation, the CLI test runner ignores the module entirely, and the flagship bus-protocol demo bypasses it.**
+
+**Toggle coverage:** Partially wired — `signals.ts` calls `coverage.recordToggle()` for boolean `createSignal` writes. But combs, cells, and non-boolean signals are invisible. The most common case for toggle coverage — comb-derived booleans like `cpuHigh`, `emailValid` — is not tracked.
+
+**FSM transition coverage:** Dead API. `recordTransition()` exists but nothing calls it. The compiler emits zero instrumentation. The bus-protocol demo (`bus-protocol-mount.ts` line 1029) manually tracks transitions using `coverage.setPreviousValue()` as a key-value store, completely bypassing `recordTransition()` and the rest of the coverage API.
+
+**Cross coverage:** Boolean-only, manual-only. `recordCross()` is never called automatically. The bus-protocol demo rolls its own `Set<string>` at line 984 instead of using the collector.
+
+**Reporting:** `getReport()` returns raw data. No formatter, no threshold/pass-fail, no CI integration. Transitions are explicitly excluded from the coverage percentage.
+
+**The test runner (`src/cli/test.ts`) implements its own ad-hoc boolean coverage tracking** (lines 122-177) by reading comb getter values and collecting distinct outputs. It never calls `coverage.enable()` or `coverage.getReport()`.
+
+**Verdict:** The data structures are correct but the system has no callers. To make this real: the compiler needs to emit `coverage.recordTransition()` calls in always blocks that write enum/state signals, `coverage.recordCross()` in cross-coverage groups, and the test runner needs to use the collector instead of rolling its own.
+
+### CDC-Style Async Boundary Analysis — Pattern Matching, Not Static Analysis
+
+`verify.ts` grew by ~272 lines. The `analyzeAsyncBoundaries` function adds three new warnings:
+
+1. **Unsynchronized async write** — if a comb reads a signal written inside an `async {}` block
+2. **Race condition** — if two async blocks write the same signal
+3. **Missing catch** — if an async block writes signals without error handling
+
+These catch real patterns. But calling it "CDC-style" oversells it:
+
+- **Only finds top-level async blocks.** An async block nested inside an `if` branch is invisible — the loop iterates `decl.body` top-level statements only.
+- **No transitive taint.** If signal A is async-written and signal B reads A in a sensitivity block and comb C reads B — the analysis doesn't flag it. Only direct comb-reads-async-signal is caught.
+- **No data flow analysis.** No CFG, no reaching definitions, no abstract interpretation. It's set-based: "does any async block anywhere write this signal?"
+- **False positives on guarded patterns.** `comb display = loading ? "..." : data` where `loading` is set synchronously before the async block will be flagged, even though it's correctly guarded.
+
+**State space inference** (~120 lines) was added to annotate graph nodes with `valueType` and `states[]`. It's heuristic (recognizes `if (signal >= N)` guard patterns but not `===`, `switch`, or modulo) and has **zero dedicated tests**.
+
+**Still missing (and straightforward to add):**
+- Undriven signal detection (signal never written, no initializer)
+- Multi-driven synchronous net detection (multiple always blocks writing same signal)
+- Dead signal/comb detection (declared but never read)
+- View reads of async-written signals (same bug class, not flagged)
+
+**Verdict:** Useful first step. Catches the three most obvious async anti-patterns. But it's grep-level pattern matching, not the data-flow analysis that would make it a real CDC analog.
+
+### New Demos — Mixed Results
+
+**Bus protocol (`bus-protocol.comb`, 167 lines):** Labeled "SPI" but isn't SPI — it's a generic request/grant bus arbitration protocol. That said, it genuinely exercises the DES thesis: three concurrent `always @(posedge clk)` blocks reading each other's outputs. The framework comparison (React/Solid/Svelte equivalents as string literals in `bus-protocol-mount.ts`) is the strongest argument in the demo suite — the React version requires a 13-element dependency array and manual value snapshots. **But the comparison code isn't runnable**, so nobody can verify behavioral equivalence.
+
+**Dashboard diff (`dashboard-v1.comb` + `dashboard-v2.comb`):** Best-executed demo. Deliberately structured to show three regression patterns (dependency severed, check removed, node deleted). `CircuitGraph.diffGraphs()` highlights them. **This is the most practically relevant demo** because it demonstrates topology-level regression detection without a test suite.
+
+**async-unsafe.comb:** A 31-line stub. Not a demo. It declares signals and async blocks but demonstrates nothing about boundary detection.
+
+**Unit converter:** Legitimate propagator network demo with `cell` + `constraint` constructs. Shows multi-directional dataflow that React/Solid can't do natively. Convergence check is shallow (everything is `round()`'d).
+
+### Benchmarks — Structurally Unfair
+
+The "topo" baseline in `benchmark.ts` is intentionally naive:
+- **Pipeline benchmark** compares raw array loops, not reactive systems. The "correctness" check calls topo "wrong" because immediate writes propagate instantly — but a real framework (SolidJS `batch()`, React `startTransition()`) would handle this correctly.
+- **Diamond benchmark** uses a naive topo that fires the leaf node once per intermediate, causing O(width^2) recomputation. A real framework with batching would coalesce to one recomputation.
+- **The explainer text admits 2-6x overhead** and handwaves it as "imperceptible at UI timescales" without proving it.
+
+The honest framing would be: "DES provides correctness guarantees *by default* that frameworks require opt-in primitives (`batch()`, `startTransition()`) to achieve." That's still a real argument, but weaker than "frameworks can't do this."
+
+The **fast-path optimization** in `signals.ts` (lines 87-95) is smart — when there's only one pending computation and no deferred writes, it skips delta cycle machinery. This collapses linear chains from O(N) delta cycles to O(1). Good engineering.
+
+### What Actually Improved (Summary)
+
+| Area | Before Review | After | Real? |
+|---|---|---|---|
+| Waveform zoom/pan/scroll | Absent | Works well | Yes |
+| Waveform markers with delta | Absent | Dual markers, delta display | Yes |
+| Waveform pattern search | Absent | Single-signal predicates | Partial |
+| Graph diff CLI | Absent | `comb diff` works | Yes |
+| Dashboard diff demo | Absent | Best demo in the suite | Yes |
+| CDC async warnings | Absent | 3 warning types | Partial (shallow) |
+| Coverage collector | Absent | Data structures exist | No (dead API) |
+| Bus protocol demo | Absent | Legitimate DES showcase | Yes (mislabeled) |
+| Fast-path optimization | Absent | Single-computation bypass | Yes |
+| Benchmarks | Absent | 5 categories | Misleading (unfair baselines) |
+
+### What's Still Missing (Ranked by Impact)
+
+1. **Coverage compiler instrumentation.** The coverage system cannot work until the compiler emits `recordTransition()` / `recordCross()` calls. This is the #1 gap between "skeleton" and "working system."
+2. **Cross-signal correlation in waveform viewer.** The feature that would make waveform debugging actually better than `console.log` for complex flows.
+3. **Transitive async taint in CDC analysis.** Without data-flow tracking, the async boundary warnings are grep-level, not analysis-level.
+4. **Runnable framework comparisons.** The bus-protocol React/Solid/Svelte code is string literals. Nobody can verify the behavioral claims. Running all four side-by-side would be the most compelling proof of the DES thesis.
+5. **Fair benchmarks.** Use SolidJS's actual `batch()` as the topo baseline, not a naive immediate-write loop.
+6. **Dead code detection / undriven signals.** Low-hanging fruit given the existing infrastructure.
+
+---
+
 ## Open Questions for Further Investigation
 
-- [ ] Can `__graph` diffing catch real regressions? Need to test with a non-trivial refactor.
-- [ ] What's the minimal viable CDC-style analyzer? Can we prototype async boundary detection as an ESLint rule?
+- [x] Can `__graph` diffing catch real regressions? **Yes — dashboard-v1/v2 demo proves this works.**
+- [ ] What's the minimal viable CDC-style analyzer? Current pattern matching is a start but needs transitive taint and CFG.
 - [ ] Could we intercept React Compiler's reactive scope output via a Babel plugin to emit `__graph`?
 - [ ] Surfer's WCP (Waveform Control Protocol) — could we adapt this for a UI signal waveform viewer?
 - [ ] SVA sequence operators mapped to UI interactions — what's the right TypeScript API surface?
 - [ ] Is there a market for `__graph`-style topology diffing as a standalone tool? Who would pay for this?
 - [ ] Can we prototype toggle coverage as a SolidJS devtools plugin?
 - [ ] fast-check + coverage-driven steering: what would the integration look like?
+- [ ] Can the coverage compiler emit instrumentation without bloating the generated code?
+- [ ] Would running the bus-protocol demo in React/Solid alongside Comb prove behavioral equivalence?
