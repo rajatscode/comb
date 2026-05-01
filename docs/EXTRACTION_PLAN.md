@@ -1,6 +1,8 @@
-# Comb Extraction Plan
+# DUT Extraction Plan
 
-How to slice Comb's working pieces into a framework-agnostic TypeScript library that provides HDL-grade observability, testing, and debugging for reactive UI code.
+**DUT: Device Under Test.** The name hardware engineers give to the thing they're verifying.
+
+How to slice Comb's working pieces into `@dut/*` — a framework-agnostic TypeScript library that provides HDL-grade observability, testing, and debugging for reactive UI code. Your UI is the device under test.
 
 ## Why Now
 
@@ -43,7 +45,7 @@ Three things converging:
 
 ## The Product: Three Packages
 
-### Package 1: `@comb/graph` — Reactive Dependency Graph
+### Package 1: `@dut/graph` — Reactive Dependency Graph
 
 **What it is:** A lightweight layer that wraps any reactive primitive (React useState, Solid createSignal, Svelte $state, or vanilla signals) and builds an introspectable dependency graph as a side effect.
 
@@ -65,7 +67,7 @@ Three things converging:
 ```ts
 // React adapter
 import { useState } from 'react'
-import { graph } from '@comb/graph'
+import { graph } from '@dut/graph'
 
 function useTrackedState<T>(initial: T, name: string) {
   const [value, setValue] = useState(initial)
@@ -83,7 +85,7 @@ function useTrackedState<T>(initial: T, name: string) {
 ```ts
 // Solid adapter
 import { createSignal } from 'solid-js'
-import { graph } from '@comb/graph'
+import { graph } from '@dut/graph'
 
 function createTrackedSignal<T>(initial: T, name: string) {
   const [get, set] = createSignal(initial)
@@ -100,7 +102,7 @@ function createTrackedSignal<T>(initial: T, name: string) {
 ```ts
 // Vanilla / TC39 Signals adapter (future)
 import { Signal } from 'signal-polyfill'
-import { graph } from '@comb/graph'
+import { graph } from '@dut/graph'
 
 function createTrackedSignal<T>(initial: T, name: string) {
   const signal = new Signal.State(initial)
@@ -114,9 +116,9 @@ function createTrackedSignal<T>(initial: T, name: string) {
 
 **Zero dependencies.** Framework adapters are peer-deps on the target framework.
 
-### Package 2: `@comb/coverage` — Reactive State Coverage
+### Package 2: `@dut/coverage` — Reactive State Coverage
 
-**What it is:** Coverage metrics that no existing tool provides. Plugs into `@comb/graph`.
+**What it is:** Coverage metrics that no existing tool provides. Plugs into `@dut/graph`.
 
 **Coverage types:**
 
@@ -142,7 +144,7 @@ function createTrackedSignal<T>(initial: T, name: string) {
 
 **Size estimate:** ~200 lines core (Comb's coverage.ts is 181 lines). ~100 lines for reporter. ~50 lines for test framework integration.
 
-### Package 3: `@comb/devtools` — HDL-Grade Debugging
+### Package 3: `@dut/devtools` — HDL-Grade Debugging
 
 **What it is:** A browser panel (embeddable or Chrome extension) that provides waveform viewing, graph visualization, and temporal assertion monitoring.
 
@@ -166,9 +168,9 @@ function createTrackedSignal<T>(initial: T, name: string) {
 
 **Size estimate:** ~1500 lines total (Comb's waveform + visualizer are ~1020 lines already).
 
-### Optional: `@comb/test` — Graph-Directed Test Generation
+### Optional: `@dut/test` — Graph-Directed Test Generation
 
-**What it is:** Reads the graph from `@comb/graph` and generates test inputs that exercise the state space.
+**What it is:** Reads the graph from `@dut/graph` and generates test inputs that exercise the state space.
 
 **What it does:**
 - Discovers bounded signals (booleans, enums, bounded ints) from graph metadata
@@ -235,12 +237,12 @@ assertNever(() => phase === 'submitted' && !validated)  // can't submit without 
 ### npm package structure
 
 ```
-@comb/graph          # core: CircuitGraph, waveform recording, diffing, assertions
-@comb/react          # adapter: useTrackedState, useTrackedMemo, useTrackedEffect  
-@comb/solid          # adapter: createTrackedSignal, createTrackedMemo
-@comb/devtools       # browser panel: waveform viewer, graph visualizer, coverage display
-@comb/coverage       # toggle/FSM/cross coverage collector + reporters
-@comb/test           # graph-directed exploration, assertion-based verification
+@dut/graph          # core: CircuitGraph, waveform recording, diffing, assertions
+@dut/react          # adapter: useTrackedState, useTrackedMemo, useTrackedEffect  
+@dut/solid          # adapter: createTrackedSignal, createTrackedMemo
+@dut/devtools       # browser panel: waveform viewer, graph visualizer, coverage display
+@dut/coverage       # toggle/FSM/cross coverage collector + reporters
+@dut/test           # graph-directed exploration, assertion-based verification
 ```
 
 ### How to publish
@@ -250,23 +252,23 @@ assertNever(() => phase === 'submitted' && !validated)  // can't submit without 
 # Use tsup (simplest TS→JS bundler) for compilation
 # npm workspaces for monorepo management
 
-comb-tools/
+dut/
 ├── packages/
-│   ├── graph/          # @comb/graph
+│   ├── graph/          # @dut/graph
 │   │   ├── src/
 │   │   ├── package.json
 │   │   └── tsconfig.json
-│   ├── react/          # @comb/react
-│   ├── solid/          # @comb/solid
-│   ├── devtools/       # @comb/devtools
-│   ├── coverage/       # @comb/coverage
-│   └── test/           # @comb/test
+│   ├── react/          # @dut/react
+│   ├── solid/          # @dut/solid
+│   ├── devtools/       # @dut/devtools
+│   ├── coverage/       # @dut/coverage
+│   └── test/           # @dut/test
 ├── package.json        # workspace root
 └── tsconfig.base.json
 
 # Build all packages:  npm run build (calls tsup in each)
 # Publish all:          npm publish --workspaces
-# Users install:        npm install @comb/graph @comb/react
+# Users install:        npm install @dut/graph @dut/react
 ```
 
 Each package compiles TS → JS + `.d.ts` type declarations. Zero runtime dependencies in core. Framework adapters peer-depend on the target framework.
@@ -279,7 +281,7 @@ Each package compiles TS → JS + `.d.ts` type declarations. Zero runtime depend
 | **Solid** | Easy | Functions wrapping `createSignal`/`createMemo`/`createEffect` |
 | **Vue 3** | Medium | Functions wrapping `ref()`/`computed()`/`watch()` |
 | **Svelte 5** | Hard | Runes (`$state`) are compiler directives — need preprocessor or use `writable()` stores |
-| **Vanilla JS** | None needed | Use `@comb/graph` directly |
+| **Vanilla JS** | None needed | Use `@dut/graph` directly |
 | **TC39 Signals** | Easy (future) | Wrap `Signal.State`/`Signal.Computed` when standard lands |
 
 Start with React + vanilla. Add Solid and Vue once core is stable. Svelte last (requires compiler integration work).
@@ -291,7 +293,7 @@ Start with React + vanilla. Add Solid and Vue once core is stable. Svelte last (
 ### Step 1: Install (30 seconds)
 
 ```bash
-npm install @comb/graph @comb/react @comb/devtools
+npm install @dut/graph @dut/react @dut/devtools
 ```
 
 ### Step 2: Wrap signals you care about (5 minutes)
@@ -303,7 +305,7 @@ const [error, setError] = useState(null)
 const [data, setData] = useState(null)
 
 // After (tracked):
-import { useTrackedState, useTrackedMemo } from '@comb/react'
+import { useTrackedState, useTrackedMemo } from '@dut/react'
 
 const [loading, setLoading] = useTrackedState(false, 'loading')
 const [error, setError] = useTrackedState<string | null>(null, 'error')
@@ -316,7 +318,7 @@ Everything else — JSX, event handlers, effects — stays exactly the same. The
 ### Step 3: Add dev panel (2 minutes)
 
 ```tsx
-import { CombPanel } from '@comb/devtools'
+import { CombPanel } from '@dut/devtools'
 
 function App() {
   return (
@@ -336,7 +338,7 @@ Now in dev mode you see a panel at the bottom with:
 ### Step 4: Add assertions instead of test cases (10 minutes)
 
 ```tsx
-import { assertAlways, assertTemporal, assertNever } from '@comb/graph'
+import { assertAlways, assertTemporal, assertNever } from '@dut/graph'
 
 // Invariants — checked on every signal change, zero flakiness
 assertAlways(() => !(loading && error), 'loading-error-mutex')
@@ -358,8 +360,8 @@ These run in dev mode as live monitors (assertion panel shows pass/fail). In tes
 
 ```ts
 // checkout.test.ts
-import { explore } from '@comb/test'
-import { graph } from '@comb/graph'
+import { explore } from '@dut/test'
+import { graph } from '@dut/graph'
 
 test('checkout flow is correct', async () => {
   render(<CheckoutForm />)
@@ -390,7 +392,7 @@ test('checkout flow is correct', async () => {
 export default defineConfig({
   define: { 'import.meta.env.DEV': 'false' }
 })
-// All @comb/* code is gated behind import.meta.env.DEV
+// All @dut/* code is gated behind import.meta.env.DEV
 // Tree-shaking removes it entirely from production bundle
 ```
 
@@ -407,7 +409,7 @@ export default defineConfig({
 
 ## Extraction Priority
 
-### Phase 1: `@comb/graph` (most portable, most useful)
+### Phase 1: `@dut/graph` (most portable, most useful)
 
 The graph is the foundation everything else depends on. Ship it first.
 
@@ -421,7 +423,7 @@ The graph is the foundation everything else depends on. Ship it first.
 
 **Ship gate:** Works with a real React app. Can record signal changes, build graph, diff two snapshots, export as JSON.
 
-### Phase 2: `@comb/devtools` (most visual, most impressive)
+### Phase 2: `@dut/devtools` (most visual, most impressive)
 
 The waveform viewer is the feature that makes people say "I want that."
 
@@ -429,11 +431,11 @@ The waveform viewer is the feature that makes people say "I want that."
 - Embeddable panel (not Chrome extension — lower friction)
 - Waveform viewer with zoom/pan/markers
 - Graph visualizer
-- Reads from `@comb/graph` instance
+- Reads from `@dut/graph` instance
 
 **Ship gate:** Embed in a Storybook story. See signals over time. Place markers. Measure delta between two events.
 
-### Phase 3: `@comb/coverage` (most novel, hardest to get right)
+### Phase 3: `@dut/coverage` (most novel, hardest to get right)
 
 Toggle and FSM coverage are genuinely new metrics. But they need to be wired end-to-end (collect → report → CI) to be useful.
 
@@ -445,7 +447,7 @@ Toggle and FSM coverage are genuinely new metrics. But they need to be wired end
 
 **Ship gate:** Run a Vitest test suite, get a reactive coverage report alongside Istanbul's line coverage. See "signal `isLoading` was never set to false during tests."
 
-### Phase 4: `@comb/test` (highest leverage — zero-test-case UI verification)
+### Phase 4: `@dut/test` (highest leverage — zero-test-case UI verification)
 
 The dream: **you write temporal assertions, not test cases.** The tool explores the state space, and assertions are the pass/fail criteria. No Playwright scripts. No manual test scenarios. You declare what should always/eventually/never be true, and the machine finds violations or proves coverage.
 
@@ -456,7 +458,7 @@ No existing tool does this. Bombadil fuzzes randomly with no graph awareness. fa
 **The architecture (three layers):**
 
 **Layer 1: State space discovery** (exists in Comb, needs expansion)
-- Read `@comb/graph` to discover bounded signals (booleans, enums, bounded ints)
+- Read `@dut/graph` to discover bounded signals (booleans, enums, bounded ints)
 - Identify root signals (zero incoming edges) as test inputs
 - Identify clock/trigger signals (posedge/negedge sensitivity nodes)
 - Infer state bounds from TypeScript types where possible (`isLoading: boolean` → `[true, false]`)
@@ -468,7 +470,7 @@ No existing tool does this. Bombadil fuzzes randomly with no graph awareness. fa
 - Identify uncovered states/transitions
 - Bias next generation toward uncovered regions (the HDL CRV feedback loop)
 - Stop when coverage target met or budget exhausted
-- This is the piece nobody has built: fast-check's random generation + @comb/coverage's state-space metrics in a feedback loop
+- This is the piece nobody has built: fast-check's random generation + @dut/coverage's state-space metrics in a feedback loop
 
 **Layer 3: Temporal assertions as the spec** (exists in Comb, needs integration)
 - `assert temporal @(posedge submit) eventually(success || error) within 5s` — if exploration finds an input sequence that violates this, that's the bug report
@@ -496,7 +498,7 @@ No existing tool does this. Bombadil fuzzes randomly with no graph awareness. fa
 **Minimum viable:**
 - Headless exploration mode: drive root signals through state space, check assertions, report violations with reproducing sequence
 - Coverage report: which signals/transitions were exercised, which weren't
-- Integration with Vitest: `import { explore } from '@comb/test'; explore(graph, assertions, { budget: 1000 })`
+- Integration with Vitest: `import { explore } from '@dut/test'; explore(graph, assertions, { budget: 1000 })`
 
 **Full vision:**
 - Coverage-driven steering (fast-check + coverage feedback loop)
