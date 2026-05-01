@@ -21,6 +21,7 @@ function printHelp() {
     comb init <project-name>     Scaffold a new Comb project
     comb dev                     Start Vite dev server
     comb test <file.comb>        Run fuzz tests on a .comb file
+    comb diff <a.comb> <b.comb>  Diff reactive topology between two .comb files
     comb --help                  Show this help message
     comb --version               Show version
   `);
@@ -186,6 +187,81 @@ function runDev() {
   }
 }
 
+function diffGraphs(fileA: string, fileB: string) {
+  let srcA: string, srcB: string;
+  try { srcA = readFileSync(fileA, 'utf-8'); } catch { console.error(`Cannot read: ${fileA}`); process.exit(1); return; }
+  try { srcB = readFileSync(fileB, 'utf-8'); } catch { console.error(`Cannot read: ${fileB}`); process.exit(1); return; }
+
+  const resultA = compile(srcA);
+  const resultB = compile(srcB);
+  if (resultA.errors.length > 0) { console.error(`Errors in ${fileA}:`, resultA.errors.map(e => e.message).join(', ')); process.exit(1); }
+  if (resultB.errors.length > 0) { console.error(`Errors in ${fileB}:`, resultB.errors.map(e => e.message).join(', ')); process.exit(1); }
+
+  const graphA = resultA.graph;
+  const graphB = resultB.graph;
+  if (!graphA || !graphB) { console.error('Could not extract graph metadata.'); process.exit(1); return; }
+
+  // Build diff
+  const aNodes = new Map((graphA.nodes || []).map((n: any) => [n.id, n]));
+  const bNodes = new Map((graphB.nodes || []).map((n: any) => [n.id, n]));
+
+  const added: any[] = [];
+  const removed: any[] = [];
+  const changed: any[] = [];
+
+  for (const [id, node] of bNodes) {
+    if (!aNodes.has(id)) added.push(node);
+    else {
+      const a = aNodes.get(id)!;
+      if ((a as any).type !== (node as any).type) changed.push({ id, before: a, after: node });
+    }
+  }
+  for (const [id, node] of aNodes) {
+    if (!bNodes.has(id)) removed.push(node);
+  }
+
+  const edgeKey = (e: any) => `${e.from}→${e.to}:${e.type}`;
+  const aEdges = new Set((graphA.edges || []).map(edgeKey));
+  const bEdges = new Set((graphB.edges || []).map(edgeKey));
+  const addedEdges = (graphB.edges || []).filter((e: any) => !aEdges.has(edgeKey(e)));
+  const removedEdges = (graphA.edges || []).filter((e: any) => !bEdges.has(edgeKey(e)));
+
+  // Output
+  const noChanges = added.length === 0 && removed.length === 0 && changed.length === 0 && addedEdges.length === 0 && removedEdges.length === 0;
+
+  console.log(`\n  Graph Diff: ${basename(fileA)} → ${basename(fileB)}\n`);
+
+  if (noChanges) {
+    console.log('  No topology changes detected.\n');
+    return;
+  }
+
+  console.log(`  Nodes: ${aNodes.size} → ${bNodes.size}`);
+  console.log(`  Edges: ${(graphA.edges || []).length} → ${(graphB.edges || []).length}\n`);
+
+  if (added.length > 0) {
+    console.log('  + Added nodes:');
+    for (const n of added) console.log(`    + ${n.id} (${n.type})`);
+  }
+  if (removed.length > 0) {
+    console.log('  - Removed nodes:');
+    for (const n of removed) console.log(`    - ${n.id} (${n.type})`);
+  }
+  if (changed.length > 0) {
+    console.log('  ~ Changed nodes:');
+    for (const c of changed) console.log(`    ~ ${c.id}: ${(c.before as any).type} → ${(c.after as any).type}`);
+  }
+  if (addedEdges.length > 0) {
+    console.log('  + Added edges:');
+    for (const e of addedEdges) console.log(`    + ${e.from} → ${e.to} (${e.type})`);
+  }
+  if (removedEdges.length > 0) {
+    console.log('  - Removed edges:');
+    for (const e of removedEdges) console.log(`    - ${e.from} → ${e.to} (${e.type})`);
+  }
+  console.log('');
+}
+
 // --- Main dispatch ---
 
 if (!command || command === '--help' || command === '-h') {
@@ -226,6 +302,14 @@ if (command === 'compile') {
   } catch {
     process.exit(1);
   }
+} else if (command === 'diff') {
+  const fileA = args[1];
+  const fileB = args[2];
+  if (!fileA || !fileB) {
+    console.error('Usage: comb diff <before.comb> <after.comb>');
+    process.exit(1);
+  }
+  diffGraphs(fileA, fileB);
 } else {
   // Legacy mode: treat first arg as a file to compile (backward compat)
   if (command.endsWith('.comb')) {

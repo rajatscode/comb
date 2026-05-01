@@ -1,0 +1,63 @@
+module Pipeline {
+  signal clk: bool = false;
+  signal cycle: int = 0;
+
+  signal fetch_out: int = 0;
+  signal decode_out: int = 0;
+  signal execute_out: int = 0;
+  signal writeback_out: int = 0;
+  signal next_instr: int = 1;
+
+  comb completed = changeCount(writeback_out);
+
+  // --- Pipeline stages: INTENTIONALLY in "wrong" order ---
+  // Fetch is first, Writeback is last.
+  // Without delta cycles, this order would cause instruction teleportation:
+  //   fetch writes new value, decode reads it immediately, etc.
+  // With delta cycles, ALL reads see pre-update values regardless of order.
+
+  always @(posedge clk) {
+    fetch_out <= next_instr;
+    next_instr <= next_instr + 1;
+  }
+
+  always @(posedge clk) {
+    decode_out <= fetch_out;
+  }
+
+  always @(posedge clk) {
+    execute_out <= decode_out;
+  }
+
+  always @(posedge clk) {
+    writeback_out <= execute_out;
+    cycle <= cycle + 1;
+  }
+
+  view {
+    <div class="pipeline-demo">
+      <p class="pipeline-info">{"Cycle " + str(cycle) + " — " + str(completed) + " completed"}</p>
+      <div class="pipeline-stages">
+        <div class="pipe-stage">
+          <span class="pipe-label">Fetch</span>
+          <span class={fetch_out > 0 ? "pipe-val active" : "pipe-val"}>{fetch_out > 0 ? "I" + str(fetch_out) : "—"}</span>
+        </div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-stage">
+          <span class="pipe-label">Decode</span>
+          <span class={decode_out > 0 ? "pipe-val active" : "pipe-val"}>{decode_out > 0 ? "I" + str(decode_out) : "—"}</span>
+        </div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-stage">
+          <span class="pipe-label">Execute</span>
+          <span class={execute_out > 0 ? "pipe-val active" : "pipe-val"}>{execute_out > 0 ? "I" + str(execute_out) : "—"}</span>
+        </div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-stage">
+          <span class="pipe-label">Writeback</span>
+          <span class={writeback_out > 0 ? "pipe-val active" : "pipe-val"}>{writeback_out > 0 ? "I" + str(writeback_out) : "—"}</span>
+        </div>
+      </div>
+    </div>
+  }
+}

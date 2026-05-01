@@ -86,6 +86,13 @@ assert temporal @(posedge submitted)
 signal data: X | User;
 ```
 
+## Demos
+
+- **Counter / Traffic Light / Minesweeper / Chat** — standard interactive demos
+- **Pipeline Proof** — side-by-side DES vs naive JS showing delta cycle correctness (both implementations, same pipeline, only DES gets the right answer)
+- **Ring Counter** — feedback loop demo exercising multi-pass delta cycle stabilization
+- **Interactive Benchmarks** — live DES vs topological sort performance comparison
+
 ## What's Genuinely Novel
 
 We did the research. Here's what holds up, what doesn't, and what we're building toward.
@@ -112,7 +119,7 @@ We did the research. Here's what holds up, what doesn't, and what we're building
 - **Compiler-verified dependencies** — Svelte, React Compiler, Marko
 - **Reactive graph visualization** — Angular DevTools Signal Graph, SolidJS devtools, NoFlo
 - **Directional ports** — Angular `@Input`/`@Output` since 2016, Elm ports
-- **Waveform debugging** — Redux DevTools with a different skin
+- **Waveform debugging** — Redux DevTools with a different skin (though Comb's waveform debugger now has zoom, pan, signal filtering, and auto-scroll)
 
 ## The DES Execution Model
 
@@ -131,7 +138,17 @@ The runtime implements this via the `SimulationEngine` in `src/runtime/signals.t
 - **Concurrent always blocks execute deterministically** — no surprises from effect ordering
 - **DOM updates only after stabilization** — no partial renders, no glitch frames
 
+Engine improvements:
+- **Re-entrancy guard** — fixes multi-block delta cycle correctness
+- **Single-computation fast path** — collapses feed-forward chains (no deferred writes when no conflict possible)
+- **Verilator-style oscillation reporting** — names the oscillating signals with recent values when delta cycle limit is hit
+- **Static cycle detection for always blocks** — not just combs
+
 The practical difference from topological sorting (what Solid/Preact do): topological sort is a single pass. Delta cycles allow multi-pass stabilization where sequential logic (`<=`) creates new combinational dependencies that need another settle pass.
+
+### Benchmark Results
+
+Pipeline performance is ~1:1 with topological sort — the DES overhead is negligible for realistic dependency graphs. Linear chains are 3-8x slower (reactive system overhead, not delta cycles). See the Interactive Benchmarks demo for live comparisons.
 
 ## Features (Implemented)
 
@@ -151,6 +168,7 @@ The practical difference from topological sorting (what Solid/Preact do): topolo
 - **Browser-portable compiler** — runs entirely in the browser for the playground
 - **Readable generated code** — inspect exactly what your `.comb` compiles to
 - **Reactive edge counting** — `edgeCount(expr)` derives alert counts from event history, no manual counters
+- **Change counting** — `changeCount(signal)` counts every value change (not just boolean edges like `edgeCount`)
 - **Optional type annotations** — `signal x = 0;` works, types inferred from initial values
 - **Syntax sugar** — `++`, `--`, `+=`, `-=` for concise signal updates
 - **Custom functions** — `fn clamp(x, min, max) -> int { ... }`
@@ -163,7 +181,7 @@ The practical difference from topological sorting (what Solid/Preact do): topolo
 - **SSR** — `renderToString(ModuleFactory)` for server-side rendering
 - **Source maps** — `.js.map` emitted alongside compiled output
 - **Router** — `createRouter(routes)` with hash-based reactive routing
-- **CLI** — `comb compile`, `comb init <name>`, `comb dev`
+- **CLI** — `comb compile`, `comb init <name>`, `comb dev`, `comb diff <a.comb> <b.comb>` (diffs reactive topology between two versions — shows added/removed/changed nodes and edges)
 
 ## Roadmap
 
@@ -177,17 +195,22 @@ The practical difference from topological sorting (what Solid/Preact do): topolo
 - [x] Design tokens as reactive CSS custom properties
 - [x] Live playground with in-browser compilation
 - [x] `__test()` auto-derived testing export
-- [x] All demos compile from `.comb` (stock ticker, color picker, resizable layout)
+- [x] All demos compile from `.comb` (stock ticker, color picker, resizable layout, pipeline proof, ring counter, interactive benchmarks)
 - [x] `constraint` blocks compile end-to-end through the compiler
 - [x] Type checking (warnings on type mismatches via `verify.ts`)
 - [x] Edge-triggered sensitivity: `@(posedge x)`, `@(negedge x)`
 - [x] DES execution model with delta cycles (`SimulationEngine`)
 - [x] Temporal assertions (SVA-lite): `assert temporal @(event) eventually/always/next(condition) within duration`
+- [x] Re-entrancy guard + single-computation fast path in simulation engine
+- [x] Verilator-style oscillation reporting
+- [x] Static cycle detection for always blocks
+- [x] `changeCount(signal)` builtin
+- [x] `comb diff` CLI command for reactive topology diffing
+- [x] Waveform debugger: zoom, pan, signal filtering, auto-scroll
 
 ### Planned
 - [ ] Type system: range types, port compatibility, exhaustive enum matching
 - [ ] X-value / unknown signal state with propagation semantics
-- [ ] Source maps
 
 ## Architecture
 

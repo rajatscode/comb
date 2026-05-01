@@ -138,6 +138,7 @@
       <div class="sidebar-group">Tooling</div>
       <a href="#graph">The __graph</a>
       <a href="#testing">Testing</a>
+      <a href="#cli">CLI Tools</a>
     </aside>
 
     <main class="docs-main" id="main">
@@ -202,7 +203,8 @@
 
       <h3>edgeCount / negedgeCount &mdash; reactive edge counting</h3>
 <pre class="docs-code"><span class="kw">comb</span> alertCount = <span class="fn">edgeCount</span>(cpuHigh) + <span class="fn">edgeCount</span>(memHigh);</pre>
-      <p><code>edgeCount(expr)</code> returns a reactive value that automatically increments each time <code>expr</code> transitions false&rarr;true. No manual counter signal needed &mdash; the count is derived from event history. <code>negedgeCount(expr)</code> counts true&rarr;false transitions.</p>
+      <p><code>edgeCount(expr)</code> returns a reactive value that automatically increments each time <code>expr</code> transitions false&rarr;true. <code>negedgeCount(expr)</code> counts true&rarr;false transitions. <code>changeCount(signal)</code> counts every value change (not just boolean edges) &mdash; useful for counting pipeline completions, state transitions, etc.</p>
+<pre class="docs-code"><span class="kw">comb</span> completed = <span class="fn">changeCount</span>(writeback_out);  <span class="cmt">// increments on every value change</span></pre>
 
       <h3>view &mdash; reactive DOM</h3>
 <pre class="docs-code"><span class="kw">view</span> {
@@ -437,6 +439,7 @@
           <tr><td>slice(arr, start)</td><td>Array slice</td></tr>
           <tr><td>edgeCount(expr)</td><td>Reactive count of posedge firings (no manual counter needed)</td></tr>
           <tr><td>negedgeCount(expr)</td><td>Reactive count of negedge firings</td></tr>
+          <tr><td>changeCount(signal)</td><td>Reactive count of value changes (any value, not just boolean)</td></tr>
           <tr><td>rgbToHsv(r, g, b)</td><td>RGB to HSV conversion (returns {h, s, v})</td></tr>
           <tr><td>hsvToRgb(h, s, v)</td><td>HSV to RGB conversion (returns {r, g, b})</td></tr>
           <tr><td>rgbToHex(r, g, b)</td><td>RGB to hex string (e.g. "#ff0080")</td></tr>
@@ -466,6 +469,25 @@ t.signals.username.<span class="fn">set</span>(<span class="str">"alice"</span>)
 <span class="fn">assert</span>(t.combs.<span class="fn">usernameValid</span>() === <span class="num">true</span>);
 t.<span class="fn">dispose</span>();</pre>
       <p>The test harness instantiates the module headlessly, generates random inputs for all signals, evaluates all <code>assert</code> declarations, and reports boolean coverage (how many true/false combinations of combs were hit).</p>
+
+      <!-- CLI Tools -->
+      <h2 id="cli">CLI Tools</h2>
+<pre class="docs-code"><span class="cm"># Compile a .comb file</span>
+comb compile examples/counter.comb
+
+<span class="cm"># Compile all examples</span>
+comb compile --all
+
+<span class="cm"># Diff reactive topology between two versions</span>
+comb diff before.comb after.comb
+<span class="cm"># Output:</span>
+<span class="cm">#   + Added nodes: threshold (signal)</span>
+<span class="cm">#   - Removed edges: count → label (data)</span>
+<span class="cm">#   ~ Changed nodes: alert: comb → signal</span>
+
+<span class="cm"># Run fuzz tests</span>
+comb test examples/registration.comb</pre>
+      <p>The <code>diff</code> command compiles both files, extracts their <code>__graph</code> artifacts, and reports added/removed/changed nodes and edges. Use it in CI to catch unintended topology changes during refactors.</p>
 
     </main>
   </div>

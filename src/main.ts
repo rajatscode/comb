@@ -500,6 +500,10 @@ function createLanding(): HTMLElement {
     <section class="demos-section" id="demos-section">
       <h2 class="section-title">Demos</h2>
       <div class="demo-cards">
+        <a href="#pipeline" class="demo-card demo-card-highlight">
+          <h3>Pipeline Proof</h3>
+          <p>Side-by-side: delta cycles vs immediate writes. Same code, same order — different results. The proof that DES matters.</p>
+        </a>
         <a href="#monitor" class="demo-card">
           <h3>System Monitor</h3>
           <p>Edge-triggered alerts with @(posedge) and @(negedge). Fires once on threshold crossing, not every tick.</p>
@@ -553,6 +557,9 @@ const nav = document.createElement('nav');
 nav.className = 'demo-nav';
 nav.innerHTML = `
   <a href="#" class="nav-link nav-home" data-demo="home">Comb</a>
+  <a href="#pipeline" class="nav-link" data-demo="pipeline">Pipeline Proof</a>
+  <a href="#ring" class="nav-link" data-demo="ring">Ring Counter</a>
+  <a href="#benchmark" class="nav-link" data-demo="benchmark">Benchmarks</a>
   <a href="#monitor" class="nav-link" data-demo="monitor">System Monitor</a>
   <a href="#registration" class="nav-link" data-demo="registration">Dependency Debugger</a>
   <a href="#ticker" class="nav-link" data-demo="ticker">Waveform Debugger</a>
@@ -1018,7 +1025,13 @@ function loadDemo(name: string) {
     el.classList.toggle('active', (el as HTMLElement).dataset.demo === name);
   });
 
-  if (name === 'monitor') {
+  if (name === 'benchmark') {
+    loadBenchmark(demoWrap);
+  } else if (name === 'ring') {
+    loadRing(demoWrap);
+  } else if (name === 'pipeline') {
+    loadPipeline(demoWrap);
+  } else if (name === 'monitor') {
     loadMonitor(demoWrap);
   } else if (name === 'registration') {
     loadRegistration(demoWrap);
@@ -1031,6 +1044,24 @@ function loadDemo(name: string) {
   } else if (name === 'layout') {
     loadLayout(demoWrap);
   }
+}
+
+async function loadRing(container: HTMLElement) {
+  const { mountRing } = await import('./demos/ring-mount.js');
+  const result = mountRing(container);
+  currentDispose = result.dispose;
+}
+
+async function loadBenchmark(container: HTMLElement) {
+  const { mountBenchmark } = await import('./demos/benchmark-mount.js');
+  const result = mountBenchmark(container);
+  currentDispose = result.dispose;
+}
+
+async function loadPipeline(container: HTMLElement) {
+  const { mountPipeline } = await import('./demos/pipeline-mount.js');
+  const result = mountPipeline(container);
+  currentDispose = result.dispose;
 }
 
 async function loadMonitor(container: HTMLElement) {

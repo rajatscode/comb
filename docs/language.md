@@ -95,6 +95,15 @@ comb alertCount = edgeCount(cpuHigh) + edgeCount(memHigh);
 
 `edgeCount(expr)` returns a reactive value that automatically increments each time `expr` transitions false→true. No manual counter signal needed — the count is derived from event history. `negedgeCount(expr)` counts true→false transitions.
 
+### changeCount — reactive value-change counting
+
+```sv
+comb completed = changeCount(writeback_out);
+comb totalMoves = changeCount(selectedCell);
+```
+
+`changeCount(signal)` returns a reactive value that increments each time `signal`'s value changes to a *different* value. Unlike `edgeCount` which only counts boolean false→true transitions, `changeCount` counts every value change — integers, strings, objects, etc. Useful for counting events in pipelines, state machine transitions, or any case where you need to know how many times a value was updated.
+
 ### view — reactive DOM
 
 ```sv
@@ -304,6 +313,7 @@ Prior art for unknown state: Solid's `createResource` handles async `T | undefin
 | `slice(arr, start)` | Array slice |
 | `edgeCount(expr)` | Reactive count of posedge firings (no manual counter needed) |
 | `negedgeCount(expr)` | Reactive count of negedge firings |
+| `changeCount(signal)` | Reactive count of value changes (any value, not just boolean) |
 
 Browser globals are also available: `fetch`, `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, `console.log`, `JSON.parse`, `JSON.stringify`, `Object.keys`, `Object.values`, `Math.random`.
 
@@ -473,6 +483,10 @@ Event enters → Delta 0: combinational logic (combs) settles
 
 Delta cycles give formal guarantees: combs always see consistent state, concurrent always blocks execute deterministically, DOM updates only after stabilization. Standard topological sorting (Solid, Preact) is a single pass; delta cycles are multi-pass.
 
+**Fast path optimization:** When the dependency graph is a pure feed-forward chain (no feedback edges), the engine detects this statically and collapses the multi-pass delta cycle into a single topological pass — identical cost to Solid/Preact for the common case. The full delta cycle machinery only activates when feedback edges are present.
+
+**Oscillation detection:** The compiler statically warns when an `always` block's sensitivity list creates a circular dependency (writing to a signal that feeds back into the same block's inputs). At runtime, if a delta cycle exceeds the iteration limit, the engine reports which signals are oscillating — listing their names and alternating values — rather than silently diverging or throwing an opaque error.
+
 ---
 
 ## Testing
@@ -487,3 +501,15 @@ The test harness:
 3. Evaluates all `assert` declarations
 4. Reports boolean coverage (how many true/false combinations of combs were hit)
 5. Returns pass/fail with coverage percentage
+
+---
+
+## CLI Tools
+
+### Topology Diff
+
+```bash
+comb diff old.comb new.comb
+```
+
+Compares the `__graph` topology of two `.comb` files and reports added/removed/changed nodes and edges. Useful for reviewing how a refactor affected the reactive dependency graph.

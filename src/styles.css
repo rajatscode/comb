@@ -321,6 +321,23 @@ a:hover { text-decoration: underline; }
   white-space: nowrap;
   z-index: 10;
 }
+.waveform-controls {
+  display: flex; align-items: center; gap: 0.35rem; padding: 4px 8px;
+  background: #1a1a2e; border-bottom: 1px solid #2a2a4a; font-size: 0.7rem; flex-wrap: wrap;
+}
+.waveform-ctrl-label { color: #666; text-transform: uppercase; letter-spacing: 0.5px; font-size: 0.6rem; }
+.waveform-ctrl-sep { color: #333; }
+.waveform-sig-btn {
+  background: none; border: 1px solid; border-radius: 3px; padding: 1px 6px;
+  cursor: pointer; font-size: 0.65rem; font-family: "SF Mono", "Fira Code", monospace;
+  transition: opacity 0.15s;
+}
+.waveform-sig-btn:hover { opacity: 0.8; }
+.waveform-zoom-btn {
+  background: #252535; border: 1px solid #333; border-radius: 3px; padding: 1px 8px;
+  color: #aaa; cursor: pointer; font-size: 0.65rem;
+}
+.waveform-zoom-btn:hover { border-color: #555; color: #ddd; }
 
 /* ============================================
    Circuit Graph (shared)
@@ -1275,4 +1292,89 @@ a:hover { text-decoration: underline; }
 .inv-fail .inv-icon { color: #ff4444; }
 .inv-code { flex: 1; font-family: "SF Mono", "Fira Code", monospace; font-size: 0.8rem; color: #ccc; }
 .inv-count { font-family: monospace; font-size: 0.8rem; color: #888; }
+
+/* --- Pipeline Demo --- */
+.pipeline-controls { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; }
+.pipeline-btn {
+  padding: 0.5rem 1.25rem; border: 1px solid #444; border-radius: 6px;
+  background: #1e1e2e; color: #e0e0e0; cursor: pointer; font-size: 0.9rem;
+  transition: border-color 0.15s, background 0.15s;
+}
+.pipeline-btn:hover { border-color: var(--accent); background: #252535; }
+
+.pipeline-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 1.5rem; }
+.pipeline-col { background: #1a1a2a; border-radius: 10px; padding: 1.25rem; border: 1px solid #333; }
+.pipeline-col-des { border-color: rgba(74, 224, 74, 0.3); }
+.pipeline-col-naive { border-color: rgba(255, 68, 68, 0.3); }
+
+.pipeline-heading { font-size: 1rem; margin: 0 0 0.25rem; font-weight: 600; }
+.pipeline-heading-correct { color: #4ae04a; }
+.pipeline-heading-broken { color: #ff4444; }
+.pipeline-subhead { font-size: 0.75rem; color: #888; margin: 0 0 1rem; }
+.pipeline-subhead code { background: #252535; padding: 0.1em 0.3em; border-radius: 3px; font-size: 0.7rem; }
+
+.pipeline-info { font-size: 0.85rem; color: #aaa; margin: 0 0 0.75rem; font-family: "SF Mono", "Fira Code", monospace; }
+
+.pipeline-stages { display: flex; align-items: center; gap: 0.25rem; }
+.pipe-stage { text-align: center; flex: 1; }
+.pipe-label { display: block; font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.35rem; }
+.pipe-val {
+  display: block; padding: 0.6rem 0.5rem; border-radius: 6px; font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 0.95rem; font-weight: 600; background: #252535; color: #555; border: 1px solid #333;
+  transition: all 0.2s;
+}
+.pipe-val.active { color: #fff; background: #2a2a4a; border-color: var(--accent); box-shadow: 0 0 8px rgba(99, 102, 241, 0.25); }
+.pipe-arrow { color: #555; font-size: 1.2rem; padding: 0 0.15rem; margin-top: 1rem; }
+
+.pipeline-code-section { margin-bottom: 1.5rem; }
+.pipeline-code-tabs { display: flex; gap: 0; border-bottom: 1px solid #333; margin-bottom: 0; }
+.pipeline-code-tabs .tab {
+  padding: 0.4rem 1rem; background: none; border: none; color: #888; cursor: pointer;
+  font-size: 0.8rem; border-bottom: 2px solid transparent; transition: all 0.15s;
+}
+.pipeline-code-tabs .tab.active { color: #ff4444; border-bottom-color: #ff4444; }
+.pipeline-code-tabs .tab:hover { color: #ccc; }
+.pipeline-code-panels .panel { display: none; }
+.pipeline-code-panels .panel.active { display: block; }
+
+.pipe-val.naive-wrong { border-color: #ff4444; box-shadow: 0 0 8px rgba(255, 68, 68, 0.25); }
+
+.pipeline-log {
+  margin-top: 1rem; max-height: 160px; overflow-y: auto; font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 0.72rem; border-top: 1px solid #333; padding-top: 0.5rem;
+}
+.log-title { color: #888; text-transform: uppercase; letter-spacing: 1px; font-size: 0.65rem; margin-bottom: 0.35rem; }
+.log-entry { color: #999; padding: 0.15rem 0; }
+
+/* --- Ring Counter --- */
+.ring-info { font-size: 0.85rem; color: #aaa; margin: 0 0 0.75rem; font-family: "SF Mono", "Fira Code", monospace; }
+.ring-nodes { display: grid; grid-template-columns: auto auto auto auto auto auto auto auto auto auto auto; align-items: center; gap: 0.25rem; justify-content: center; }
+.ring-node {
+  width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 1.2rem; background: #252535; border: 2px solid #333; color: #555; transition: all 0.2s;
+}
+.ring-node.active { color: #fff; background: #2a2a4a; border-color: var(--accent); box-shadow: 0 0 12px rgba(99, 102, 241, 0.4); }
+.ring-node.naive-wrong { border-color: #ff4444; box-shadow: 0 0 12px rgba(255, 68, 68, 0.3); }
+.ring-arrow { color: #555; font-size: 1rem; text-align: center; }
+
+/* --- Benchmark --- */
+.bench-container { max-width: 800px; }
+.bench-controls { display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem; }
+.bench-run-btn { font-size: 1rem; padding: 0.6rem 1.5rem; }
+.bench-status { font-family: "SF Mono", "Fira Code", monospace; font-size: 0.85rem; color: #888; }
+.bench-section { margin-bottom: 2.5rem; }
+.bench-heading { color: #e0e0e0; font-size: 1rem; margin: 0 0 0.5rem; }
+.bench-desc { color: #888; font-size: 0.8rem; margin: 0 0 1rem; line-height: 1.5; }
+.bench-table {
+  width: 100%; border-collapse: collapse; font-family: "SF Mono", "Fira Code", monospace; font-size: 0.82rem;
+}
+.bench-table th { text-align: left; color: #888; font-weight: 500; padding: 0.5rem 0.75rem; border-bottom: 1px solid #333; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; }
+.bench-table td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #222; color: #ccc; }
+.bench-ok { color: #4ae04a; }
+.bench-warn { color: #f59e0b; }
+.bench-bad { color: #ff4444; }
+.bench-explainer { color: #999; font-size: 0.8rem; line-height: 1.6; }
+.bench-explainer p { margin: 0 0 0.75rem; }
+.bench-explainer strong { color: #ccc; }
+.bench-explainer em { color: #4ae04a; font-style: normal; }
 

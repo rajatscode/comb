@@ -33,14 +33,17 @@ Pure functions, zero Node.js dependencies, runs in the browser. The `compile(sou
 
 - `lexer.ts` — Hand-written tokenizer with JSX-mode switching inside `view {}` blocks
 - `parser.ts` — Recursive descent + Pratt expression parsing. `<=` is context-sensitive (assignment in statements, comparison in expressions)
-- `verify.ts` — Symbol table, undefined ref detection, circular dep detection, sensitivity list validation
+- `verify.ts` — Symbol table, undefined ref detection, circular dep detection (combs and `always` block read/write sets), sensitivity list validation
 - `codegen.ts` — Emits readable JS targeting the runtime API
 - `compiler.ts` — Pipeline orchestrator + graph metadata extraction
 
 ### Runtime (src/runtime/)
 
-- `signals.ts` — Push-pull reactivity: `createSignal`, `createComb`, `createEffect`, `batch`, `untrack`, `createCell`, `createPropagator`
+- `signals.ts` — Push-pull reactivity: `createSignal`, `createComb`, `createEffect`, `batch`, `untrack`, `createCell`, `createPropagator`, `createChangeCounter`
 - `circuit.ts` — `CircuitGraph` class: static graph loading, runtime node registration, event recording, snapshot/diff/verify
+- `SimulationEngine` fast path: single-computation batches skip deferred writes, collapsing feed-forward chains
+- Re-entrancy guard: `running` flag prevents nested `runUntilQuiescent` calls
+- Verilator-style oscillation reporting: when delta cycle limit is hit, reports which signals are oscillating with recent values
 
 ### Key Design Decisions
 
@@ -59,6 +62,7 @@ The runtime uses a DES execution model:
 3. **Constraint compilation** — `constraint { }` blocks compile end-to-end to propagator networks
 4. **Type system** — `verify.ts` checks parsed type annotations and emits warnings (not errors) on mismatches
 5. **Temporal assertions** — `assert temporal @(trigger) eventually/always/next(prop) within duration` compiles and runs
+6. **`changeCount` builtin** — `changeCount(signal)` counts value changes (not just boolean edges); recognized by lexer, parser, verifier, and codegen
 
 See docs/research/final-assessment.md for the full novelty assessment with prior art citations.
 
@@ -77,10 +81,19 @@ See docs/research/final-assessment.md for the full novelty assessment with prior
 npm run typecheck              # TypeScript strict mode
 npx tsx src/core/compiler-test.ts   # Compiler tests
 npx tsx src/cli/cli.ts examples/counter.comb  # Test compilation
+npx tsx src/cli/cli.ts diff examples/a.comb examples/b.comb  # Diff reactive topology
 npm run dev                    # Visual testing in browser
 ```
+
+### Demos & Benchmarks
+
+- **Pipeline demo** — 4-stage pipeline proving delta cycle correctness with side-by-side DES vs naive comparison
+- **Ring counter demo** — feedback loop proving delta cycles work for circular dependencies
+- **Benchmark page** — interactive DES vs topological sort performance comparison
+- **Waveform debugger** — zoom (wheel), pan (drag), signal filter (click to toggle)
 
 ## Known Limitations
 
 - Type system emits warnings, not errors
 - No npm package published yet
+- Linear chain overhead: DES is 3-8x slower than topo sort for feed-forward chains (reactive system overhead, not delta cycles)

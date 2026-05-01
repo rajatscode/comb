@@ -170,7 +170,7 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
   const symbols = new Map<string, SymbolKind>();
   const enumValues = new Set<string>(); // e.g. "Phase.Red"
   const enumDefs = new Map<string, string[]>();
-  const builtins = new Set(['str', 'int', 'float', 'len', 'contains', 'append', 'push', 'pop', 'slice', 'map', 'filter', 'concat', 'Math', 'JSON', 'console', 'Object', 'parseInt', 'parseFloat', 'toString', 'rgbToHsv', 'hsvToRgb', 'rgbToHex', 'reduce', 'floor', 'round', 'min', 'max', 'abs', 'fetch', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'X', 'edgeCount', 'negedgeCount']);
+  const builtins = new Set(['str', 'int', 'float', 'len', 'contains', 'append', 'push', 'pop', 'slice', 'map', 'filter', 'concat', 'Math', 'JSON', 'console', 'Object', 'parseInt', 'parseFloat', 'toString', 'rgbToHsv', 'hsvToRgb', 'rgbToHex', 'reduce', 'floor', 'round', 'min', 'max', 'abs', 'fetch', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'X', 'edgeCount', 'negedgeCount', 'changeCount']);
 
   // Method names that are valid on arrays/objects/strings — should not trigger undefined reference errors
   const knownMethods = new Set([
@@ -466,6 +466,33 @@ export function verify(mod: Module, moduleRegistry?: Map<string, Module>): Verif
   const cycleError = detectCycles(combDeps);
   if (cycleError) {
     errors.push({ message: cycleError, line: 1, column: 1 });
+  }
+
+  // 4b. Cycle detection among always blocks (Verilator-style UNOPTFLAT)
+  // Build signal-level dependency graph: if block X writes signal A and reads signal B,
+  // then A depends on B. If there's a cycle (A→B→A), it may oscillate.
+  const signalDeps = new Map<string, Set<string>>();
+  for (const decl of mod.body) {
+    if (decl.kind === 'always' && (decl.triggerKind === 'sensitivity' || decl.triggerKind === 'posedge' || decl.triggerKind === 'negedge')) {
+      // For each signal this block writes, it depends on all signals this block reads
+      for (const written of decl.writes) {
+        if (!signalDeps.has(written)) signalDeps.set(written, new Set());
+        for (const read of decl.reads) {
+          if (read !== written) signalDeps.get(written)!.add(read);
+        }
+      }
+    }
+  }
+  // Convert to the format detectCycles expects
+  const signalDepMap = new Map<string, string[]>();
+  for (const [sig, deps] of signalDeps) {
+    // Only include deps that are also written by some always block (potential feedback)
+    const feedbackDeps = [...deps].filter(d => signalDeps.has(d));
+    if (feedbackDeps.length > 0) signalDepMap.set(sig, feedbackDeps);
+  }
+  const alwaysCycleError = detectCycles(signalDepMap);
+  if (alwaysCycleError) {
+    warnings.push({ message: `Potential oscillation: ${alwaysCycleError}. This may cause infinite delta cycles at runtime.`, line: 1, column: 1 });
   }
 
   // 5. Build static graph

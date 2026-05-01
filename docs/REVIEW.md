@@ -28,12 +28,16 @@ With topological sort, this is either a circular dependency error or execution-o
 ### Where the gap is real
 
 - **State machines with cross-dependencies.** Multiple pieces of state read each other's "old" values and transition simultaneously. The traffic light demo is the canonical case. Real in simulation UIs, game logic, protocol visualizers.
+- **Feed-forward pipelines.** A 4-stage pipeline where instructions advance one stage per tick. With DES, each stage reads the previous stage's old value — instructions move correctly through the pipeline. With topological sort, writes propagate instantly and instructions "teleport" to the end. The pipeline demo shows this side-by-side.
+- **Feedback loops.** A ring counter where a token rotates through stages. With DES, the token moves one position per tick. With naive JS, the token vanishes because all stages see the updated (zero) value simultaneously. The ring counter demo shows this side-by-side.
 - **Constraint propagation.** Bidirectional conversions (celsius/fahrenheit, RGB/HSV) where information flows in any direction need multi-pass convergence. Topological sort is single-pass by definition.
 - **Effect-writes-signal chains.** An effect reading signal A and writing signal B. The engine defers B's write during the evaluation phase, preventing read-during-write inconsistency. SolidJS handles this too, but with ad-hoc batching rather than formal phase separation.
 
 ### Where the gap is zero
 
 For 95%+ of web UIs — forms, dashboards, CRUD apps, data tables — the gap is zero. React/Solid/Svelte are equivalent. The "glitch-free" guarantee from delta cycles is nice in theory, but the "half-updated signal graph" problem is largely solved in modern frameworks via batching and topological sort.
+
+**Performance note:** Benchmarking shows pipeline cross-dependency performance is ~1:1 with topological sort, while producing correct results where topo sort produces wrong results. Linear chain overhead is 3-8x (reactive system overhead, not delta cycles). A single-computation fast path optimization collapses feed-forward chains.
 
 ### Bottom line
 
@@ -77,10 +81,10 @@ This is genuinely better than what React/Vue/Svelte give you out of the box. Pro
 `waveform.ts` is ~200 lines of canvas code. Records signal values over time via `circuit.startRecording()`, plots booleans as filled rectangles and numbers as line charts, has cursor tooltip.
 
 **What's missing:**
-- No zoom, scroll, or pan
+- ~~No zoom, scroll, or pan~~ Zoom (mouse wheel), pan (drag), and auto-scroll are now implemented
 - No persistence (in-memory, lost on reload)
 - No export (can't save/share waveforms)
-- No time range selection or signal filtering
+- ~~No time range selection or signal filtering~~ Signal filtering (click to toggle) is now implemented
 - Redraws on 500ms `setInterval`, not event-driven
 
 **Worth pursuing?** Yes, for state machine debugging. The waveform metaphor maps naturally to "what happened to my signals over time" and is more intuitive than Redux DevTools' action log for complex reactive flows.
@@ -92,9 +96,9 @@ This is genuinely better than what React/Vue/Svelte give you out of the box. Pro
 Every compiled `.comb` file exports `__graph` as JSON with typed nodes and edges. `CircuitGraph.diffGraphs()` is implemented and tested (12 tests in `circuit-test.ts`) — detects added/removed/changed nodes and edges. `verifyGraph()` detects static nodes that never registered at runtime (dead code detection).
 
 **What's missing:**
-- No CLI command to diff graphs
+- ~~No CLI command to diff graphs~~ `comb diff <a.comb> <b.comb>` now exists
 - No CI integration (no GitHub Action, no lint rule)
-- No human-readable diff output (just raw `{ addedNodes, removedNodes, ... }`)
+- ~~No human-readable diff output~~ CLI produces human-readable output showing added/removed/changed nodes and edges
 - No side-by-side visualization of two graph versions
 
 **Worth pursuing?** Strongly yes. "Did my refactor change the dependency topology?" is a question no framework answers today. Svelte and Marko do cross-file reactive analysis internally but don't expose the graph. Angular's Signal Graph is runtime-only. The `__graph` as a build artifact enables static analysis that runtime-only graphs can't.
@@ -121,9 +125,9 @@ Every compiled `.comb` file exports `__graph` as JSON with typed nodes and edges
 | DES / delta cycles | Yes | For narrow use cases | Only for simulation UIs |
 | Edge-triggered sensitivity | Yes | Yes (simple) | Sugar, not essential |
 | `__test()` headless harness | Yes | No (no events, no runner) | **Yes** |
-| Waveform debugger | Yes | No (no zoom/persist/export) | **Yes** |
-| `__graph` static artifact | Yes | No (no CLI/CI) | **Yes** |
-| Graph diffing | Algorithm works | No (no tooling) | **Yes** |
+| Waveform debugger | Yes (zoom/pan/filter) | No (no persist/export) | **Yes** |
+| `__graph` static artifact | Yes | No (no CI) | **Yes** |
+| Graph diffing | CLI works, human-readable output | No (no CI integration) | **Yes** |
 | Temporal assertions | Yes | No (console.warn only) | Maybe |
 | Propagator networks / cells | Yes | Basic | Research interest |
 | Type system | Warnings only | No | Needs real type errors |
@@ -135,7 +139,7 @@ Every compiled `.comb` file exports `__graph` as JSON with typed nodes and edges
 
 ## What's Genuinely Novel (Holds Up Under Scrutiny)
 
-1. **DES as UI execution model.** No web framework uses formal delta cycles. The thesis is sound for simulation-class UIs.
+1. **DES as UI execution model.** No web framework uses formal delta cycles. The thesis is sound for simulation-class UIs. Now backed by empirical proof: the pipeline and ring counter demos show side-by-side comparisons where DES produces correct results and topological sort / naive JS does not.
 2. **Static `__graph` as build artifact.** No framework emits the dependency graph as a diffable JSON artifact. Enables CI topology diffing, dead code detection, and static analysis.
 3. **Auto-derived `__test()` from component definition.** No framework auto-generates a headless test harness from the component source.
 
@@ -201,7 +205,7 @@ Large reactive codebases become "change something, pray nothing breaks."
 
 **Comb's answer:** The waveform debugger — canvas-based signal value timeline with cursor inspection.
 
-**Verdict: Real pain, embryonic answer.** The waveform metaphor is right for this problem. But the current implementation (no zoom, no filtering, no persistence, no cause-chain tracing) doesn't beat `console.log` yet. It needs to be 10x richer to be useful.
+**Verdict: Real pain, growing answer.** The waveform metaphor is right for this problem. Zoom, pan, signal filtering, and auto-scroll are now implemented. Still missing persistence and cause-chain tracing. Getting closer to beating `console.log` for complex reactive flows, but not there yet.
 
 ### Pain point 4: Edge detection is boilerplate
 
@@ -221,6 +225,8 @@ Large reactive codebases become "change something, pray nothing breaks."
 ---
 
 ## What to Actually Build Next
+
+> **Note:** The project maintainer has decided to keep all work within the Comb language and repo. The recommendations below to port to other frameworks have been explicitly rejected in favor of proving the core DES thesis within Comb itself.
 
 If the goal is to build things people would use, the highest-value work is extracting the portable ideas into tools that work with existing frameworks — not deepening the Comb language itself.
 

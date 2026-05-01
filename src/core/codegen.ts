@@ -218,7 +218,7 @@ export function generateWithSourceMap(mod: Module, graph: StaticGraph): Generate
   const hasConstraints = mod.body.some(d => d.kind === 'constraint');
   const hasEdgeTriggers = mod.body.some(d => d.kind === 'always' && (d.triggerKind === 'posedge' || d.triggerKind === 'negedge'));
   function exprContainsEdgeCount(expr: Expr): boolean {
-    if (expr.kind === 'call' && expr.callee.kind === 'identifier' && (expr.callee.name === 'edgeCount' || expr.callee.name === 'negedgeCount')) return true;
+    if (expr.kind === 'call' && expr.callee.kind === 'identifier' && (expr.callee.name === 'edgeCount' || expr.callee.name === 'negedgeCount' || expr.callee.name === 'changeCount')) return true;
     if (expr.kind === 'binary') return exprContainsEdgeCount(expr.left) || exprContainsEdgeCount(expr.right);
     if (expr.kind === 'unary') return exprContainsEdgeCount(expr.operand);
     if (expr.kind === 'ternary') return exprContainsEdgeCount(expr.condition) || exprContainsEdgeCount(expr.then) || exprContainsEdgeCount(expr.else_);
@@ -231,7 +231,12 @@ export function generateWithSourceMap(mod: Module, graph: StaticGraph): Generate
   if (hasCells) importParts.push('createCell');
   if (hasConstraints) importParts.push('createPropagator');
   if (hasEdgeTriggers) importParts.push('createEdgeEffect');
-  if (hasEdgeCounters) importParts.push('createEdgeCounter');
+  if (hasEdgeCounters) {
+    importParts.push('createEdgeCounter');
+    // Also check for changeCount specifically
+    const hasChangeCounters = mod.body.some(d => d.kind === 'comb' && JSON.stringify(d).includes('changeCount'));
+    if (hasChangeCounters) importParts.push('createChangeCounter');
+  }
   if (hasTemporalAsserts) importParts.push('createTemporalAssert');
   if (hasKeyedFor) importParts.push('reconcileKeyed');
   pushLine(`import { ${importParts.join(', ')} } from '../runtime/index.js';`);
@@ -429,12 +434,16 @@ function emitComb(decl: CombDecl, ctx: GenContext): string[] {
   let counterIdx = 0;
   function hoistEdgeCounters(expr: Expr): Expr {
     if (expr.kind === 'call' && expr.callee.kind === 'identifier'
-        && (expr.callee.name === 'edgeCount' || expr.callee.name === 'negedgeCount')
+        && (expr.callee.name === 'edgeCount' || expr.callee.name === 'negedgeCount' || expr.callee.name === 'changeCount')
         && expr.args.length === 1) {
-      const edge = expr.callee.name === 'edgeCount' ? 'posedge' : 'negedge';
       const name = `__ec_${decl.name}_${counterIdx++}`;
       const arg = emitExpr(expr.args[0], ctx);
-      hoisted.push(`${i}const ${name} = createEdgeCounter(() => ${arg}, '${edge}', { name: '${name}', module: $m });`);
+      if (expr.callee.name === 'changeCount') {
+        hoisted.push(`${i}const ${name} = createChangeCounter(() => ${arg}, { name: '${name}', module: $m });`);
+      } else {
+        const edge = expr.callee.name === 'edgeCount' ? 'posedge' : 'negedge';
+        hoisted.push(`${i}const ${name} = createEdgeCounter(() => ${arg}, '${edge}', { name: '${name}', module: $m });`);
+      }
       return { kind: 'identifier', name, loc: expr.loc } as any;
     }
     if (expr.kind === 'binary') {

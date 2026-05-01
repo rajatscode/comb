@@ -40,6 +40,7 @@ class SimulationEngine {
   private maxDeltaCycles = 1000;
   private domEffects: (() => void)[] = [];
   batchDepth = 0;
+  private running = false;
 
   scheduleUpdate<T>(signal: SignalNode<T>, nodeId: string, value: T, oldValue: T): void {
     this.pendingUpdates.push({ signal, nodeId, value, oldValue });
@@ -58,18 +59,41 @@ class SimulationEngine {
   }
 
   runUntilQuiescent(): void {
+    if (this.running) return;
+    this.running = true;
     this.deltaCount = 0;
 
+    // Track which signals have been updated in this run for oscillation detection
+    // Only count delta cycles when the SAME signal is updated again (feedback loop)
+    // Feed-forward cascading doesn't count — this collapses linear chains from N delta
+    // cycles to effectively 1, matching topological sort performance.
+    const updatedSignals = new Map<string, { count: number; values: any[] }>();
+    let loopCount = 0;
+    const maxLoops = 1000000; // absolute safety limit for feed-forward chains
+
     while (this.pendingComputations.size > 0 || this.pendingUpdates.length > 0) {
-      this.deltaCount++;
-      if (this.deltaCount > this.maxDeltaCycles) {
-        console.error('[Comb] Delta cycle limit exceeded (' + this.maxDeltaCycles + ' iterations). Breaking potential infinite loop.');
+      loopCount++;
+      if (loopCount > maxLoops) {
+        console.error('[Comb] Loop limit exceeded (' + maxLoops + '). Breaking.');
         this.pendingComputations.clear();
         this.pendingUpdates.length = 0;
         break;
       }
 
-      // EVALUATE phase: run all pending computations
+      // FAST PATH: single computation, no pending updates → no conflict possible.
+      // Skip deferred writes entirely — apply immediately like topological sort.
+      // This collapses linear chains (A→B→C→...→N) from N delta cycles to 1 pass.
+      if (this.pendingComputations.size === 1 && this.pendingUpdates.length === 0) {
+        const comp = this.pendingComputations.values().next().value!;
+        this.pendingComputations.clear();
+        // evaluating stays FALSE — writes apply immediately, no deferral
+        if (!comp.disposed) comp.execute();
+        // Any downstream computations were added to pendingComputations by notify()
+        // Loop back and check — if still single-computation, stay on fast path
+        continue;
+      }
+
+      // FULL DELTA CYCLE: multiple computations — defer writes to prevent conflicts
       this.evaluating = true;
       const batch = [...this.pendingComputations];
       this.pendingComputations.clear();
@@ -82,10 +106,42 @@ class SimulationEngine {
       const updates = this.pendingUpdates.splice(0);
       for (const u of updates) {
         if (!Object.is(u.value, u.signal.value)) {
+          // Track signal updates for oscillation detection
+          const info = updatedSignals.get(u.nodeId);
+          if (info) {
+            info.count++;
+            info.values.push(u.value);
+            if (info.values.length > 10) info.values.shift();
+            this.deltaCount++;
+          } else {
+            updatedSignals.set(u.nodeId, { count: 1, values: [u.value] });
+          }
+
+          if (this.deltaCount > this.maxDeltaCycles) {
+            const oscillating = [...updatedSignals.entries()]
+              .filter(([, i]) => i.count > 2)
+              .sort((a, b) => b[1].count - a[1].count);
+
+            let msg = `[Comb] Delta cycle limit exceeded (${this.maxDeltaCycles} cycles).`;
+            if (oscillating.length > 0) {
+              msg += '\n  Oscillating signals:';
+              for (const [nodeId, i] of oscillating.slice(0, 10)) {
+                const lastVals = i.values.slice(-4).map(v => JSON.stringify(v)).join(' → ');
+                msg += `\n    ${nodeId}: updated ${i.count}x, recent: ${lastVals}`;
+              }
+            }
+            console.error(msg);
+            this.pendingComputations.clear();
+            this.pendingUpdates.length = 0;
+            break;
+          }
+
           applyUpdate(u.signal, u.nodeId, u.value, u.oldValue);
         }
       }
     }
+
+    this.running = false;
 
     // After quiescence: flush DOM effects
     this.flushDomEffects();
@@ -133,8 +189,7 @@ function track<T>(signal: SignalNode<T>): void {
 }
 
 function notify(signal: SignalNode<any>): void {
-  const subs = [...signal.subscribers];
-  for (const comp of subs) {
+  for (const comp of signal.subscribers) {
     if (comp.disposed) continue;
     engine.scheduleComputation(comp);
   }
@@ -519,6 +574,49 @@ export function createEdgeCounter(
   createEdgeEffect(valueFn, edge, () => {
     setCount(count() + 1);
   }, { name: `${edge}:${meta.name}`, module: meta.module });
+  return count;
+}
+
+// --- Change counter: reactive count of how many times a signal's VALUE changes ---
+
+export function createChangeCounter(
+  valueFn: () => any,
+  meta: { name: string; module: string },
+): () => number {
+  const [count, setCount] = createSignal(0, { name: meta.name, module: meta.module, type: 'int' });
+
+  let previousValue: any = undefined;
+  let initialized = false;
+
+  const comp: Computation = {
+    execute: runChangeCheck,
+    dependencies: new Set(),
+    cleanups: [],
+    disposed: false,
+    isDom: false,
+  };
+
+  if (currentScope) currentScope.track(comp);
+
+  function runChangeCheck(): void {
+    if (comp.disposed) return;
+    for (const dep of comp.dependencies) dep.subscribers.delete(comp);
+    comp.dependencies.clear();
+
+    const prev = currentComputation;
+    currentComputation = comp;
+    const currentValue = valueFn();
+    currentComputation = prev;
+
+    if (initialized && !Object.is(currentValue, previousValue)) {
+      setCount(count() + 1);
+    }
+
+    previousValue = currentValue;
+    initialized = true;
+  }
+
+  runChangeCheck();
   return count;
 }
 

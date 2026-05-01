@@ -1,0 +1,61 @@
+module Ring {
+  signal clk: bool = false;
+  signal cycle: int = 0;
+
+  signal s0: int = 1;
+  signal s1: int = 0;
+  signal s2: int = 0;
+  signal s3: int = 0;
+  signal s4: int = 0;
+  signal s5: int = 0;
+
+  // Ring: each stage reads the PREVIOUS stage, last wraps to first.
+  // With delta cycles, ALL reads see pre-update values — token rotates 1 step/tick.
+  // Without delta cycles, evaluation order determines behavior — token collapses.
+  // NOTE: blocks are in FORWARD order (s0 first) — the "wrong" order for a ring.
+
+  always @(posedge clk) {
+    s0 <= s5;
+  }
+
+  always @(posedge clk) {
+    s1 <= s0;
+  }
+
+  always @(posedge clk) {
+    s2 <= s1;
+  }
+
+  always @(posedge clk) {
+    s3 <= s2;
+  }
+
+  always @(posedge clk) {
+    s4 <= s3;
+  }
+
+  always @(posedge clk) {
+    s5 <= s4;
+    cycle <= cycle + 1;
+  }
+
+  view {
+    <div class="ring-demo">
+      <p class="ring-info">{"Cycle " + str(cycle)}</p>
+      <div class="ring-nodes">
+        <div class={s0 > 0 ? "ring-node active" : "ring-node"}>{s0 > 0 ? "●" : "○"}</div>
+        <div class="ring-arrow">→</div>
+        <div class={s1 > 0 ? "ring-node active" : "ring-node"}>{s1 > 0 ? "●" : "○"}</div>
+        <div class="ring-arrow">→</div>
+        <div class={s2 > 0 ? "ring-node active" : "ring-node"}>{s2 > 0 ? "●" : "○"}</div>
+        <div class="ring-arrow">→</div>
+        <div class={s3 > 0 ? "ring-node active" : "ring-node"}>{s3 > 0 ? "●" : "○"}</div>
+        <div class="ring-arrow">→</div>
+        <div class={s4 > 0 ? "ring-node active" : "ring-node"}>{s4 > 0 ? "●" : "○"}</div>
+        <div class="ring-arrow">→</div>
+        <div class={s5 > 0 ? "ring-node active" : "ring-node"}>{s5 > 0 ? "●" : "○"}</div>
+        <div class="ring-arrow">↩</div>
+      </div>
+    </div>
+  }
+}
