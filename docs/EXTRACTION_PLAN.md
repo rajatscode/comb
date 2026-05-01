@@ -236,9 +236,66 @@ Toggle and FSM coverage are genuinely new metrics. But they need to be wired end
 
 **Ship gate:** Run a Vitest test suite, get a reactive coverage report alongside Istanbul's line coverage. See "signal `isLoading` was never set to false during tests."
 
-### Phase 4: `@comb/test` (most experimental)
+### Phase 4: `@comb/test` (highest leverage — zero-test-case UI verification)
 
-Graph-directed test generation. Ship when the other three are stable.
+The dream: **you write temporal assertions, not test cases.** The tool explores the state space, and assertions are the pass/fail criteria. No Playwright scripts. No manual test scenarios. You declare what should always/eventually/never be true, and the machine finds violations or proves coverage.
+
+**Why this is the highest-leverage piece:**
+
+No existing tool does this. Bombadil fuzzes randomly with no graph awareness. fast-check-frontend generates random interactions but doesn't know the state space. XState's @xstate/graph generates paths but requires manual state machine modeling. The synthesis — graph-aware exploration + coverage-driven steering + temporal assertions as spec — is genuinely novel.
+
+**The architecture (three layers):**
+
+**Layer 1: State space discovery** (exists in Comb, needs expansion)
+- Read `@comb/graph` to discover bounded signals (booleans, enums, bounded ints)
+- Identify root signals (zero incoming edges) as test inputs
+- Identify clock/trigger signals (posedge/negedge sensitivity nodes)
+- Infer state bounds from TypeScript types where possible (`isLoading: boolean` → `[true, false]`)
+- Source: `src/runtime/autotest.ts` — `runAutoTest()`, but needs combinatorial expansion
+
+**Layer 2: Coverage-driven exploration** (needs to be built)
+- Generate random input combinations (fast-check integration for constrained random)
+- After each exploration batch, measure reactive coverage (toggle, FSM transition, cross)
+- Identify uncovered states/transitions
+- Bias next generation toward uncovered regions (the HDL CRV feedback loop)
+- Stop when coverage target met or budget exhausted
+- This is the piece nobody has built: fast-check's random generation + @comb/coverage's state-space metrics in a feedback loop
+
+**Layer 3: Temporal assertions as the spec** (exists in Comb, needs integration)
+- `assert temporal @(posedge submit) eventually(success || error) within 5s` — if exploration finds an input sequence that violates this, that's the bug report
+- `assert always (score >= 0)` — invariant checked at every state during exploration
+- When a violation is found: produce the minimal reproducing input sequence (fast-check's shrinking)
+- When exploration exhausts reachable states without violations: report coverage achieved as confidence metric
+- Source: `createTemporalAssert` in signals.ts, but needs to work in headless exploration mode (not just runtime monitoring)
+
+**Integration with interaction-level testing:**
+- For real UI testing, the explorer needs to drive *interactions* (click, type, navigate), not just raw signal writes
+- Bridge to Playwright/Testing Library: map graph roots to interaction affordances ("signal `isOpen` is toggled by clicking `button.menu-toggle`")
+- This mapping could be manual (annotation) or inferred (observe which interactions change which signals during a recording session)
+
+**What this replaces:**
+- Hand-written Playwright E2E scripts → temporal assertions + exploration
+- Hand-written Vitest component tests → auto-derived from graph + assertions
+- Manual test case enumeration → coverage-driven state space search
+- "Did I test enough?" → quantified reactive coverage metrics
+
+**What this does NOT replace:**
+- Visual regression testing (Chromatic/Percy) — this tests behavior, not appearance
+- API contract testing — this tests the UI layer only
+- Performance testing — this tests correctness, not speed
+
+**Minimum viable:**
+- Headless exploration mode: drive root signals through state space, check assertions, report violations with reproducing sequence
+- Coverage report: which signals/transitions were exercised, which weren't
+- Integration with Vitest: `import { explore } from '@comb/test'; explore(graph, assertions, { budget: 1000 })`
+
+**Full vision:**
+- Coverage-driven steering (fast-check + coverage feedback loop)
+- Interaction-level exploration (Playwright bridge)
+- Assertion inference from TypeScript types ("this signal is `number` and only set in a handler that increments — assert it never decreases")
+- CI mode: fail if reactive coverage drops below threshold or any temporal assertion is violated
+
+**Ship gate:** Run `explore()` against a React component with 5 tracked signals and 3 temporal assertions. Get a coverage report + any violation traces. Zero hand-written test cases.
 
 ## Target Users
 
