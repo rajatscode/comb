@@ -25,7 +25,7 @@ Three things converging:
 | Waveform viewer | Working (basic) | Zoom/pan/markers/compound search. `src/waveform/` |
 | Graph diffing | Working | `CircuitGraph.diffGraphs(a, b)` detects added/removed/changed nodes and edges |
 | Edge-triggered effects | Working | `createEdgeEffect(valueFn, 'posedge'/'negedge', action)` |
-| Temporal assertions | Working | `createTemporalAssert(trigger, operator, property, {duration})` |
+| Temporal assertions | Working | `createTemporalAssert(trigger, operator, property, {duration})` — duration is wall-clock ms |
 | Auto-test (graph-directed) | Working (shallow) | Reads `__graph`, finds bounded signals, drives through state space |
 | CDC async boundary analysis | Working (pattern-level) | Transitive taint through comb chains. `src/core/verify.ts` |
 | SSR | Working | `renderToString()` with DOM shim. 12/12 tests pass |
@@ -186,6 +186,215 @@ function createTrackedSignal<T>(initial: T, name: string) {
 - Fast-check integration for constrained random generation targeting uncovered states
 
 **This is the most experimental package.** Ship last, iterate based on feedback.
+
+### Temporal Assertions: Tick-Based, Not Time-Based
+
+Comb's current temporal assertions use wall-clock `setTimeout` durations (`within 5s`). This is the wrong model for testing — time-based assertions are inherently flaky (CI machines are slow, animation frames vary, network latency differs).
+
+**The extracted library should support tick/event-based assertions as the primary mode:**
+
+```ts
+// BAD: time-based (flaky in CI, slow in tests, unreliable)
+assertTemporal(submitted, 'eventually', () => !loading, { within: 5000 })
+
+// GOOD: tick-based (deterministic, fast, reliable)
+assertTemporal(submitted, 'eventually', () => !loading, { withinTicks: 3 })
+
+// GOOD: event-based (fires on the Nth signal change, not after N ms)
+assertTemporal(submitted, 'eventually', () => successVisible || errorVisible, {
+  withinEvents: 5,  // within 5 signal-change events after trigger
+})
+
+// GOOD: transition-based (after N state transitions of a specific signal)
+assertTemporal(
+  () => phase === 'submitting',
+  'eventually',
+  () => phase === 'success' || phase === 'error',
+  { withinTransitions: 'phase', count: 2 }  // within 2 transitions of `phase`
+)
+
+// Invariants: no duration needed, checked on every signal change
+assertAlways(() => score >= 0)
+assertAlways(() => !(loading && error))  // can't be loading AND errored
+assertNever(() => phase === 'submitted' && !validated)  // can't submit without validation
+```
+
+**How ticks work:** The graph already records every signal change as an event. A "tick" is one event-processing cycle (all signals settle after an input change). The assertion counts ticks/events, not milliseconds. This makes assertions:
+- **Deterministic:** same inputs → same tick count → same pass/fail, regardless of machine speed
+- **Fast:** no need for `setTimeout` or `waitFor` — assertions resolve synchronously during exploration
+- **Composable:** "within 3 ticks of X" means "within 3 reactive settling cycles after X triggers"
+
+**Wall-clock mode still available** for runtime monitoring in dev (e.g., "warn me if this loading spinner has been up for 10 real seconds"). But the test/exploration mode should be purely tick-based.
+
+**What to extract from Comb:** `createTemporalAssert` in `signals.ts` already supports a tick-based `duration` mode (added in commit 1a776cd). The extracted version needs both modes explicitly named (`{ withinTicks: N }` vs `{ withinMs: N }`), with tick-based as the default for testing.
+
+---
+
+## How This Actually Gets Published
+
+### npm package structure
+
+```
+@comb/graph          # core: CircuitGraph, waveform recording, diffing, assertions
+@comb/react          # adapter: useTrackedState, useTrackedMemo, useTrackedEffect  
+@comb/solid          # adapter: createTrackedSignal, createTrackedMemo
+@comb/devtools       # browser panel: waveform viewer, graph visualizer, coverage display
+@comb/coverage       # toggle/FSM/cross coverage collector + reporters
+@comb/test           # graph-directed exploration, assertion-based verification
+```
+
+### How to publish
+
+```bash
+# Each package is a directory with its own package.json
+# Use tsup (simplest TS→JS bundler) for compilation
+# npm workspaces for monorepo management
+
+comb-tools/
+├── packages/
+│   ├── graph/          # @comb/graph
+│   │   ├── src/
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   ├── react/          # @comb/react
+│   ├── solid/          # @comb/solid
+│   ├── devtools/       # @comb/devtools
+│   ├── coverage/       # @comb/coverage
+│   └── test/           # @comb/test
+├── package.json        # workspace root
+└── tsconfig.base.json
+
+# Build all packages:  npm run build (calls tsup in each)
+# Publish all:          npm publish --workspaces
+# Users install:        npm install @comb/graph @comb/react
+```
+
+Each package compiles TS → JS + `.d.ts` type declarations. Zero runtime dependencies in core. Framework adapters peer-depend on the target framework.
+
+### Framework compatibility
+
+| Framework | Adapter difficulty | How it hooks in |
+|---|---|---|
+| **React** | Easy | Custom hooks wrapping `useState`/`useMemo`/`useEffect` |
+| **Solid** | Easy | Functions wrapping `createSignal`/`createMemo`/`createEffect` |
+| **Vue 3** | Medium | Functions wrapping `ref()`/`computed()`/`watch()` |
+| **Svelte 5** | Hard | Runes (`$state`) are compiler directives — need preprocessor or use `writable()` stores |
+| **Vanilla JS** | None needed | Use `@comb/graph` directly |
+| **TC39 Signals** | Easy (future) | Wrap `Signal.State`/`Signal.Computed` when standard lands |
+
+Start with React + vanilla. Add Solid and Vue once core is stable. Svelte last (requires compiler integration work).
+
+---
+
+## What the User Actually Experiences
+
+### Step 1: Install (30 seconds)
+
+```bash
+npm install @comb/graph @comb/react @comb/devtools
+```
+
+### Step 2: Wrap signals you care about (5 minutes)
+
+```tsx
+// Before (normal React):
+const [loading, setLoading] = useState(false)
+const [error, setError] = useState(null)
+const [data, setData] = useState(null)
+
+// After (tracked):
+import { useTrackedState, useTrackedMemo } from '@comb/react'
+
+const [loading, setLoading] = useTrackedState(false, 'loading')
+const [error, setError] = useTrackedState<string | null>(null, 'error')
+const [data, setData] = useTrackedState(null, 'data')
+const display = useTrackedMemo(() => loading ? 'Loading...' : data, [loading, data], 'display')
+```
+
+Everything else — JSX, event handlers, effects — stays exactly the same. The tracked hooks are drop-in replacements.
+
+### Step 3: Add dev panel (2 minutes)
+
+```tsx
+import { CombPanel } from '@comb/devtools'
+
+function App() {
+  return (
+    <>
+      <MyActualApp />
+      {import.meta.env.DEV && <CombPanel position="bottom" />}
+    </>
+  )
+}
+```
+
+Now in dev mode you see a panel at the bottom with:
+- **Graph tab:** dependency graph of all tracked signals, visualized as a circuit diagram
+- **Waveform tab:** signal values over time — click around your app and watch signals change
+- **Assertions tab:** any temporal assertions and their status
+
+### Step 4: Add assertions instead of test cases (10 minutes)
+
+```tsx
+import { assertAlways, assertTemporal, assertNever } from '@comb/graph'
+
+// Invariants — checked on every signal change, zero flakiness
+assertAlways(() => !(loading && error), 'loading-error-mutex')
+assertAlways(() => score >= 0, 'score-non-negative')
+assertNever(() => phase === 'submitted' && !validated, 'no-unvalidated-submit')
+
+// Temporal — tick-based, deterministic
+assertTemporal(
+  () => submitted,           // when this becomes true...
+  'eventually',
+  () => !loading,            // ...this must eventually become true
+  { withinTicks: 5, name: 'submit-completes' }
+)
+```
+
+These run in dev mode as live monitors (assertion panel shows pass/fail). In test mode, the explorer uses them as the spec.
+
+### Step 5: Auto-test with zero test cases (the dream)
+
+```ts
+// checkout.test.ts
+import { explore } from '@comb/test'
+import { graph } from '@comb/graph'
+
+test('checkout flow is correct', async () => {
+  render(<CheckoutForm />)
+
+  const result = explore(graph, {
+    budget: 500,
+    // No test cases. Assertions declared in the component ARE the spec.
+  })
+
+  // Did any assertion get violated?
+  expect(result.violations).toHaveLength(0)
+  
+  // Did we exercise enough of the state space?
+  expect(result.coverage.toggle).toBeGreaterThan(0.9)     // 90% toggle
+  expect(result.coverage.transitions).toBeGreaterThan(0.8) // 80% FSM transitions
+  
+  // If a violation was found, result.violations[0] contains:
+  // - which assertion failed
+  // - the exact sequence of signal changes that triggered it
+  // - minimal reproducing sequence (shrunk by fast-check)
+})
+```
+
+### Production: zero overhead
+
+```ts
+// vite.config.ts — standard production build
+export default defineConfig({
+  define: { 'import.meta.env.DEV': 'false' }
+})
+// All @comb/* code is gated behind import.meta.env.DEV
+// Tree-shaking removes it entirely from production bundle
+```
+
+---
 
 ## What NOT to Extract
 
