@@ -10,51 +10,132 @@ The core motivation: LLMs produce broken reactive code. Comb's language
 constraints make incorrect reactivity unrepresentable. The compiler enforces what
 no amount of React lint rules can.
 
-## Current State (What Actually Works)
+## Current State: Verified Working
 
-- Full compiler pipeline: lexer → parser → verify → codegen → JS output
-- DES runtime with real delta cycles, oscillation detection, convergence
-- Edge-triggered effects (posedge/negedge)
-- Temporal assertions (eventually, always, next) — tick-based
-- Bidirectional propagators (cells + constraints)
-- Static `__graph` artifact (compile-time dependency topology)
-- Auto-test harness (state-space enumeration from graph)
-- SSR (renderToString)
-- Router (hash-based)
-- 24+ example .comb files
+These features have been tested beyond "tests pass" — actually executed
+headlessly, outputs inspected, edge cases driven:
 
-## Current State (What Doesn't Work or Is Missing)
+- **Compiler pipeline** — 18/22 .comb examples compile clean. Real
+  lexer → parser → verify → codegen chain. Produces readable JS + static
+  `__graph` topology artifact.
 
-- **No async/data fetching story.** No equivalent to TanStack Query (caching,
-  refetch, stale-while-revalidate, optimistic updates). You can write
-  `always @(fetchTrigger) { ... }` with raw fetch but get no caching layer.
+- **Runtime signal propagation** — `createSignal` + `createComb` work.
+  Driving a signal through `batch(() => setPhase('green'))` propagates to
+  all downstream combs immediately. Verified headlessly.
 
-- **No component library ecosystem.** No equivalent to shadcn/ui, TanStack Table,
-  react-leaflet, Recharts. Every UI widget must be hand-built in .comb.
+- **Delta cycles** — `deferredBatch` genuinely reads pre-update values.
+  A 4-stage pipeline (A→B→C→D) on posedge clock shifts data one stage per
+  tick, not all at once. This is the core DES claim and it passes.
 
-- **No build integration with npm packages.** Can't `import { DataTable } from
-  'some-npm-package'` — the codegen emits standalone JS that uses the Comb runtime,
-  not React components.
+- **Edge effects** (posedge/negedge) — fire correctly on transitions.
+  `createEdgeEffect(() => tick(), 'posedge', handler)` fires once on
+  false→true, not on every evaluation.
 
-- **One failing test** (posedge always block batch wrapping in codegen).
+- **Circuit graph setValue propagation** — `circuit.getNode(id).setValue(val)`
+  calls the signal setter, which triggers reactive propagation through combs.
+  The runtime IS the propagation engine — no separate execution step needed.
 
-- **kiwi.js integration is manual** — constraints compile to propagator functions,
-  not to automatic constraint-solver invocations.
+- **Scoped CSS** — hash-based class name scoping in compiled output.
 
-- **No HMR/dev server story** for .comb files (Vite plugin, file watcher, etc.)
+- **SSR** — `renderToString()` with DOM shim. 12/12 tests pass.
 
-- **No TypeScript interop** — generated JS has no .d.ts, can't be consumed
-  type-safely from TS.
+- **Static `__graph`** — emitted with every compilation, correct topology
+  with node types, edge types, and expression metadata.
 
-- **View system is vanilla DOM** — no virtual DOM, no keyed list reconciliation,
-  no portal/suspense patterns.
+## Current State: Broken or Disconnected
+
+- **Auto-test returns 0% coverage on every real module.** Two bugs:
+  1. The root signal filter (`autotest.ts:57`) excludes any signal with
+     incoming edges. But every interesting signal has incoming `write` edges
+     from event nodes (`event:increment -> count`). Fix: treat signals whose
+     only incoming edges are `write` from `event` nodes as drivable inputs.
+  2. The driver does single-variable sweeps, not combinations. It tries
+     `phase=red`, then `phase=green`, then `walk_requested=true` — never
+     `phase=red AND walk_requested=true AND emergency=false` together.
+     Combinatorial enumeration is needed for bounded signals.
+
+  The underlying capability works: `circuit.getNode(id).setValue(val)`
+  propagates through combs correctly. The autotest just never calls it
+  because it can't identify drivable signals. The fix is ~20 lines of
+  filter logic + combination enumeration.
+
+- **4/22 examples don't compile.** `chat.comb` (undefined reference
+  `format_time`), `minesweeper.comb` (undefined reference `revealed`),
+  `todo-v1.comb` and `todo-v2.comb` (parse errors — `input` is a reserved
+  word in the parser).
+
+- **Temporal assertions have no end-to-end test.** `createTemporalAssert`
+  exists, has correct arm/tick/fire state machine logic (~100 lines), and
+  generates real code from `assert temporal` syntax. But no test exercises
+  the full cycle: arm on posedge → count ticks → succeed or fail. The
+  compiler tests only verify codegen output shape. The runtime tests don't
+  cover temporal assertions at all.
+
+- **Coverage collector works but has no callers.** Toggle, FSM transition,
+  and cross coverage all work in isolation (unit tests pass). But autotest
+  never drives signals, so coverage is never recorded during exploration.
+  Once autotest works, coverage follows — the runtime already calls
+  `coverage.recordToggle()` on every signal change when enabled.
+
+- **VS Tetris game logic is 625 lines of JS, not .comb.** The .comb file
+  declares signals and one `always @(posedge tick)` block for garbage
+  exchange. All actual game mechanics (piece rotation, collision detection,
+  line clearing, AI) are hand-written JS in the mount file that calls
+  `setSignal()` directly.
+
+- **Type checking is warnings-only.** The verifier catches undefined
+  references (real errors) but type mismatches are non-blocking warnings.
+  You can assign a string to an int signal and the compiler shrugs.
+
+- **No assertion has ever halted execution.** `circuit.assertionFailed`
+  logs to console — there's no mechanism to fail a test, throw, or surface
+  violations outside the waveform UI.
+
+## Current State: Missing Entirely
+
+- **No async/data fetching story.** No caching, refetch, stale-while-
+  revalidate. Raw fetch in `always @(trigger)` blocks only.
+
+- **No component library ecosystem.** No third-party UI widgets.
+
+- **No npm package interop.** Generated JS uses the Comb runtime — can't
+  import React components or npm packages into views.
+
+- **No HMR/dev server** for .comb files.
+
+- **No TypeScript interop** — generated JS has no .d.ts.
+
+- **View system is vanilla DOM** — no keyed list reconciliation, no virtual
+  scroll, no portals.
+
+## Why the Auto-Test Architecture Is Sound
+
+The previous concern about "JS closure opacity" applies to Veriscope (where
+the graph is a passive data structure with no execution engine), not to Comb.
+
+In Comb, the runtime IS the propagation engine. When autotest calls
+`circuit.getNode('TL.phase').setValue('green')`, the signal setter fires,
+all downstream combs recompute via the reactive tracking system, and
+assertions evaluate against the new state. The autotest doesn't need to
+predict what combs compute — it drives inputs, lets the runtime propagate,
+and checks outputs. Same as a hardware test bench.
+
+For bounded signals (booleans, enums with declared states), exhaustive
+combinatorial enumeration is tractable. For N boolean signals, 2^N
+combinations. For small state spaces (< ~15 bounded signals), this
+completes in milliseconds.
+
+For unbounded signals (int counters, strings), the autotest needs
+heuristics: boundary values (0, 1, -1), values extracted from assertion
+comparisons (`count >= 0` → try -1), and coverage-steered random. The
+compiler's `verify.ts` already extracts comparison expressions from
+assertions — this data just needs to flow to the autotest.
 
 ## The Decision: Comb vs Veriscope
 
 ### Use Comb directly when:
 - You control the entire frontend (no third-party React components needed)
-- The UI is data-display heavy (tables, maps, dashboards) where you'd build
-  custom renderers anyway
+- The UI is data-display heavy where you'd build custom renderers anyway
 - LLM generation quality matters more than ecosystem access
 - The app is greenfield or you're willing to rewrite
 
@@ -62,7 +143,6 @@ no amount of React lint rules can.
 - You need TanStack Table, Leaflet, Recharts, shadcn/ui, etc.
 - The app already exists in React
 - You only want observability, not a new language
-- Team members need to ramp without learning Comb syntax
 
 ### Hybrid: Comb compiling to React
 - Write .comb for state logic and assertions
@@ -73,20 +153,43 @@ no amount of React lint rules can.
 
 ## Expansion Plan (If We Go With Comb Directly)
 
+### Phase 0: Fix What's Broken
+
+Before expanding, the existing features need to actually work:
+
+1. **Fix autotest root signal filter.** Signals whose only incoming edges
+   are `write` from `event` nodes are user-drivable inputs. Change the
+   filter in `autotest.ts:57` to allow these.
+
+2. **Add combinatorial enumeration to autotest.** For N bounded signals,
+   drive all combinations (or coverage-steered sampling for large N).
+   Currently does single-variable sweeps which miss all multi-signal bugs.
+
+3. **Wire coverage into autotest.** Call `coverage.enable()` before
+   driving, read `coverage.getReport()` after. The runtime already records
+   toggle/transition data on signal changes when enabled.
+
+4. **Make assertion failures observable.** `circuit.assertionFailed` should
+   collect violations into a result object, not just console.log. The
+   autotest should return violations alongside coverage.
+
+5. **Add temporal assertion end-to-end test.** Drive a trigger signal,
+   tick N times, verify the assertion passes or fails as expected. The
+   code is there — it just needs a test proving it works.
+
+6. **Fix the 4 broken examples.** `chat.comb`, `minesweeper.comb`,
+   `todo-v1.comb`, `todo-v2.comb`.
+
 ### Phase 1: Data Fetching Primitive
 
-The biggest need for data-heavy apps: paginated, filtered, cached server queries.
-
-Add a `query` primitive:
+Add a `query` primitive for reactive cached server requests:
 
 ```sv
 module DataPage {
   signal search: string = '';
-  signal branch: string = '';
   signal page: int = 1;
 
-  comb filterParams = { q: search, branch: branch };
-  comb queryParams = { ...filterParams, page: page };
+  comb queryParams = { q: search, page: page };
 
   query items = fetch('/api/items', queryParams) {
     cache: 30s;
@@ -94,7 +197,7 @@ module DataPage {
     on_error: { phase <= 'error'; }
   }
 
-  always @(search, branch) { page <= 1; }
+  always @(search) { page <= 1; }
 }
 ```
 
@@ -102,73 +205,46 @@ Required behavior:
 - Reactive: re-fetches when dep signals change
 - Caching: deduplicates identical requests within TTL
 - Loading state: exposes `items.loading`, `items.error`, `items.data`
-  as signals (or equivalent)
-- Cancellation: aborts in-flight requests on new dep change
-- Not a full TanStack Query clone — just the 80% case for CRUD dashboards
+- Cancellation: aborts in-flight requests on dep change
 
 ### Phase 2: Foreign Component Interop
 
-The ecosystem problem. Two options:
+**Option A: Web Component bridge.** Mount web components from .comb views.
+Limited by what's available as web components.
 
-**Option A: Web Component bridge.** Comb emits DOM. Web Components are DOM.
-Allow mounting any web component from within a .comb view:
-
-```sv
-view {
-  <leaflet-map markers={mapMarkers} on:click={handleClick} />
-  <data-table data={items} columns={columns} />
-}
-```
-
-This requires the third-party component to be available as a web component
-(or wrapped in one). Many React component libraries don't have WC wrappers.
-
-**Option B: React codegen backend.** Compiler emits React instead of vanilla DOM.
-Comb's reactive semantics map onto React hooks:
+**Option B: React codegen backend (recommended).** Compiler emits React
+hooks instead of vanilla DOM:
 - `signal` → `useState` (with graph registration)
 - `comb` → `useMemo` (with graph registration)
 - `always @(event)` → event handler
 - `always @(posedge x)` → `useEffect` with edge detection
 - `view` → JSX return
 
-This is more work but gives full React ecosystem access. The generated code
-would look like the Veriscope checkout example — but generated from .comb source,
-so the graph is guaranteed complete and deps are compiler-verified.
-
-**Recommendation:** Option B. The point of Comb is compiler-verified reactivity.
-The output format (vanilla DOM vs React hooks) is an implementation detail.
-React output gives you the ecosystem without giving up the guarantees.
+This preserves compiler-verified deps while giving full React ecosystem
+access. The generated code is a normal React component that happens to
+have a guaranteed-complete graph.
 
 ### Phase 3: List Reconciliation
 
-Comb's view system currently uses raw DOM manipulation. For data-heavy apps
-(tables with 1000+ rows), this needs:
+For vanilla DOM output path:
+- Keyed list diffing (add/remove/reorder)
+- Virtual scrolling for large lists
 
-- Keyed list diffing (add/remove/reorder without full re-render)
-- Virtual scrolling (only render visible rows)
-- Or: if using React codegen backend (Phase 2B), inherit React's reconciler
-
-If staying with vanilla DOM output, implement a minimal keyed-children algorithm
-(similar to Svelte's keyed each block or lit-html's repeat directive).
+If using React codegen backend (Phase 2B), inherit React's reconciler.
 
 ### Phase 4: Dev Tooling
 
-- **Vite plugin:** File watcher for .comb → recompile on save, HMR via
-  module replacement
-- **VS Code extension:** Syntax highlighting, error diagnostics from verify pass,
-  go-to-definition for signals/combs
-- **Source maps:** Already partially implemented — ensure they work with browser
-  DevTools breakpoints in .comb source
+- **Vite plugin:** .comb file watcher, recompile on save, HMR
+- **VS Code extension:** Syntax highlighting, error diagnostics from
+  verify pass, go-to-definition
+- **Source maps:** Ensure browser DevTools breakpoints work in .comb source
 
 ### Phase 5: Production Hardening
 
-- **Error boundaries:** What happens when a comb throws? Currently unhandled.
-- **Memory management:** Scope disposal for unmounted modules (partially working
-  via `createScope`/`dispose`)
-- **Bundle size:** Tree-shake unused runtime features (router, SSR, coverage)
-  from production builds
-- **TypeScript declarations:** Generate .d.ts for compiled modules so consuming
-  TS code gets type safety
+- Error boundaries for comb evaluation failures
+- Scope disposal for unmounted modules
+- Tree-shaking unused runtime features
+- .d.ts generation for consuming TS code
 
 ## Expansion Plan (If We Land Veriscope Instead)
 
@@ -178,11 +254,11 @@ Key gaps:
 1. CircuitGraph needs `propagate()` — topo-sort recompute of derived nodes
 2. `explore()` must return real coverage (currently hardcoded zeros)
 3. Headless test builders need compute functions on derived nodes
-4. Mutation runner needs scenario replay, not just single-state assertion checks
+4. Mutation runner needs scenario replay, not just single-state checks
 
-Veriscope's fundamental limitation remains: it asks LLMs to use `useSignal`
-instead of `useState` — same failure mode, different API. The graph is only
-complete if every signal is registered. No enforcement mechanism exists.
+Veriscope's fundamental limitation: it asks LLMs to use `useSignal` instead
+of `useState` — same failure mode, different API. The graph is only complete
+if every signal is registered. No enforcement mechanism exists.
 
 ## The Hybrid Path (Recommended)
 
@@ -204,24 +280,19 @@ This gives you:
 - explore() + mutation testing are meaningful because the graph is real
 
 What it requires:
-- New codegen backend in `src/core/codegen.ts` (or a parallel `codegen-react.ts`)
+- New codegen backend (`codegen-react.ts`)
 - View blocks compile to JSX instead of createElement calls
 - Runtime imports change from `../runtime/signals.js` to `@veriscope/react`
 - The compiler's `verify.ts` dep extraction still works (it's AST-level)
 
-Estimated effort: medium. The compiler already extracts deps and emits JS.
-Changing the *shape* of emitted JS (hooks instead of createSignal) is codegen
-work, not fundamental architecture.
-
 ## Example: Complex Page in Comb
 
 A typical data-heavy page with 14 state variables, multiple queries, and
-filter/pagination logic. In React this becomes useState spaghetti with manual
-dep arrays. In Comb:
+filter/pagination logic. In React this becomes useState spaghetti with
+manual dep arrays. In Comb:
 
 ```sv
 module DataExplorer {
-  // State (explicit and bounded)
   signal viewMode: ViewMode = 'table';
   signal search: string = '';
   signal sourceType: string = '';
@@ -231,20 +302,16 @@ module DataExplorer {
   signal selectedId: string | null = null;
   signal hoveredId: string | null = null;
 
-  // Derived (compiler extracts deps, no manual dep arrays)
   comb filterParams = { q: search, branch, source_type: sourceType };
   comb queryParams = { ...filterParams, page, sort, order };
 
-  // Data fetching (reactive, cached)
   query items = fetch('/api/items', queryParams);
   query stats = fetch('/api/stats', filterParams);
 
-  // Auto-reset page on filter change (compiler-verified sensitivity)
   always @(search, sourceType, branch) {
     page <= 1;
   }
 
-  // Assertions
   assert always (bulkMode || selectedItems.length == 0);
   assert never (selectedId != null && filtersOpen);
 
@@ -256,9 +323,6 @@ The compiler rejects:
 - Reading `search` inside an `always @(branch)` block (undeclared sensitivity)
 - Writing `page` outside an `always` block (no stale closure possible)
 - Circular dependencies between combs
-
-An LLM generating .comb can't produce the reactive bugs that plague typical
-React pages because the grammar doesn't allow them.
 
 ## Decision Required
 
