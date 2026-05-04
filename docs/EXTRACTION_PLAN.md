@@ -27,23 +27,23 @@ Three things converging:
 | Waveform viewer | Working (basic) | Zoom/pan/markers/compound search. `src/waveform/` |
 | Graph diffing | Working | `CircuitGraph.diffGraphs(a, b)` detects added/removed/changed nodes and edges |
 | Edge-triggered effects | Working | `createEdgeEffect(valueFn, 'posedge'/'negedge', action)` |
-| Temporal assertions | Working | `createTemporalAssert(trigger, operator, property, {duration})` — duration is wall-clock ms |
+| Temporal assertions | Working | `createTemporalAssert(trigger, operator, property, {duration})` — duration is tick-based (simulation ticks, not wall-clock) |
 | Auto-test (graph-directed) | Working (shallow) | Reads `__graph`, finds bounded signals, drives through state space |
 | CDC async boundary analysis | Working (pattern-level) | Transitive taint through comb chains. `src/core/verify.ts` |
 | SSR | Working | `renderToString()` with DOM shim. 12/12 tests pass |
 
-## What Comb Claims But Doesn't Deliver
+## What Comb Claims But Doesn't Deliver (as of initial review — some fixed since)
 
-| Claim | Reality |
-|---|---|
-| "3 coverage types" | Toggle works. FSM transition + cross coverage are dead APIs with zero automated callers |
-| "CDC-style analysis" | Pattern matching with transitive taint. No CFG, misses nested async, no data-dependent narrowing |
-| "GTKWave-grade waveform" | No cross-signal correlation, no persistence, no keyboard shortcuts, no time-range selection |
-| "Graph-directed auto-testing" | Single-variable enumeration, not combinatorial state space exploration |
-| "Fair benchmarks" | Batched-topo baseline is a 50-line minimal recreation, not actual SolidJS/Preact code |
-| "VS Tetris proves DES" | Game logic is in JS mount file. Comb runtime provides observability, not the game semantics |
+| Claim | Reality (initial) | Current status |
+|---|---|---|
+| "3 coverage types" | Toggle works. FSM transition + cross coverage were dead APIs | **Fixed:** runtime hooks for enum transitions wired; generic `runAutoTest()` drives coverage from graph |
+| "CDC-style analysis" | Pattern matching only, no transitive taint | **Fixed:** transitive taint propagation through comb chains (fixed-point iteration), nested async handled |
+| "GTKWave-grade waveform" | No cross-signal correlation, no keyboard shortcuts | **Partially fixed:** keyboard shortcuts (+/-/arrows/Home/Escape), compound search (AND/OR/WITHIN), memory leak fixed. Still missing: persistence, export, snap-to-edge |
+| "Graph-directed auto-testing" | Single-variable enumeration | **Fixed:** `runAutoTest()` reads graph state spaces, drives root signals, ticks clocks. But still forward-only — not backward solving |
+| "Fair benchmarks" | Naive topo baseline | **Fixed:** batched-topo baseline mimicking Solid's batch(), three-column results |
+| "VS Tetris proves DES" | Game logic in JS mount file | Partially true — Comb provides the clock/signal/assertion infrastructure, game logic is in JS. The garbage mechanic cross-dependency IS a real DES proof point |
 
-## The Product: Five Packages
+## The Product: Six Packages
 
 ### Package 1: `@dut/graph` — Reactive Dependency Graph
 
@@ -965,23 +965,6 @@ Reactive state coverage metrics — the thing no other tool provides.
 - Coverage overlay in devtools (waveform heatmap, graph node dimming)
 
 **Ship gate:** Run a Vitest suite against a component with 8 tracked signals. Get a reactive coverage report: "toggle: 87% (isError was never true), transitions: 60% (4 of 10 phase transitions never fired), cross: 45% (loading=true + error=truthy never observed)". CI fails if coverage drops below configured threshold.
-
-### Phase 4: `@dut/test`
-
-The zero-test-case verification engine. Backward graph solving + exploration + assertion checking.
-
-**What ships:**
-- Backward cone-of-influence analysis (trace from outputs/assertions to inputs)
-- Topology-based input generation (graph edges, not expression analysis — JS closures are opaque)
-- Combinatorial input driver with coverage-steered sampling
-- Adversarial assertion testing (specifically try to break each assertion)
-- Eventually-resolution driver (drive async boundaries when `eventually` assertions are pending)
-- Violation shrinking (minimal reproducing input sequence)
-- Vitest integration: `explore()` function
-- Optional interaction-level exploration (annotated triggers or random DOM interaction via Playwright)
-- Full waveform trace attached to each violation report
-
-**Ship gate:** `explore(graph, { budget: 1000 })` against a checkout form component with 8 tracked signals and 5 assertions. Zero hand-written test cases. The explorer finds a real bug (e.g., double-submit race condition), produces a minimal reproducing sequence, reports 85%+ reactive coverage, and the full exploration completes in under 10 seconds.
 
 ### Phase 4: `@dut/test` (highest leverage — zero-test-case UI verification)
 
