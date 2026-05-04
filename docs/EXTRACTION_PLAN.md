@@ -1,8 +1,8 @@
-# DUT Extraction Plan
+# Veriscope Extraction Plan
 
-**DUT: Device Under Test.** The name hardware engineers give to the thing they're verifying.
+**Veriscope** — HDL-grade observability for reactive UI. Named from *verification* + *oscilloscope*. The concept: your UI is the **device under test (DUT)**, and Veriscope is the tooling that probes, visualizes, and verifies it.
 
-How to slice Comb's working pieces into `@dut/*` — a framework-agnostic TypeScript library that provides HDL-grade observability, testing, and debugging for reactive UI code. Your UI is the device under test.
+How to slice Comb's working pieces into `@veriscope/*` — a framework-agnostic TypeScript library that provides HDL-grade observability, testing, and debugging for reactive UI code.
 
 ## Why Now
 
@@ -32,11 +32,11 @@ Three things converging:
 | CDC async boundary analysis | Working (pattern-level) | Transitive taint through comb chains. `src/core/verify.ts` |
 | SSR | Working | `renderToString()` with DOM shim. 12/12 tests pass |
 
-## What DUT Builds Beyond Comb
+## What Veriscope Builds Beyond Comb
 
-Comb proved the concepts. DUT productizes them for the broader ecosystem:
+Comb proved the concepts. Veriscope productizes them for the broader ecosystem:
 
-| Comb | DUT |
+| Comb | Veriscope |
 |---|---|
 | `.comb` DSL required | Works with React/Solid/Vue/vanilla JS via Signal<T> wrappers |
 | Forward-only auto-test (drive and observe) | Backward graph solving (trace from assertions to inputs) + observational truth tables + fn.toString() parsing |
@@ -47,7 +47,7 @@ Comb proved the concepts. DUT productizes them for the broader ecosystem:
 
 ## The Product: Six Packages
 
-### Package 1: `@dut/graph` — Reactive Dependency Graph
+### Package 1: `@veriscope/graph` — Reactive Dependency Graph
 
 **What it is:** The foundation layer. Builds an introspectable dependency graph from any reactive framework's primitives — signals become nodes, dep arrays become edges, effects become leaf nodes. The graph records all state changes over time (waveform data), supports diffing between snapshots, and emits a typed event stream.
 
@@ -68,9 +68,9 @@ Comb proved the concepts. DUT productizes them for the broader ecosystem:
 
 **The discipline model: explicit declaration, no magic.**
 
-DUT rewards writing disciplined code. You use tracked hooks instead of bare hooks. You declare your signals, your derived values, your assertions. The tooling works because you gave it structure — same as hardware engineers writing proper signal declarations with proper sensitivity lists. There is no auto-instrumentation, no Babel plugin, no magic inference. The discipline IS the product.
+Veriscope rewards writing disciplined code. You use tracked hooks instead of bare hooks. You declare your signals, your derived values, your assertions. The tooling works because you gave it structure — same as hardware engineers writing proper signal declarations with proper sensitivity lists. There is no auto-instrumentation, no Babel plugin, no magic inference. The discipline IS the product.
 
-This means DUT is for new code (or intentional rewrites), not for sprinkling onto existing messy codebases. That's fine — the value proposition is "write your next component with DUT hooks, and never write a test case for it."
+This means Veriscope is for new code (or intentional rewrites), not for sprinkling onto existing messy codebases. That's fine — the value proposition is "write your next component with Veriscope hooks, and never write a test case for it."
 
 **The Signal object API:**
 
@@ -78,7 +78,7 @@ All framework adapters return `Signal<T>` objects — `.val` to read, `.set()` t
 
 ```ts
 // React adapter
-import { useSignal, useDerived, useTrackedEffect, useEdgeEffect } from '@dut/react'
+import { useSignal, useDerived, useTrackedEffect, useEdgeEffect } from '@veriscope/react'
 
 // Signals: .val to read, .set() to write
 const loading = useSignal(false, 'loading')
@@ -88,7 +88,7 @@ const phase = useSignal('idle', 'phase', { states: ['idle', 'loading', 'error', 
 // Derived values: signal objects in dep array → edges traced automatically
 const canSubmit = useDerived(
   () => !loading.val && phase.val === 'idle',
-  [loading, phase],   // Signal objects, not values — DUT reads .nodeId for graph edges
+  [loading, phase],   // Signal objects, not values — Veriscope reads .nodeId for graph edges
   'canSubmit'
 )
 
@@ -112,7 +112,7 @@ return (
 
 ```ts
 // Solid adapter — same Signal<T> object, wired to Solid's reactivity
-import { useSignal, useDerived } from '@dut/solid'
+import { useSignal, useDerived } from '@veriscope/solid'
 
 const count = useSignal(0, 'count')
 const doubled = useDerived(() => count.val * 2, [count], 'doubled')
@@ -120,7 +120,7 @@ const doubled = useDerived(() => count.val * 2, [count], 'doubled')
 
 ```ts
 // Vanilla JS — same Signal<T>, standalone reactivity
-import { createSignal, createDerived } from '@dut/graph'
+import { createSignal, createDerived } from '@veriscope/graph'
 
 const count = createSignal(0, 'count')
 const doubled = createDerived(() => count.val * 2, [count], 'doubled')
@@ -129,7 +129,7 @@ count.set(5)  // doubled.val is now 10
 
 ```ts
 // TC39 Signals (future) — same Signal<T> wrapping the standard primitive
-import { trackSignal } from '@dut/tc39'
+import { trackSignal } from '@veriscope/tc39'
 
 const count = trackSignal(new Signal.State(0), 'count')
 ```
@@ -227,7 +227,7 @@ The dep array serves both purposes: Signal objects for graph edges, `.val` extra
 | **Solid** | Same API names, wired to `createSignal`/`createMemo` | Same — Solid also auto-tracks reads, so edges are doubly confirmed |
 | **Vue 3** | `useSignal` wraps `ref()`, `useDerived` wraps `computed()` | Signal objects in dep array |
 | **Svelte 5** | `useSignal` wraps `$state` runes (requires preprocessor) or `writable()` stores (Svelte 4 compat) | Signal objects in dep array |
-| **Vanilla JS** | `createSignal`, `createDerived` from core `@dut/graph` | Signal objects in dep array |
+| **Vanilla JS** | `createSignal`, `createDerived` from core `@veriscope/graph` | Signal objects in dep array |
 | **TC39 Signals** | `trackSignal` wraps `Signal.State`/`Signal.Computed` | Signal objects in dep array |
 
 **Component lifecycle and cleanup:**
@@ -322,13 +322,13 @@ Every tick gets an incrementing sequence number. Assertions and coverage referen
 
 ```ts
 // Export graph snapshot to JSON (in a test or build script):
-import { graph } from '@dut/graph'
+import { graph } from '@veriscope/graph'
 fs.writeFileSync('graph.json', JSON.stringify(graph.snapshot()))
 ```
 
 ```bash
 # Diff two snapshots in CI:
-npx dut diff graph-main.json graph-pr.json
+npx veriscope diff graph-main.json graph-pr.json
 # Output:
 #   Removed edge: userProfile → dashboardTitle
 #   Added node: newFeatureFlag (signal, boolean)
@@ -342,7 +342,7 @@ This is the `__graph` CI diffing concept. A GitHub Action could comment on PRs w
 Extracted from Comb's `createEdgeEffect`. Fires a callback on signal transitions, not on every change. Eliminates the 5-line `useRef` + `useEffect` + previous-value-tracking boilerplate:
 
 ```ts
-import { useEdgeEffect } from '@dut/react'
+import { useEdgeEffect } from '@veriscope/react'
 
 // Fire when loading transitions from true → false (negedge)
 useEdgeEffect(loading, 'negedge', () => {
@@ -379,9 +379,9 @@ Less precise than Comb's static analysis but catches the common case and require
 
 **Size estimate:** ~500 lines core graph + ~100 lines per adapter + ~50 lines edge effects + ~100 lines CDC warnings + ~150 lines CLI.
 
-### Package 2: `@dut/coverage` — Reactive State Coverage
+### Package 2: `@veriscope/coverage` — Reactive State Coverage
 
-**What it is:** Coverage metrics that no existing tool provides. Plugs into `@dut/graph`.
+**What it is:** Coverage metrics that no existing tool provides. Plugs into `@veriscope/graph`.
 
 **Coverage types:**
 
@@ -407,11 +407,11 @@ Less precise than Comb's static analysis but catches the common case and require
 
 **Size estimate:** ~200 lines core (Comb's coverage.ts is 181 lines). ~100 lines for reporter. ~50 lines for test framework integration.
 
-### Package 3: `@dut/devtools` — HDL-Grade Debugging
+### Package 3: `@veriscope/devtools` — HDL-Grade Debugging
 
 **What it is:** A Chrome DevTools panel (like React DevTools — separate tab, doesn't interfere with the app) that provides waveform viewing, graph visualization, assertion monitoring, and coverage display. Also supports a standalone pop-out window for deep debugging sessions.
 
-**Form factor:** Chrome extension that adds a "DUT" tab to Chrome DevTools. Communicates with the app via the Chrome DevTools protocol (same as React DevTools). The app includes a tiny bridge script (`@dut/devtools/bridge`) that exposes the graph instance to the extension.
+**Form factor:** Chrome extension that adds a "Veriscope" tab to Chrome DevTools. Communicates with the app via the Chrome DevTools protocol (same as React DevTools). The app includes a tiny bridge script (`@veriscope/devtools/bridge`) that exposes the graph instance to the extension.
 
 Pop-out mode: a button in the DevTools panel opens a full browser tab for the waveform viewer (cramped DevTools panels are insufficient for serious multi-signal debugging with 20+ signals).
 
@@ -483,9 +483,9 @@ Required features:
 
 **Size estimate:** ~3000-4000 lines total across all four components. The waveform viewer alone is ~1500 (current 690 + cross-correlation + keyboard + persistence + export). This is a real UI project.
 
-### Package 4: `@dut/test` — Backward Graph Solving for Zero-Test-Case Verification
+### Package 4: `@veriscope/test` — Backward Graph Solving for Zero-Test-Case Verification
 
-**What it is:** Reads the dependency graph from `@dut/graph`, solves it backwards from derived values and assertions to discover which input combinations matter, generates those combinations, drives them, checks assertions, and reports coverage. The user writes assertions, not test cases.
+**What it is:** Reads the dependency graph from `@veriscope/graph`, solves it backwards from derived values and assertions to discover which input combinations matter, generates those combinations, drives them, checks assertions, and reports coverage. The user writes assertions, not test cases.
 
 **The core insight: solve the graph backwards.**
 
@@ -604,8 +604,8 @@ Both modes compose: interaction-level finds the interaction→signal mapping, si
 
 ```ts
 // checkout.test.ts
-import { explore } from '@dut/test'
-import { graph } from '@dut/graph'
+import { explore } from '@veriscope/test'
+import { graph } from '@veriscope/graph'
 
 test('checkout flow is correct', async () => {
   render(<CheckoutForm />)
@@ -728,13 +728,13 @@ assertAfter(loading, 'posedge', 'eventually', () => !loading.val, {
 ### npm package structure
 
 ```
-@dut/graph          # core: CircuitGraph, waveform recording, diffing, assertions
-@dut/react          # adapter: useSignal, useDerived, useTrackedEffect, useEdgeEffect
-@dut/solid          # adapter: same API, wired to Solid's reactivity
-@dut/devtools       # waveform viewer, graph visualizer, coverage display
-@dut/coverage       # toggle/FSM/cross coverage collector + reporters
-@dut/test           # graph-directed exploration, assertion-based verification
-@dut/mutate         # graph-level mutation testing for assertion validation
+@veriscope/graph          # core: CircuitGraph, waveform recording, diffing, assertions
+@veriscope/react          # adapter: useSignal, useDerived, useTrackedEffect, useEdgeEffect
+@veriscope/solid          # adapter: same API, wired to Solid's reactivity
+@veriscope/devtools       # waveform viewer, graph visualizer, coverage display
+@veriscope/coverage       # toggle/FSM/cross coverage collector + reporters
+@veriscope/test           # graph-directed exploration, assertion-based verification
+@veriscope/mutate         # graph-level mutation testing for assertion validation
 ```
 
 ### How to publish
@@ -744,24 +744,24 @@ assertAfter(loading, 'posedge', 'eventually', () => !loading.val, {
 # Use tsup (simplest TS→JS bundler) for compilation
 # npm workspaces for monorepo management
 
-dut/
+veriscope/
 ├── packages/
-│   ├── graph/          # @dut/graph
+│   ├── graph/          # @veriscope/graph
 │   │   ├── src/
 │   │   ├── package.json
 │   │   └── tsconfig.json
-│   ├── react/          # @dut/react
-│   ├── solid/          # @dut/solid
-│   ├── devtools/       # @dut/devtools
-│   ├── coverage/       # @dut/coverage
-│   ├── test/           # @dut/test
-│   └── mutate/         # @dut/mutate
+│   ├── react/          # @veriscope/react
+│   ├── solid/          # @veriscope/solid
+│   ├── devtools/       # @veriscope/devtools
+│   ├── coverage/       # @veriscope/coverage
+│   ├── test/           # @veriscope/test
+│   └── mutate/         # @veriscope/mutate
 ├── package.json        # workspace root
 └── tsconfig.base.json
 
 # Build all packages:  npm run build (calls tsup in each)
 # Publish all:          npm publish --workspaces
-# Users install:        npm install @dut/graph @dut/react
+# Users install:        npm install @veriscope/graph @veriscope/react
 ```
 
 Each package compiles TS → JS + `.d.ts` type declarations. Zero runtime dependencies in core. Framework adapters peer-depend on the target framework.
@@ -774,7 +774,7 @@ Each package compiles TS → JS + `.d.ts` type declarations. Zero runtime depend
 | **Solid** | Easy | Functions wrapping `createSignal`/`createMemo`/`createEffect` |
 | **Vue 3** | Medium | Functions wrapping `ref()`/`computed()`/`watch()` |
 | **Svelte 5** | Hard | Runes (`$state`) are compiler directives — need preprocessor or use `writable()` stores |
-| **Vanilla JS** | None needed | Use `@dut/graph` directly |
+| **Vanilla JS** | None needed | Use `@veriscope/graph` directly |
 | **TC39 Signals** | Easy (future) | Wrap `Signal.State`/`Signal.Computed` when standard lands |
 
 Start with React + vanilla. Add Solid and Vue once core is stable. Svelte last (requires compiler integration work).
@@ -786,10 +786,10 @@ Start with React + vanilla. Add Solid and Vue once core is stable. Svelte last (
 ### Step 1: Install (30 seconds)
 
 ```bash
-npm install @dut/graph @dut/react @dut/devtools
+npm install @veriscope/graph @veriscope/react @veriscope/devtools
 ```
 
-### Step 2: Write new components with DUT signals (5 minutes)
+### Step 2: Write new components with Veriscope signals (5 minutes)
 
 ```tsx
 // Before (normal React):
@@ -798,8 +798,8 @@ const [error, setError] = useState(null)
 const [data, setData] = useState(null)
 const display = useMemo(() => loading ? 'Loading...' : data, [loading, data])
 
-// After (DUT signals):
-import { useSignal, useDerived } from '@dut/react'
+// After (Veriscope signals):
+import { useSignal, useDerived } from '@veriscope/react'
 
 const loading = useSignal(false, 'loading')
 const error = useSignal<string | null>(null, 'error')
@@ -810,17 +810,17 @@ const display = useDerived(() => loading.val ? 'Loading...' : data.val, [loading
 <button onClick={() => loading.set(true)}>{loading.val ? '...' : 'Submit'}</button>
 ```
 
-DUT signals are for new code or intentional rewrites. The discipline of using `.val`/`.set()` is what gives you the graph, the waveform, the coverage, the assertions. No discipline → no tooling. That's the deal.
+Veriscope signals are for new code or intentional rewrites. The discipline of using `.val`/`.set()` is what gives you the graph, the waveform, the coverage, the assertions. No discipline → no tooling. That's the deal.
 
 ### Step 3: Install Chrome extension (30 seconds)
 
-Install `@dut/devtools` Chrome extension from the Chrome Web Store. Add the bridge to your app:
+Install `@veriscope/devtools` Chrome extension from the Chrome Web Store. Add the bridge to your app:
 
 ```tsx
-import '@dut/devtools/bridge'  // exposes graph instance to Chrome DevTools
+import '@veriscope/devtools/bridge'  // exposes graph instance to Chrome DevTools
 ```
 
-Open Chrome DevTools → click "DUT" tab. You see:
+Open Chrome DevTools → click "Veriscope" tab. You see:
 - **Graph tab:** dependency graph of all tracked signals, visualized as a circuit diagram
 - **Waveform tab:** signal values over time — interact with your app and watch signals change in real-time
 - **Assertions tab:** any temporal assertions and their live status
@@ -829,7 +829,7 @@ Open Chrome DevTools → click "DUT" tab. You see:
 ### Step 4: Add assertions instead of test cases (10 minutes)
 
 ```tsx
-import { assertAlways, assertNever, assertAfter } from '@dut/graph'
+import { assertAlways, assertNever, assertAfter } from '@veriscope/graph'
 
 // Invariants — checked on every tick, zero flakiness
 assertAlways(() => !(loading.val && error.val), 'loading-error-mutex')
@@ -859,8 +859,8 @@ These run in dev mode as live monitors (assertion panel shows pass/fail). In tes
 
 ```ts
 // checkout.test.ts
-import { explore } from '@dut/test'
-import { graph } from '@dut/graph'
+import { explore } from '@veriscope/test'
+import { graph } from '@veriscope/graph'
 
 test('checkout flow is correct', async () => {
   render(<CheckoutForm />)
@@ -890,7 +890,7 @@ test('checkout flow is correct', async () => {
   // - which assertion failed
   // - the exact sequence of signal changes that triggered it
   // - minimal reproducing sequence (shrunk)
-  // - full waveform trace viewable in @dut/devtools
+  // - full waveform trace viewable in @veriscope/devtools
 })
 ```
 
@@ -901,7 +901,7 @@ test('checkout flow is correct', async () => {
 export default defineConfig({
   define: { 'import.meta.env.DEV': 'false' }
 })
-// All @dut/* code is gated behind import.meta.env.DEV
+// All @veriscope/* code is gated behind import.meta.env.DEV
 // Tree-shaking removes it entirely from production bundle
 ```
 
@@ -920,7 +920,7 @@ export default defineConfig({
 
 All six packages ship. The ordering is about dependencies, not importance.
 
-### Phase 1: `@dut/graph` + `@dut/react`
+### Phase 1: `@veriscope/graph` + `@veriscope/react`
 
 The graph is the foundation everything else reads from. React adapter is the first framework target.
 
@@ -929,26 +929,26 @@ The graph is the foundation everything else reads from. React adapter is the fir
 - `useSignal`, `useDerived`, `useTrackedEffect`, `useEdgeEffect` hooks for React (Signal object API: `.val` / `.set()`)
 - `assertAlways`, `assertNever`, `assertAfter` assertion API with tick-based semantics
 - Runtime CDC async boundary warnings
-- `dut diff` CLI for graph snapshot comparison
-- `dut snapshot` CLI for capturing graph from a running app
+- `veriscope diff` CLI for graph snapshot comparison
+- `veriscope snapshot` CLI for capturing graph from a running app
 - Vanilla JS adapter (direct `graph.registerNode` API)
 
 **Ship gate:** A real React component (e.g., a checkout form with 5-10 tracked signals, 3 assertions) builds a complete dependency graph, records waveform data, detects an async boundary warning, and the CLI diffs two graph snapshots correctly.
 
-### Phase 2: `@dut/devtools`
+### Phase 2: `@veriscope/devtools`
 
 The debugging UI. Chrome DevTools panel + pop-out window.
 
 **What ships:**
-- Chrome extension with "DUT" tab in DevTools
+- Chrome extension with "Veriscope" tab in DevTools
 - Waveform viewer with zoom/pan/markers/compound search/cross-signal correlation/keyboard shortcuts
 - Circuit graph visualizer with live values and cone-of-influence highlighting
 - Assertion monitor with live status and violation details
 - Bridge script for app ↔ extension communication
 
-**Ship gate:** Open Chrome DevTools on a React app using @dut/react. See the dependency graph. See signals changing in the waveform as you interact with the app. Place markers. Search for "loading rises AND error != null". Click a violated assertion and jump to that point in the waveform.
+**Ship gate:** Open Chrome DevTools on a React app using @veriscope/react. See the dependency graph. See signals changing in the waveform as you interact with the app. Place markers. Search for "loading rises AND error != null". Click a violated assertion and jump to that point in the waveform.
 
-### Phase 3: `@dut/coverage`
+### Phase 3: `@veriscope/coverage`
 
 Reactive state coverage metrics — the thing no other tool provides.
 
@@ -965,7 +965,7 @@ Reactive state coverage metrics — the thing no other tool provides.
 
 **Ship gate:** Run a Vitest suite against a component with 8 tracked signals. Get a reactive coverage report: "toggle: 87% (isError was never true), transitions: 60% (4 of 10 phase transitions never fired), cross: 45% (loading=true + error=truthy never observed)". CI fails if coverage drops below configured threshold.
 
-### Phase 4: `@dut/test`
+### Phase 4: `@veriscope/test`
 
 See Package 4 above for the full backward graph solving design, opacity solutions, and assertion API.
 
@@ -979,9 +979,9 @@ See Package 4 above for the full backward graph solving design, opacity solution
 
 **Ship gate:** `explore()` against a React component with 5 tracked signals and 3 temporal assertions. Zero hand-written test cases. Explorer finds a real bug, produces a minimal reproducing sequence, reports 85%+ reactive coverage, completes in under 10 seconds.
 
-### Phase 5: `@dut/mutate` (validates assertions catch bugs)
+### Phase 5: `@veriscope/mutate` (validates assertions catch bugs)
 
-Ships after `@dut/test`. Uses the explorer as a subroutine.
+Ships after `@veriscope/test`. Uses the explorer as a subroutine.
 
 **What ships:**
 - Graph-level mutation operators (sever edge, negate boolean, constant-fold, swap edge, skip effect, invert comparison, remove assertion, delay effect)
@@ -992,13 +992,13 @@ Ships after `@dut/test`. Uses the explorer as a subroutine.
 
 **Ship gate:** Run `mutate()` against a checkout form with 5 tracked signals, 3 assertions. Generate 50+ mutations. Kill rate >80%. Each survived mutation has an actionable description. Full run completes in under 10 seconds.
 
-### Package 5: `@dut/mutate` — Graph-Level Mutation Testing
+### Package 5: `@veriscope/mutate` — Graph-Level Mutation Testing
 
 **What it is:** Validates that your assertions actually catch bugs. Introduces mutations into the reactive graph at runtime, re-runs the explorer, and reports which mutations survived (no assertion caught them). Survived mutations = blind spots in your assertion coverage.
 
 **Why graph-level mutation is different from Stryker:**
 
-Traditional mutation testing (Stryker) mutates source code AST nodes → recompiles → reruns all tests. Slow (minutes to hours for a real codebase). DUT has the reactive graph at runtime — mutations are **graph modifications**, not source code changes. No recompilation. Each mutation is a signal/compute wrapper applied and removed in milliseconds.
+Traditional mutation testing (Stryker) mutates source code AST nodes → recompiles → reruns all tests. Slow (minutes to hours for a real codebase). Veriscope has the reactive graph at runtime — mutations are **graph modifications**, not source code changes. No recompilation. Each mutation is a signal/compute wrapper applied and removed in milliseconds.
 
 **Mutation operators (graph-level):**
 
@@ -1016,7 +1016,7 @@ Traditional mutation testing (Stryker) mutates source code AST nodes → recompi
 **How it works:**
 
 ```ts
-import { mutate } from '@dut/mutate'
+import { mutate } from '@veriscope/mutate'
 
 const result = mutate(
   () => { render(<MyComponent />); return graph },  // factory: fresh instance per mutation
@@ -1059,20 +1059,20 @@ This is the same pattern Vitest uses for test isolation. The factory re-renders 
 
 **Why this is better than Stryker for reactive code:**
 
-| Dimension | Stryker | @dut/mutate |
+| Dimension | Stryker | @veriscope/mutate |
 |---|---|---|
 | Mutation target | Source code AST | Reactive graph (runtime) |
 | Recompilation | Required per mutation | None — runtime wrappers |
 | Speed | Minutes-hours | Seconds |
 | Mutation relevance | All AST mutations (many irrelevant) | Only graph-structural mutations (every mutation tests a reactive dependency) |
 | Feedback | "Mutation survived" | "Mutation survived — and here's the specific assertion you're missing" |
-| Works with | Any test suite | DUT assertions specifically |
+| Works with | Any test suite | Veriscope assertions specifically |
 
-**Integration with `@dut/test`:**
+**Integration with `@veriscope/test`:**
 
 ```ts
-import { explore } from '@dut/test'
-import { mutate } from '@dut/mutate'
+import { explore } from '@veriscope/test'
+import { mutate } from '@veriscope/mutate'
 
 test('checkout flow is well-asserted', async () => {
   render(<CheckoutForm />)
@@ -1122,7 +1122,7 @@ Each layer validates the one above it:
 - Exploration tells you if assertions hold
 - Mutation testing tells you if assertions are sufficient
 
-**Source:** No direct Comb source to extract — this is new. But the infrastructure is all there: `@dut/graph` provides graph traversal and signal access, `@dut/test` provides the explorer, and mutations are just runtime wrappers on Signal<T> objects.
+**Source:** No direct Comb source to extract — this is new. But the infrastructure is all there: `@veriscope/graph` provides graph traversal and signal access, `@veriscope/test` provides the explorer, and mutations are just runtime wrappers on Signal<T> objects.
 
 **Size estimate:** ~400-600 lines. Mutation operator implementations (~200 lines), orchestrator (~150 lines), reporter (~100 lines), Vitest integration (~50 lines).
 
