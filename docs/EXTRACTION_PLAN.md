@@ -192,6 +192,7 @@ React's `useMemo` needs VALUES (not signal objects) in its dep array for shallow
 function useDerived<T>(fn: () => T, deps: Signal<any>[], name: string): ReadonlySignal<T> {
   const nodeId = useRef(graph.registerNode({ name, type: 'derived' })).current
   const resultRef = useRef<T>(undefined as T)
+  const prevRef = useRef<T>(undefined as T)
   
   // Register graph edges (once)
   useEffect(() => {
@@ -201,8 +202,12 @@ function useDerived<T>(fn: () => T, deps: Signal<any>[], name: string): Readonly
   
   // Extract current values for React's comparison
   const values = deps.map(d => d.val)
-  resultRef.current = useMemo(fn, values)
-  graph.notifyChange(nodeId, undefined, resultRef.current)
+  const newResult = useMemo(fn, values)
+  if (!Object.is(newResult, resultRef.current)) {
+    prevRef.current = resultRef.current
+    resultRef.current = newResult
+    graph.notifyChange(nodeId, prevRef.current, newResult)
+  }
   
   return useMemo(() => ({
     get val() { return resultRef.current },
@@ -227,21 +232,7 @@ The dep array serves both purposes: Signal objects for graph edges, `.val` extra
 
 **Component lifecycle and cleanup:**
 
-When a React component unmounts, all signals and assertions created within it must be disposed. The adapter uses React's cleanup mechanism:
-
-```ts
-function useSignal<T>(initial: T, name: string, opts?: SignalOpts): Signal<T> {
-  const signal = useMemo(() => graph.createSignal(initial, name, opts), [])
-  
-  // Cleanup on unmount: remove node from graph, cancel pending assertions,
-  // mark signal's waveform as ended (renders as a terminated trace in the viewer)
-  useEffect(() => {
-    return () => graph.disposeNode(signal.nodeId)
-  }, [])
-  
-  return signal
-}
-```
+When a React component unmounts, all signals and assertions created within it must be disposed. The `useSignal` implementation shown above already handles this — the `useEffect` cleanup on line 177 calls `graph.disposeNode(nodeId)` on unmount.
 
 `graph.disposeNode()`:
 - Removes the node and its edges from the graph
@@ -411,13 +402,13 @@ The `diffGraphs` algorithm is already implemented and tested in Comb's `circuit.
 
 **Coverage types:**
 
-1. **Toggle coverage:** Has every boolean signal been both true and false? Catches `isLoading` that's set to true but never back to false (bug) or never set to true (dead feature). Currently works in Comb for boolean signals via runtime hooks.
+1. **Toggle coverage:** Has every boolean signal been both true and false? Catches `isLoading` that's set to true but never back to false (bug) or never set to true (dead feature). Runtime hooks on signal/comb/cell write paths call `recordToggle()` automatically.
 
-2. **FSM transition coverage:** For enum/bounded signals, which state transitions have been exercised? "Of the 12 possible transitions in the checkout flow, 4 have never been tested." Currently a dead API in Comb — needs callers wired up.
+2. **FSM transition coverage:** For enum/bounded signals, which state transitions have been exercised? "Of the 12 possible transitions in the checkout flow, 4 have never been tested." Runtime hooks on signal write paths call `recordTransition()` for enum-typed signals automatically.
 
-3. **Cross coverage:** For groups of boolean signals, which combinations have been observed? "Has {loading=true, error=true} ever occurred?" Currently boolean-only and manual in Comb.
+3. **Cross coverage:** For groups of signals, which value combinations have been observed? "Has {loading=true, error=true} ever occurred?" Supports boolean and enum signals. The explorer registers cross groups from the graph and records observations each tick.
 
-4. **Assertion coverage:** Of all temporal assertions, how many have actually been triggered? An untriggered assertion provides zero verification value. Partially exists in Comb.
+4. **Assertion coverage:** Of all temporal assertions, how many have actually been triggered? An untriggered assertion provides zero verification value. The assertion lifecycle (armed/passed/failed) is tracked per assertion node.
 
 **Source to extract from Comb:**
 - `src/runtime/coverage.ts` — `CoverageCollector` class
@@ -546,8 +537,8 @@ Two complementary techniques:
 
 **Step 5: Handle async boundaries.** When the explorer encounters a pending `eventually` assertion:
 - The `eventually` tells the explorer: "there's an async boundary here — I need to drive a resolution"
-- The graph tells the explorer which signals are downstream of the pending assertion
-- The explorer drives those signals through their states to simulate various resolutions (success, error, timeout)
+- The assertion's property function depends on specific signals (traced via graph edges from the assertion node back to its inputs)
+- The explorer resolves the assertion: first attempts fn.toString() + Acorn parsing of the property function to determine what signal values satisfy it; falls back to observational enumeration of upstream signal states
 - The assertions + invariants constrain which combinations are valid
 
 **Step 6: Coverage-driven iteration.** After the initial backward-solved pass:
@@ -943,7 +934,7 @@ export default defineConfig({
 
 ## Extraction Priority
 
-All five packages ship. The ordering is about dependencies, not importance.
+All six packages ship. The ordering is about dependencies, not importance.
 
 ### Phase 1: `@dut/graph` + `@dut/react`
 
@@ -990,66 +981,19 @@ Reactive state coverage metrics — the thing no other tool provides.
 
 **Ship gate:** Run a Vitest suite against a component with 8 tracked signals. Get a reactive coverage report: "toggle: 87% (isError was never true), transitions: 60% (4 of 10 phase transitions never fired), cross: 45% (loading=true + error=truthy never observed)". CI fails if coverage drops below configured threshold.
 
-### Phase 4: `@dut/test` (highest leverage — zero-test-case UI verification)
+### Phase 4: `@dut/test`
 
-The dream: **you write temporal assertions, not test cases.** The tool explores the state space, and assertions are the pass/fail criteria. No Playwright scripts. No manual test scenarios. You declare what should always/eventually/never be true, and the machine finds violations or proves coverage.
+See Package 4 above for the full backward graph solving design, opacity solutions, and assertion API.
 
-**Why this is the highest-leverage piece:**
+**What ships:**
+- Backward cone-of-influence analysis + observational truth tables + fn.toString() parsing + read tracing
+- Combinatorial input driver with coverage-steered sampling
+- Adversarial assertion testing + eventually-resolution driver
+- Sequence shrinking (minimal reproducing input sequence)
+- Vitest integration: `explore()` function
+- Optional interaction-level exploration (Playwright bridge)
 
-No existing tool does this. Bombadil fuzzes randomly with no graph awareness. fast-check-frontend generates random interactions but doesn't know the state space. XState's @xstate/graph generates paths but requires manual state machine modeling. The synthesis — graph-aware exploration + coverage-driven steering + temporal assertions as spec — is genuinely novel.
-
-**The architecture (three layers):**
-
-**Layer 1: State space discovery** (exists in Comb, needs expansion)
-- Read `@dut/graph` to discover bounded signals (booleans, enums, bounded ints)
-- Identify root signals (zero incoming edges) as test inputs
-- Identify clock/trigger signals (posedge/negedge sensitivity nodes)
-- Infer state bounds from TypeScript types where possible (`isLoading: boolean` → `[true, false]`)
-- Source: `src/runtime/autotest.ts` — `runAutoTest()`, but needs combinatorial expansion
-
-**Layer 2: Coverage-driven exploration** (needs to be built)
-- Generate random input combinations (fast-check integration for constrained random)
-- After each exploration batch, measure reactive coverage (toggle, FSM transition, cross)
-- Identify uncovered states/transitions
-- Bias next generation toward uncovered regions (the HDL CRV feedback loop)
-- Stop when coverage target met or budget exhausted
-- This is the piece nobody has built: fast-check's random generation + @dut/coverage's state-space metrics in a feedback loop
-
-**Layer 3: Temporal assertions as the spec** (exists in Comb, needs integration)
-- `assert temporal @(posedge submit) eventually(success || error) within 5s` — if exploration finds an input sequence that violates this, that's the bug report
-- `assert always (score >= 0)` — invariant checked at every state during exploration
-- When a violation is found: produce the minimal reproducing input sequence (fast-check's shrinking)
-- When exploration exhausts reachable states without violations: report coverage achieved as confidence metric
-- Source: `createTemporalAssert` in signals.ts, but needs to work in headless exploration mode (not just runtime monitoring)
-
-**Integration with interaction-level testing:**
-- For real UI testing, the explorer needs to drive *interactions* (click, type, navigate), not just raw signal writes
-- Bridge to Playwright/Testing Library: map graph roots to interaction affordances ("signal `isOpen` is toggled by clicking `button.menu-toggle`")
-- This mapping could be manual (annotation) or inferred (observe which interactions change which signals during a recording session)
-
-**What this replaces:**
-- Hand-written Playwright E2E scripts → temporal assertions + exploration
-- Hand-written Vitest component tests → auto-derived from graph + assertions
-- Manual test case enumeration → coverage-driven state space search
-- "Did I test enough?" → quantified reactive coverage metrics
-
-**What this does NOT replace:**
-- Visual regression testing (Chromatic/Percy) — this tests behavior, not appearance
-- API contract testing — this tests the UI layer only
-- Performance testing — this tests correctness, not speed
-
-**Minimum viable:**
-- Headless exploration mode: drive root signals through state space, check assertions, report violations with reproducing sequence
-- Coverage report: which signals/transitions were exercised, which weren't
-- Integration with Vitest: `import { explore } from '@dut/test'; explore(graph, assertions, { budget: 1000 })`
-
-**Full vision:**
-- Coverage-driven steering (fast-check + coverage feedback loop)
-- Interaction-level exploration (Playwright bridge)
-- Assertion inference from TypeScript types ("this signal is `number` and only set in a handler that increments — assert it never decreases")
-- CI mode: fail if reactive coverage drops below threshold or any temporal assertion is violated
-
-**Ship gate:** Run `explore()` against a React component with 5 tracked signals and 3 temporal assertions. Get a coverage report + any violation traces. Zero hand-written test cases.
+**Ship gate:** `explore()` against a React component with 5 tracked signals and 3 temporal assertions. Zero hand-written test cases. Explorer finds a real bug, produces a minimal reproducing sequence, reports 85%+ reactive coverage, completes in under 10 seconds.
 
 ### Phase 5: `@dut/mutate` (validates assertions catch bugs)
 
@@ -1090,10 +1034,10 @@ Traditional mutation testing (Stryker) mutates source code AST nodes → recompi
 ```ts
 import { mutate } from '@dut/mutate'
 
-const result = mutate(graph, {
-  budget: 500,          // max exploration steps per mutation
-  operators: 'all',     // or pick specific: ['sever-edge', 'negate-boolean']
-})
+const result = mutate(
+  () => { render(<MyComponent />); return graph },  // factory: fresh instance per mutation
+  { budget: 500, operators: 'all' }
+)
 
 // result:
 // {
@@ -1154,7 +1098,10 @@ test('checkout flow is well-asserted', async () => {
   expect(exploration.violations).toHaveLength(0)
 
   // Step 2: mutate — check assertions would catch bugs
-  const mutations = mutate(graph, { budget: 500 })
+  const mutations = mutate(
+    () => { render(<CheckoutForm />); return graph },
+    { budget: 500 }
+  )
   expect(mutations.score).toBeGreaterThan(0.85)  // 85%+ mutation kill rate
 
   // Step 3: the surviving mutations tell you what to assert next
