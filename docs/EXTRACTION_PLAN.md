@@ -375,25 +375,6 @@ The graph tracks which signals were last set in a sync vs. async context (detect
 
 Less precise than Comb's static analysis but catches the common case and requires zero compiler infrastructure. Warnings show in the devtools assertion panel.
 
-**CI graph diffing CLI:**
-
-```bash
-# Export graph snapshot to JSON (in a test or build script):
-dut snapshot --output graph.json   # renders app, captures graph, exits
-
-# Diff two snapshots:
-dut diff graph-main.json graph-pr.json
-# Output:
-#   Removed edge: userProfile → dashboardTitle
-#   Added node: newFeatureFlag (signal, boolean)
-#   Changed node: cartTotal (comb → signal) ← was derived, now manual
-
-# GitHub Action comments on PRs with topology changes
-# (like codecov but for reactive topology)
-```
-
-The `diffGraphs` algorithm is already implemented and tested in Comb's `circuit.ts`. Package as a standalone CLI.
-
 **Size estimate:** ~500 lines core graph + ~100 lines per adapter + ~50 lines edge effects + ~100 lines CDC warnings + ~150 lines CLI.
 
 ### Package 2: `@dut/coverage` — Reactive State Coverage
@@ -481,7 +462,7 @@ Source: `src/visualizer.ts` (330 lines) — needs auto-layout library, live valu
 Live display of all declared assertions and their status.
 
 Required features:
-- List of all `assertAlways`, `assertNever`, `assertTemporal` with current status (passing/pending/violated)
+- List of all `assertAlways`, `assertNever`, `assertAfter` with current status (passing/pending/violated)
 - For temporal assertions: show trigger status, tick count since trigger, whether resolution property has been met
 - For violated assertions: the signal values at the moment of violation, linkable to the waveform timeline (click to jump to that point in the waveform)
 - CDC warnings: show async boundary warnings (from the runtime CDC detection) alongside assertions
@@ -512,13 +493,14 @@ This is backward cone-of-influence analysis — the same technique hardware form
 
 **Step 1: Identify what matters.** Read the graph to find:
 - Derived values (combs/memos): `display = loading ? '...' : data`
-- Assertions: `assertAlways(() => !(loading && error))`
+- Assertions: `assertAlways(() => !(loading.val && error.val))`
 - These are the "outputs" — the things whose behavior we want to verify.
 
 **Step 2: Trace backwards to find inputs.** For each output, walk the graph edges backwards:
 - `display` depends on `loading` and `data` → these are the inputs that matter for `display`
-- The assertion `!(loading && error)` depends on `loading` and `error` → these are the inputs that matter for this assertion
+- The assertion `!(loading.val && error.val)` depends on `loading` and `error` → these are the inputs that matter for this assertion
 - Keep tracing: if `loading` is itself derived from other signals, trace further back until you hit root signals (zero incoming edges)
+- This naturally scopes exploration: each assertion only cares about its upstream roots (typically 3-10 signals), not the entire graph. A component with 50 signals but where each assertion depends on 5 roots → 2^5 = 32 combos per assertion, not 2^50
 
 **Step 3: Determine meaningful input states.**
 
@@ -553,7 +535,7 @@ Two complementary techniques:
 |---|---|
 | Nothing (just tracked signals) | Fuzz root signals with type-appropriate values. Booleans get true/false. Numbers get 0, 1, -1, boundary values. Report what happened. |
 | State spaces (`{ states: ['idle', 'loading', 'error'] }`) | Targeted exploration of all declared states. Coverage reports which were reached. |
-| Assertions (`assertAlways`, `assertTemporal`) | Adversarial exploration — try to break assertions. Backward cone-of-influence from each assertion to find which inputs matter. |
+| Assertions (`assertAlways`, `assertAfter`) | Adversarial exploration — try to break assertions. Backward cone-of-influence from each assertion to find which inputs matter. |
 | State spaces + assertions | Full backward graph solving. Combinatorial exploration of input states that exercise all derived value branches. Temporal chain navigation. Complete state space coverage. |
 
 The user is never blocked by "you didn't declare enough." They just get less precise results. We are not in the business of solving the oracle problem — that's the user's job via assertions. We provide the machinery to explore their declared state space and check their declared properties.
