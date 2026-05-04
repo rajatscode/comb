@@ -560,16 +560,33 @@ The user is never blocked by "you didn't declare enough." They just get less pre
 - `src/runtime/circuit.ts` — graph traversal (upstream/downstream queries)
 
 **What needs to be built:**
+
 - Backward cone-of-influence analysis: trace from outputs/assertions to inputs via graph edges. For each assertion, identify the set of upstream root signals that can affect it.
 - Topology-based input generation: boolean signals → exhaustive (2^N for small N). Declared state spaces → exhaustive combinations. Undeclared non-boolean signals → type-appropriate fuzzing (boundary values for numbers, empty/non-empty for strings/arrays, null/non-null for nullable) steered by coverage toward uncovered states.
-- **Limitation (honest):** expression-level analysis (reading ternaries/comparisons inside derived value closures) is NOT possible — JavaScript closures are opaque at runtime. The explorer works on graph topology + declared state spaces, not expression structure. Still powerful because the graph tells you WHICH inputs matter for each output.
 - Combinatorial input driver: full combinations for small input sets (≤ ~12 booleans = 4096 combos), coverage-steered sampling for larger sets.
 - Assertion adversarial mode: specifically try to reach states where each assertion would fail.
-- Eventually-resolution driver: when `eventually` assertion is pending, drive downstream signals through their state spaces to simulate async resolutions (success, error, timeout, etc.).
+- Eventually-resolution driver: when `eventually` assertion is pending, parse the assertion's property function (via fn.toString() + Acorn) to determine what signals need which values for resolution. For `eventually(!loading.val)`, the resolver knows `loading` must become `false`. For `eventually(showSuccess.val || showError.val)`, it tries each disjunct independently.
 - React `act()` integration: the explorer wraps each signal-driving step in `act()` to ensure React renders and effects settle before checking assertions. Framework adapters provide a `flush()` function — React's is `act()`, Solid's is synchronous (no-op), Svelte's is `tick()`.
 - Sequence shrinking: when a violation is found, minimize the input SEQUENCE (not just values). Remove steps from the sequence one at a time and re-check — if the violation still reproduces, the step was unnecessary. Produces the minimal reproducing sequence. This is sequence-level shrinking (like fast-check's stateful testing), not just value-level shrinking.
 - Side effect sandboxing: the explorer runs in a test environment. The plan assumes standard test mocking (MSW for fetch, vi.fn() for analytics, etc.). The explorer does not sandbox side effects itself — that's the test environment's job.
 - Vitest integration: `explore()` function that returns violations + coverage.
+
+**Solving the JavaScript closure opacity problem:**
+
+JavaScript closures are opaque — you can't inspect the expression structure of `() => !loading.val && validated.val` at runtime via reflection. Four techniques address this, in order of increasing power:
+
+| Technique | How it works | What it reveals | When to use |
+|---|---|---|---|
+| **Observational (truth tables)** | Drive all input combinations, observe output | Full input→output mapping | Primary strategy. 2^N for N≤12 booleans (4096 combos, trivial). Graph tells us WHICH inputs; truth table tells us HOW they combine. Works with ANY closure including external function calls. |
+| **Read tracing** | Intercept `.val` property access during compute fn execution | Which signals were actually read for each input combo (reveals short-circuit branches) | Run alongside truth tables. If `loading=true` short-circuits and `validated` is never read, the tracer reveals that branch structure without parsing. |
+| **fn.toString() + Acorn** | ES2018 mandates `fn.toString()` returns exact source. Parse with Acorn at runtime (~50KB, microsecond parse time). Walk AST for `.val` MemberExpression nodes. | Full expression structure: AND/OR/NOT/ternary/comparison operators, which signals in which branches | Refinement for numeric signals: find comparison boundaries (`score.val > threshold.val` → try threshold±1). Also identifies dead branches to prune search space. Only works on non-minified code (dev/test mode only — fine). |
+| **Babel plugin metadata** | Transform at compile time. Babel sees the full AST of the compute function. Emit structural metadata alongside: `__DUT_META__.canSubmit = { structure: 'AND(NOT(loading), validated)' }` | Richest analysis. Survives minification. Same approach React Compiler uses (classifies expressions as Static/Reactive/Derived). | Optional build-time integration. Most powerful but requires opt-in. |
+
+The observational approach is the **primary strategy** because it requires zero parsing infrastructure and works with any JavaScript — even closures that call external functions, access object properties, or use complex logic. The graph gives us the dep array (which signals to drive), and the truth table gives us the behavior (which combos produce which outputs). Combined with read tracing (which reveals short-circuit paths), this covers ~90% of real-world derived values.
+
+fn.toString() + Acorn is the **refinement** for cases where we need expression structure — primarily for numeric comparison boundaries and for generating more targeted inputs than exhaustive enumeration.
+
+The Babel plugin is the **power user** path for teams that want richest analysis and integration with their build pipeline.
 
 **Integration with interaction-level testing:**
 
@@ -713,11 +730,12 @@ assertAfter(loading, 'posedge', 'eventually', () => !loading.val, {
 
 ```
 @dut/graph          # core: CircuitGraph, waveform recording, diffing, assertions
-@dut/react          # adapter: useTrackedState, useTrackedMemo, useTrackedEffect  
-@dut/solid          # adapter: createTrackedSignal, createTrackedMemo
-@dut/devtools       # browser panel: waveform viewer, graph visualizer, coverage display
+@dut/react          # adapter: useSignal, useDerived, useTrackedEffect, useEdgeEffect
+@dut/solid          # adapter: same API, wired to Solid's reactivity
+@dut/devtools       # waveform viewer, graph visualizer, coverage display
 @dut/coverage       # toggle/FSM/cross coverage collector + reporters
 @dut/test           # graph-directed exploration, assertion-based verification
+@dut/mutate         # graph-level mutation testing for assertion validation
 ```
 
 ### How to publish
@@ -737,7 +755,8 @@ dut/
 │   ├── solid/          # @dut/solid
 │   ├── devtools/       # @dut/devtools
 │   ├── coverage/       # @dut/coverage
-│   └── test/           # @dut/test
+│   ├── test/           # @dut/test
+│   └── mutate/         # @dut/mutate
 ├── package.json        # workspace root
 └── tsconfig.base.json
 
@@ -1024,6 +1043,143 @@ No existing tool does this. Bombadil fuzzes randomly with no graph awareness. fa
 - CI mode: fail if reactive coverage drops below threshold or any temporal assertion is violated
 
 **Ship gate:** Run `explore()` against a React component with 5 tracked signals and 3 temporal assertions. Get a coverage report + any violation traces. Zero hand-written test cases.
+
+### Phase 5: `@dut/mutate` (validates assertions catch bugs)
+
+Ships after `@dut/test`. Uses the explorer as a subroutine.
+
+**What ships:**
+- Graph-level mutation operators (sever edge, negate boolean, constant-fold, swap edge, skip effect, invert comparison, remove assertion, delay effect)
+- Mutation orchestrator: generate mutations from graph structure, apply each, re-explore, report killed/survived
+- Actionable feedback: each survived mutation describes the missing assertion
+- Vitest integration: `mutate()` function that returns mutation score
+- CI mode: fail if mutation score drops below threshold
+
+**Ship gate:** Run `mutate()` against a checkout form with 5 tracked signals, 3 assertions. Generate 50+ mutations. Kill rate >80%. Each survived mutation has an actionable description. Full run completes in under 10 seconds.
+
+### Package 5: `@dut/mutate` — Graph-Level Mutation Testing
+
+**What it is:** Validates that your assertions actually catch bugs. Introduces mutations into the reactive graph at runtime, re-runs the explorer, and reports which mutations survived (no assertion caught them). Survived mutations = blind spots in your assertion coverage.
+
+**Why graph-level mutation is different from Stryker:**
+
+Traditional mutation testing (Stryker) mutates source code AST nodes → recompiles → reruns all tests. Slow (minutes to hours for a real codebase). DUT has the reactive graph at runtime — mutations are **graph modifications**, not source code changes. No recompilation. Each mutation is a signal/compute wrapper applied and removed in milliseconds.
+
+**Mutation operators (graph-level):**
+
+| Mutation | What it simulates | Implementation |
+|---|---|---|
+| **Sever edge** | "What if `canSubmit` stopped depending on `validated`?" | Shadow one signal read with a constant inside the compute function. Intercept the `.val` getter to return a fixed value instead of the real one. |
+| **Negate boolean** | "What if `loading` was stuck `true`?" | Wrap signal's `.val` getter to return `!value`. |
+| **Constant-fold derived** | "What if `displayScore` was always 0?" | Replace compute fn with `() => 0` (or `true`/`false`/`''` depending on type). |
+| **Swap edge** | "What if `total` read `subtotal` instead of `grandTotal`?" | Redirect one signal's `.val` to return another signal's value. |
+| **Skip effect** | "What if the loading-complete toast never fired?" | Wrap an edge-triggered effect's action with a no-op. |
+| **Invert comparison** | "What if `score > threshold` became `score <= threshold`?" | Wrap compute fn: `() => !originalFn()` for boolean-returning functions. |
+| **Remove assertion** | "Does anything ELSE catch what this assertion checks?" | Disable one assertion, re-explore, see if other assertions or coverage gaps reveal the problem. |
+| **Delay effect** | "What if an effect fired one tick late?" | Queue the effect action to the next tick instead of current. |
+
+**How it works:**
+
+```ts
+import { mutate } from '@dut/mutate'
+
+const result = mutate(graph, {
+  budget: 500,          // max exploration steps per mutation
+  operators: 'all',     // or pick specific: ['sever-edge', 'negate-boolean']
+})
+
+// result:
+// {
+//   total: 87,           // 87 mutations generated from the graph
+//   killed: 76,          // 76 caught by assertions
+//   survived: 11,        // 11 NOT caught — blind spots
+//   score: 87.4,         // mutation score (%)
+//   survived: [
+//     { mutation: 'sever-edge: userProfile → dashboardTitle',
+//       description: 'No assertion covers the dependency from userProfile to dashboardTitle' },
+//     { mutation: 'negate: isAdmin',
+//       description: 'No assertion checks admin-only UI state' },
+//     ...
+//   ]
+// }
+```
+
+**Each survived mutation is actionable.** It tells you exactly which assertion is missing:
+
+- "sever edge: `userProfile → dashboardTitle`" → add `assertAlways(() => dashboardTitle.val.includes(userProfile.val.name), 'title-shows-user')`
+- "negate: `isAdmin`" → add `assertAlways(() => isAdmin.val || !adminPanel.val, 'admin-gate')`
+
+**Mutation count is proportional to graph size, not source size.** A typical component has 10-30 graph nodes and 20-50 edges → 50-150 mutations. Each mutation = apply wrapper + re-explore + remove wrapper. If exploration takes 100ms per mutation, full mutation testing takes ~15 seconds. Fast enough for CI.
+
+**Why this is better than Stryker for reactive code:**
+
+| Dimension | Stryker | @dut/mutate |
+|---|---|---|
+| Mutation target | Source code AST | Reactive graph (runtime) |
+| Recompilation | Required per mutation | None — runtime wrappers |
+| Speed | Minutes-hours | Seconds |
+| Mutation relevance | All AST mutations (many irrelevant) | Only graph-structural mutations (every mutation tests a reactive dependency) |
+| Feedback | "Mutation survived" | "Mutation survived — and here's the specific assertion you're missing" |
+| Works with | Any test suite | DUT assertions specifically |
+
+**Integration with `@dut/test`:**
+
+```ts
+import { explore } from '@dut/test'
+import { mutate } from '@dut/mutate'
+
+test('checkout flow is well-asserted', async () => {
+  render(<CheckoutForm />)
+
+  // Step 1: explore — check assertions pass on correct code
+  const exploration = explore(graph, { budget: 1000 })
+  expect(exploration.violations).toHaveLength(0)
+
+  // Step 2: mutate — check assertions would catch bugs
+  const mutations = mutate(graph, { budget: 500 })
+  expect(mutations.score).toBeGreaterThan(0.85)  // 85%+ mutation kill rate
+
+  // Step 3: the surviving mutations tell you what to assert next
+  if (mutations.survived.length > 0) {
+    console.log('Blind spots:', mutations.survived.map(m => m.description))
+  }
+})
+```
+
+**The full verification pyramid:**
+
+```
+         ┌─────────────┐
+         │   mutate()   │  "Do my assertions catch bugs?"
+         │  mutation    │  Mutation score: 87%
+         │   score      │
+         ├─────────────┤
+         │  explore()   │  "Do my assertions pass on correct code?"
+         │  assertion   │  Coverage: 95%, 0 violations
+         │  checking    │
+         ├─────────────┤
+         │  coverage    │  "Did I exercise the state space?"
+         │  toggle/FSM  │  Toggle: 92%, FSM: 80%, Cross: 70%
+         │  /cross      │
+         ├─────────────┤
+         │   graph      │  "What depends on what?"
+         │   diffing    │  Topology unchanged ✓
+         └─────────────┘
+```
+
+Each layer validates the one above it:
+- Graph diffing catches topology changes
+- Coverage tells you what was exercised
+- Exploration tells you if assertions hold
+- Mutation testing tells you if assertions are sufficient
+
+**Source:** No direct Comb source to extract — this is new. But the infrastructure is all there: `@dut/graph` provides graph traversal and signal access, `@dut/test` provides the explorer, and mutations are just runtime wrappers on Signal<T> objects.
+
+**Size estimate:** ~400-600 lines. Mutation operator implementations (~200 lines), orchestrator (~150 lines), reporter (~100 lines), Vitest integration (~50 lines).
+
+**Ship gate:** Run `mutate()` against a checkout form with 5 tracked signals, 3 assertions. Generate 50+ mutations. Kill rate >80%. Each survived mutation has an actionable description. Full run completes in under 10 seconds.
+
+---
 
 ## Target Users
 
