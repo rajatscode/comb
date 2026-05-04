@@ -226,7 +226,7 @@ The dep array serves both purposes: Signal objects for graph edges, `.val` extra
 | **React** | `useSignal`, `useDerived`, `useTrackedEffect`, `useEdgeEffect` | Signal objects in dep array → `.nodeId` read for edges |
 | **Solid** | Same API names, wired to `createSignal`/`createMemo` | Same — Solid also auto-tracks reads, so edges are doubly confirmed |
 | **Vue 3** | `useSignal` wraps `ref()`, `useDerived` wraps `computed()` | Signal objects in dep array |
-| **Svelte 5** | `useSignal` wraps `writable()` stores | Signal objects in dep array |
+| **Svelte 5** | `useSignal` wraps `$state` runes (requires preprocessor) or `writable()` stores (Svelte 4 compat) | Signal objects in dep array |
 | **Vanilla JS** | `createSignal`, `createDerived` from core `@dut/graph` | Signal objects in dep array |
 | **TC39 Signals** | `trackSignal` wraps `Signal.State`/`Signal.Computed` | Signal objects in dep array |
 
@@ -320,11 +320,13 @@ Every tick gets an incrementing sequence number. Assertions and coverage referen
 
 **Graph persistence and CI diffing:**
 
-```bash
-# Export graph snapshot to JSON (in a test or build script):
+```ts
+// Export graph snapshot to JSON (in a test or build script):
 import { graph } from '@dut/graph'
 fs.writeFileSync('graph.json', JSON.stringify(graph.snapshot()))
+```
 
+```bash
 # Diff two snapshots in CI:
 npx dut diff graph-main.json graph-pr.json
 # Output:
@@ -509,7 +511,7 @@ Two complementary techniques:
 - **Observational (primary):** For boolean inputs, enumerate all 2^N combinations (N≤12 is trivial). Drive each combo, observe the output. The truth table reveals exactly which inputs matter and how. For `canSubmit` with 3 boolean deps → 8 combinations, try all 8. No parsing needed.
 - **fn.toString() + Acorn (refinement):** Parse the compute function's source to extract expression structure. For `score.val > threshold.val`, this reveals the comparison operator and identifies boundary values to try (threshold±1). For ternaries, identifies which branch depends on which signal. Falls back to observational if parsing fails.
 - **Read tracing:** Run the compute function with Proxy-wrapped signals that log `.val` accesses. If `loading=true` short-circuits and `validated` is never read, the tracer reveals the branch structure. Combined with truth tables, this identifies dead inputs per combo.
-- **Adversarial mode:** For assertions like `assertAlways(() => !(loading && error))`, the explorer specifically tries to BREAK them — drive inputs toward the violation state (`loading=true, error=truthy`).
+- **Adversarial mode:** For assertions like `assertAlways(() => !(loading.val && error.val))`, the explorer specifically tries to BREAK them — drive inputs toward the violation state (`loading=true, error=truthy`).
 
 **Step 4: Generate and drive.** For each meaningful input combination:
 - Set the root signals to those values
