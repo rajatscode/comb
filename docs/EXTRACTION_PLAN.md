@@ -32,16 +32,18 @@ Three things converging:
 | CDC async boundary analysis | Working (pattern-level) | Transitive taint through comb chains. `src/core/verify.ts` |
 | SSR | Working | `renderToString()` with DOM shim. 12/12 tests pass |
 
-## What Comb Claims But Doesn't Deliver (as of initial review — some fixed since)
+## What DUT Builds Beyond Comb
 
-| Claim | Reality (initial) | Current status |
-|---|---|---|
-| "3 coverage types" | Toggle works. FSM transition + cross coverage were dead APIs | **Fixed:** runtime hooks for enum transitions wired; generic `runAutoTest()` drives coverage from graph |
-| "CDC-style analysis" | Pattern matching only, no transitive taint | **Fixed:** transitive taint propagation through comb chains (fixed-point iteration), nested async handled |
-| "GTKWave-grade waveform" | No cross-signal correlation, no keyboard shortcuts | **Partially fixed:** keyboard shortcuts (+/-/arrows/Home/Escape), compound search (AND/OR/WITHIN), memory leak fixed. Still missing: persistence, export, snap-to-edge |
-| "Graph-directed auto-testing" | Single-variable enumeration | **Fixed:** `runAutoTest()` reads graph state spaces, drives root signals, ticks clocks. But still forward-only — not backward solving |
-| "Fair benchmarks" | Naive topo baseline | **Fixed:** batched-topo baseline mimicking Solid's batch(), three-column results |
-| "VS Tetris proves DES" | Game logic in JS mount file | Partially true — Comb provides the clock/signal/assertion infrastructure, game logic is in JS. The garbage mechanic cross-dependency IS a real DES proof point |
+Comb proved the concepts. DUT productizes them for the broader ecosystem:
+
+| Comb | DUT |
+|---|---|
+| `.comb` DSL required | Works with React/Solid/Vue/vanilla JS via Signal<T> wrappers |
+| Forward-only auto-test (drive and observe) | Backward graph solving (trace from assertions to inputs) + observational truth tables + fn.toString() parsing |
+| Coverage exists but partially wired | Coverage fully integrated: toggle, FSM, cross — with reporters, CI thresholds, Vitest plugin |
+| Waveform viewer (basic) | Full waveform with cross-signal correlation, persistence, export, keyboard shortcuts |
+| No mutation testing | Graph-level mutation testing validates assertion sufficiency |
+| Temporal assertions use tick counts | Same — tick-based, deterministic, no wall-clock dependency |
 
 ## The Product: Six Packages
 
@@ -302,7 +304,14 @@ Framework mapping:
 - **Solid:** Same — synchronous propagation happens within the tick. Tick closes on microtask.
 - **Promise resolution:** `fetch().then(response => { loading.set(false); data.set(response) })` — the `.then` callback runs in a new microtask → new tick (N+1). This is how `eventually` assertions detect async boundaries: the trigger was tick N, the resolution is tick N+M.
 
-For the explorer (test mode): the explorer wraps each signal-driving step in React's `act()`, which synchronously flushes renders and effects. After `act()` returns, the tick is guaranteed closed. The explorer then checks assertions before driving the next step. This makes exploration deterministic — no microtask timing issues.
+**Two modes:**
+
+- **Runtime mode** (default): `openTick()` uses `queueMicrotask()` to auto-close. Correct for normal app execution where multiple `signal.set()` calls in the same event handler should be one tick.
+- **Test mode**: `graph.enterTestMode()` disables microtask auto-closing. Ticks are opened and closed explicitly. The explorer calls `graph.openTick()` before driving signals and `graph.closeTick()` after each step. Framework adapters provide a `flush()` function — React's wraps `act()`, Solid's is synchronous (no-op), Svelte's calls `tick()`. This makes exploration fully deterministic — no microtask timing, no wall-clock dependency.
+
+All assertions count **ticks**, not wall-clock time. `eventually` with `{ withinTicks: 5 }` means "the property must become true within 5 tick closings." Same inputs → same tick count → same pass/fail on any machine at any speed.
+
+The ONLY place wall-clock time appears is the optional `devWatchdogMs` on temporal assertions — a dev-mode-only UX hint ("this spinner has been up too long") that has no effect in test/explore mode.
 
 ```ts
 // Inside explore():
@@ -353,9 +362,21 @@ useEdgeEffect(error, 'posedge', () => {
 }, 'error-occurred')
 ```
 
+**Assertion discovery:**
+
+Assertions register as graph nodes, just like signals and derived values. When the user calls `assertAlways(checkFn, 'name')`, the assertion:
+1. Registers a node in the graph: `graph.registerNode({ name, type: 'assertion', kind: 'always' })`
+2. Runs `checkFn()` once in a tracking context to discover dependencies (same auto-tracking as derived values)
+3. Stores the check function on the node: `graph.setAssertionFn(nodeId, checkFn)`
+4. Edges are created from dependencies to the assertion node
+
+The explorer discovers assertions via `graph.getAssertions()` — returns all assertion nodes with their check functions, dependency edges, and metadata (kind, trigger signal for temporal assertions). For each assertion, the explorer traces backward through edges to find which root signals affect it, then drives those inputs adversarially.
+
+This is the same mechanism Comb uses: `createTemporalAssert` registers as an `'effect'` node with edges from its trigger and property dependencies.
+
 **CDC async boundary warnings (runtime):**
 
-Ported from Comb's `verify.ts` analysis, running at runtime instead of compile time. When a derived value (useTrackedMemo) recomputes and reads a signal that was last set from an async context (Promise callback, setTimeout, etc.), and the derived value doesn't also read a guard signal (like `loading`), emit a dev-mode warning:
+Ported from Comb's `verify.ts` analysis, running at runtime instead of compile time. When a derived value (useDerived) recomputes and reads a signal that was last set from an async context (Promise callback, setTimeout, etc.), and the derived value doesn't also read a guard signal (like `loading`), emit a dev-mode warning:
 
 > "derived value 'display' reads 'data' which was set asynchronously — consider guarding with a loading check"
 
@@ -508,11 +529,14 @@ This is backward cone-of-influence analysis — the same technique hardware form
 - The assertion `!(loading && error)` depends on `loading` and `error` → these are the inputs that matter for this assertion
 - Keep tracing: if `loading` is itself derived from other signals, trace further back until you hit root signals (zero incoming edges)
 
-**Step 3: Determine meaningful input states from the graph structure.**
-- `display = loading ? '...' : data` has a ternary on `loading` → loading has 2 meaningful states (true/false). When `loading=false`, `data` matters — try its declared states or fuzz.
-- `assertAlways(() => !(loading && error))` → the explorer specifically tries `loading=true, error=truthy` to see if the assertion holds. This is adversarial — it's trying to BREAK the assertion.
-- `canSubmit = !loading && validated && !submitted` → 3 boolean inputs → 8 combinations. Try all 8.
-- For combs with comparisons (`score > threshold`) → the explorer tries values on both sides of the boundary (threshold-1, threshold, threshold+1).
+**Step 3: Determine meaningful input states.**
+
+Two complementary techniques:
+
+- **Observational (primary):** For boolean inputs, enumerate all 2^N combinations (N≤12 is trivial). Drive each combo, observe the output. The truth table reveals exactly which inputs matter and how. For `canSubmit` with 3 boolean deps → 8 combinations, try all 8. No parsing needed.
+- **fn.toString() + Acorn (refinement):** Parse the compute function's source to extract expression structure. For `score.val > threshold.val`, this reveals the comparison operator and identifies boundary values to try (threshold±1). For ternaries, identifies which branch depends on which signal. Falls back to observational if parsing fails.
+- **Read tracing:** Run the compute function with Proxy-wrapped signals that log `.val` accesses. If `loading=true` short-circuits and `validated` is never read, the tracer reveals the branch structure. Combined with truth tables, this identifies dead inputs per combo.
+- **Adversarial mode:** For assertions like `assertAlways(() => !(loading && error))`, the explorer specifically tries to BREAK them — drive inputs toward the violation state (`loading=true, error=truthy`).
 
 **Step 4: Generate and drive.** For each meaningful input combination:
 - Set the root signals to those values
@@ -565,7 +589,7 @@ The user is never blocked by "you didn't declare enough." They just get less pre
 - Topology-based input generation: boolean signals → exhaustive (2^N for small N). Declared state spaces → exhaustive combinations. Undeclared non-boolean signals → type-appropriate fuzzing (boundary values for numbers, empty/non-empty for strings/arrays, null/non-null for nullable) steered by coverage toward uncovered states.
 - Combinatorial input driver: full combinations for small input sets (≤ ~12 booleans = 4096 combos), coverage-steered sampling for larger sets.
 - Assertion adversarial mode: specifically try to reach states where each assertion would fail.
-- Eventually-resolution driver: when `eventually` assertion is pending, parse the assertion's property function (via fn.toString() + Acorn) to determine what signals need which values for resolution. For `eventually(!loading.val)`, the resolver knows `loading` must become `false`. For `eventually(showSuccess.val || showError.val)`, it tries each disjunct independently.
+- Eventually-resolution driver: when `eventually` assertion is pending, resolve it in two steps. First, attempt fn.toString() + Acorn parsing of the property function — for `eventually(!loading.val)`, parsing reveals `loading` must become `false`, so set it directly. For `eventually(showSuccess.val || showError.val)`, parsing reveals two disjuncts — try each independently. If parsing fails (complex closure, external function call), fall back to observational: try setting each upstream signal to each possible value until the property is satisfied.
 - React `act()` integration: the explorer wraps each signal-driving step in `act()` to ensure React renders and effects settle before checking assertions. Framework adapters provide a `flush()` function — React's is `act()`, Solid's is synchronous (no-op), Svelte's is `tick()`.
 - Sequence shrinking: when a violation is found, minimize the input SEQUENCE (not just values). Remove steps from the sequence one at a time and re-check — if the violation still reproduces, the step was unnecessary. Produces the minimal reproducing sequence. This is sequence-level shrinking (like fast-check's stateful testing), not just value-level shrinking.
 - Side effect sandboxing: the explorer runs in a test environment. The plan assumes standard test mocking (MSW for fetch, vi.fn() for analytics, etc.). The explorer does not sandbox side effects itself — that's the test environment's job.
@@ -594,7 +618,7 @@ Signal-level exploration (drive signals directly) is the primary mode — headle
 
 Interaction-level exploration (click buttons, type text) is the secondary mode for integration testing:
 - The graph knows which signals are roots (external inputs)
-- The user can optionally annotate how to trigger a root: `useTrackedState(false, 'submitted', { trigger: { element: 'button[type=submit]', action: 'click' } })`
+- The user can optionally annotate how to trigger a root: `useSignal(false, 'submitted', { trigger: { element: 'button[type=submit]', action: 'click' } })`
 - Or the explorer discovers it: drive a random interaction, observe which signals change, build the mapping
 - Once the mapping exists, the explorer can drive interactions instead of raw signal writes
 - This runs in Vitest browser mode or Playwright
@@ -1093,6 +1117,17 @@ const result = mutate(graph, {
 - "negate: `isAdmin`" → add `assertAlways(() => isAdmin.val || !adminPanel.val, 'admin-gate')`
 
 **Mutation count is proportional to graph size, not source size.** A typical component has 10-30 graph nodes and 20-50 edges → 50-150 mutations. Each mutation = apply wrapper + re-explore + remove wrapper. If exploration takes 100ms per mutation, full mutation testing takes ~15 seconds. Fast enough for CI.
+
+**State isolation:** `mutate()` takes a factory function that creates a fresh component instance for each mutation. Each mutation gets a fresh render → fresh graph → fresh signals. No state leakage between mutations:
+
+```ts
+const result = mutate(
+  () => { render(<CheckoutForm />); return graph },  // factory: fresh instance per mutation
+  { budget: 500 }
+)
+```
+
+This is the same pattern Vitest uses for test isolation. The factory re-renders the component, which re-creates all signals and assertions from scratch. The mutation wrapper is applied to the fresh graph, the explorer runs, and the graph is discarded.
 
 **Why this is better than Stryker for reactive code:**
 
